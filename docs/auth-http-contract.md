@@ -105,8 +105,11 @@ el propio rehash de begin_login se aplica antes de guardar la huella.
 
 Consumo y emisión de sesión son atómicos. Bloqueos: IP -> cuenta -> usuario ->
 pendientes por UUID -> sesiones. Releer tras esperar y usar reloj DB posterior al
-lock. Los futuros cambios de cuenta/contraseña/privilegios deben coordinarse con
-revocación de sesiones y pendientes en la transacción del cambio. Sin triggers
+lock. Acceso 2.9 coordina cambio de rol/estado de membresía, revocaciones y auditoría
+en un servicio interno, sin rutas HTTP nuevas. Prebloquea empresa y todos los
+usuarios implicados antes de resolver la sesión; detalles en decisions.md.
+Los futuros cambios globales de cuenta/contraseña deben compartir ese protocolo.
+Sin triggers
 sobre SQL manual y sin RLS. Cada operación comercial tendrá sus propios permisos
 y protocolo de bloqueo, aún no implementados.
 
@@ -154,8 +157,10 @@ Nginx/Uvicorn y PostgreSQL reales: IP falsificada no cambia bucket, conexión di
 rechazada, sesión/logout/replay y selección multiempresa. No es aún una prueba de
 interfaz ni HTTPS real; flags Secure se verifican con el perfil HTTPS de tests.
 
-Siguiente: administración/permisos, último administrador, auditoría,
-recuperación y limpieza. Hito 2 abierto; producción e inventario/comercio pendientes.
+Siguiente: contrato HTTP de administración, altas/cuentas, permisos de módulos,
+ampliación/consulta de auditoría, recuperación y limpieza. El servicio interno de
+membresías ya protege al último administrador; no cubre aún cambios globales de
+usuario. Hito 2 abierto; producción e inventario/comercio pendientes.
 
 Referencias: [CSRF OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html),
 [redes Docker Compose](https://docs.docker.com/compose/how-tos/networking/).

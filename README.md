@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.8
+## Estado: acceso 2.9
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -18,14 +18,17 @@ con caducidad y uso único probados. Login/logout, selección, consulta de sesi�
 y emisión/renovación CSRF ya funcionan por HTTP con cookies privadas. La IP se
 obtiene de Nginx verificado en una red interna separada, con pruebas reales de
 cabeceras falsificadas. Formulario probado en navegador con identidades sintéticas
-y PostgreSQL aislado. Las operaciones comerciales siguen pendientes.
+y PostgreSQL aislado. El servicio interno de administración ya verifica sesión
+y rol actual, cambia rol/estado de una membresía, conserva un administrador activo
+y confirma auditoría/revocaciones en una transacción. Su API y pantalla siguen
+pendientes. Las operaciones comerciales siguen pendientes.
 Bootstrap CLI atómico y hashing Argon2id
 disponibles; no se creó una cuenta real automáticamente.
 La fundación tiene validación integral local y workflow CI preparado. Su primera
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 2.8](docs/deliveries/access-2.8.md).
+- [Aceptación](docs/acceptance.md) y [entrega 2.9](docs/deliveries/access-2.9.md).
 - Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
   en 8080, y el arranque requiere DB.
 
@@ -90,8 +93,9 @@ La API comprueba la conexión al arrancar y dispone su engine al detenerse.
 Liveness indica vida del proceso, no disponibilidad continua de DB o versión de
 esquema. Las migraciones no se ejecutan desde la API.
 
-La revisión actual `0005_login_challenges` añade selección temporal de empresa
-sobre `0004_login_throttles` (contadores), `0003_sessions` (sesiones) y
+La revisión actual `0006_membership_audit` añade auditoría tipada de cambios de
+membresía sobre `0005_login_challenges` (selección temporal de empresa),
+`0004_login_throttles` (contadores), `0003_sessions` (sesiones) y
 `0002_access` (identidades). No inserta cuentas. Los roles
 son `admin`, `cashier`, `mechanic` y `read_only`, sin rol predeterminado.
 La consulta interna de membresía comprueba los tres estados activos en DB;
@@ -273,7 +277,7 @@ intentos siguientes hasta su vencimiento, incluso con contraseña correcta. Las
 peticiones bloqueadas no extienden el plazo. Un éxito reinicia la cuenta y conserva
 los fallos de la IP compartida. No se bloquea permanentemente un usuario.
 
-Orden de bloqueo actual: IP, cuenta, usuario, pendientes y sesiones. Los contadores son PostgreSQL,
+Orden de bloqueo de login: IP, cuenta, usuario, pendientes y sesiones. Los contadores son PostgreSQL,
 compartidos entre workers; solo el hash del correo/IP se guarda como clave. Eso
 no anonimiza los valores, que pueden ser deducibles. IPv4 y su representación
 IPv6 mapeada comparten contador. La IP debe venir de un adaptador confiable.
@@ -499,8 +503,26 @@ el repositorio de destino y publicar los commits con autorización; no se hizo p
 Referencias: [sintaxis de GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax),
 [checkout](https://github.com/actions/checkout) y [actionlint](https://github.com/rhysd/actionlint).
 
+## Administración interna de membresías (2.9)
+
+`MembershipAdministrator.change_membership` recibe el token privado de sesión,
+el UUID objetivo y un `MembershipChange` explícito de rol/estado. El servidor
+resuelve actor, empresa y permiso admin actual dentro de su transacción. No hay
+API, pantalla ni comando de operación para este servicio aún. No llamarlo desde
+otra transacción ni adaptar identidad/tenant desde campos del navegador.
+
+Bloquea empresa, todos los usuarios implicados por UUID y luego sus registros de
+acceso. No degrada ni desactiva al último administrador activo. Un cambio efectivo
+revoca sesiones de la membresía, cancela pendientes globales del usuario y registra
+un evento tipado en `audit_events`, todo en un commit. La aplicación puede insertar
+y consultar esa tabla, pero no actualizarla ni borrarla; el propietario DB conserva
+autoridad administrativa. Sin RLS ni defensa frente a SQL arbitrario privilegiado.
+La auditoría inicial solo cubre estos cambios; su consulta HTTP y otras acciones
+se implementarán en tareas posteriores. Detalle y resultados en entrega 2.9.
+
 ## Siguiente tarea
 
-Acceso 2.9: permisos en backend y administración segura de membresías, con
-revocación y protección del último administrador. CI remota sigue
+Acceso 2.10: definir e implementar el contrato HTTP de administración de
+membresías existentes sobre el servicio probado, con sesión/CSRF y pruebas de
+permisos mediante peticiones directas. CI remota sigue
 pendiente hasta conectar un repositorio autorizado.

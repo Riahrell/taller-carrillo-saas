@@ -1,7 +1,8 @@
 # Modelo inicial y límites transaccionales
 
-Este es el modelo objetivo. En acceso 2.1 están implementadas únicamente
-`tenants`, `users` y `tenant_memberships`, mediante `0002_access`. Los atributos comerciales
+Este documento distingue el modelo objetivo y los contratos implementados por
+entrega. Acceso 2.1 incorporó `tenants`, `users` y `tenant_memberships` mediante
+`0002_access`; las ampliaciones hasta 2.9 se detallan al final. Los atributos comerciales
 se limitan a los requeridos por el plan y a las decisiones de `decisions.md`.
 La especificación de cada tarea cerrará contratos antes de generar código.
 
@@ -172,3 +173,34 @@ prebloqueando usuarios por UUID si las cookies remiten a identidades distintas.
 Los tokens de navegador no se guardan en claro ni se serializan en las respuestas.
 El contexto HTTP relee nombre de empresa, membresía y rol después de comprobar
 la sesión; no añade autoridad del cliente ni snapshots de permisos.
+
+## Administración de acceso 2.9
+
+`0006_membership_audit` añade `audit_events` para cambios de rol/estado de
+membresías. Contrato inicial tipado, no un contenedor genérico de payloads:
+
+| Campo | Función |
+| --- | --- |
+| id | UUID del evento, generado por servidor. |
+| tenant_id | Empresa de la sesión autorizada. Índice de consulta por empresa. |
+| actor_membership_id | Autor, FK compuesta con tenant_id a membresías. |
+| target_membership_id | Membresía modificada, FK compuesta con tenant_id. |
+| action | Únicamente membership_changed en esta revisión. |
+| before_role / after_role | Roles permitidos, sin texto libre. |
+| before_active / after_active | Estado anterior y posterior explícitos. |
+| created_at | Fecha UTC con zona, asignada mediante reloj DB tras los locks. |
+
+CHECK exige un cambio real y roles/acción válidos. Las FK usan RESTRICT, sin
+borrado en cascada; incluso al modificar al propio autor se conserva su membresía.
+No guarda tokens, contraseñas, correo ni IP. El rol carrillo_app recibe solo
+SELECT/INSERT en esta tabla: la migración revoca UPDATE/DELETE heredados de los
+permisos iniciales. El owner conserva administración, incluida limpieza de tests.
+No se promete resistencia a un administrador DB ni integridad ante INSERT manual
+del runtime. No hay RLS ni endpoint de lectura de auditoría en esta entrega.
+
+Cambio, revocación de todas las sesiones objetivo, cancelación de pendientes
+globales y evento se confirman juntos. No-op no genera evento ni revoca. El servicio
+no cambia IDs, empresa, usuario global ni otras membresías. Reactivar reutiliza
+la membresía única y no restablece sesiones antiguas. Empresa -> usuarios por UUID
+-> hijos es la jerarquía del servicio; el lock de empresa serializa el conteo del
+último administrador. Las futuras altas/cambios globales deben coordinarse igual.

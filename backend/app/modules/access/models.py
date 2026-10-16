@@ -161,3 +161,44 @@ class LoginChallenge(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AuditEvent(Base):
+    """Typed membership-change evidence; no arbitrary payloads or credentials."""
+
+    __tablename__ = "audit_events"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "actor_membership_id"],
+            ["tenant_memberships.tenant_id", "tenant_memberships.id"],
+            ondelete="RESTRICT",
+            name="fk_audit_events_actor_membership",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "target_membership_id"],
+            ["tenant_memberships.tenant_id", "tenant_memberships.id"],
+            ondelete="RESTRICT",
+            name="fk_audit_events_target_membership",
+        ),
+        CheckConstraint("action = 'membership_changed'", name="action_allowed"),
+        CheckConstraint(
+            "before_role IN ('admin', 'cashier', 'mechanic', 'read_only') AND "
+            "after_role IN ('admin', 'cashier', 'mechanic', 'read_only')",
+            name="roles_allowed",
+        ),
+        CheckConstraint(
+            "before_role <> after_role OR before_active <> after_active",
+            name="state_changed",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(index=True)
+    actor_membership_id: Mapped[UUID] = mapped_column()
+    target_membership_id: Mapped[UUID] = mapped_column()
+    action: Mapped[str] = mapped_column(String(32))
+    before_role: Mapped[str] = mapped_column(String(16))
+    after_role: Mapped[str] = mapped_column(String(16))
+    before_active: Mapped[bool] = mapped_column(Boolean)
+    after_active: Mapped[bool] = mapped_column(Boolean)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

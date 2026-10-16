@@ -8,10 +8,14 @@ selección multiempresa y emisor de
 CSRF con cookies privadas. La IP se verifica desde el socket de Nginx en una red
 api interna separada. El CI comprueba falsificación de cabeceras, conexión directa,
 selección y logout/replay con Nginx/Uvicorn y PostgreSQL reales.
-Resultados actuales en `deliveries/access-2.8.md`; entregas anteriores como
+Acceso 2.9 implementa el servicio interno de cambio de rol/estado de membresías:
+sesión y permiso admin actuales, aislamiento, protección del último administrador,
+revocación/cancelación y auditoría atómicas. Aún sin API ni pantalla administrativa.
+Resultados actuales en `deliveries/access-2.9.md`; entregas anteriores como
 registros históricos.
-El hito 2 sigue abierto: faltan permisos por operación, administración,
-último administrador, auditoría, recuperación y limpieza de registros de acceso.
+El hito 2 sigue abierto: faltan contratos HTTP y pantalla administrativa, altas,
+gestión global de cuentas, permisos de otros módulos, consulta/ampliación de
+auditoría, recuperación y limpieza de registros de acceso.
 Contrato actualizado en `auth-http-contract.md`, con límites y pendientes explícitos.
 No confundir criterios futuros de esta lista con verificaciones realizadas.
 

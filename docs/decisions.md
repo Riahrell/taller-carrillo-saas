@@ -450,3 +450,51 @@ Flags Uvicorn contrastados con el CLI instalado de la dependencia fijada.
 
 Referencias: [efectos React](https://react.dev/reference/react/useEffect),
 [componentes cliente Next.js](https://nextjs.org/docs/app/api-reference/directives/use-client).
+
+## Acceso 2.9: administración interna y auditoría de membresías
+
+- Una operación interna acotada: actualizar rol/estado de una membresía existente.
+  Transacción propia READ COMMITTED; sin router, CLI operativo ni UI todavía.
+  La identidad y empresa se obtienen del token de sesión; no admite actor, tenant
+  ni un MembershipContext externo. Solo admin actual, releído tras los locks.
+  role/is_active son estado deseado explícito, con enum y booleano estricto;
+  Pydantic rechaza campos extra. No son credenciales ni autoridad.
+- Bloqueo de la empresa de la sesión antes de todos los usuarios implicados en
+  orden UUID. Después se verifica la sesión actual y se bloquea/relee la membresía
+  objetivo de esa misma empresa. Los hints iniciales no autorizan. Se mantienen
+  los locks hasta commit/rollback. lock_timeout 3s y statement_timeout 10s locales.
+- El lock de empresa serializa cambios de membresías y el conteo de administradores.
+  Las futuras altas, cambios globales de usuario o modificaciones de empresas
+  deberán prebloquear todas las empresas afectadas por UUID antes de usuarios.
+  Login/sesión/logout no adquieren posteriormente locks de empresa y mantienen
+  sus protocolos existentes. Ninguna operación nueva debe invertir esa jerarquía.
+- Todos los usuarios se bloquean antes de cualquier hijo, también con actor y
+  objetivo cruzados en dos empresas. Tras resolver la sesión del actor se pueden
+  cancelar pendientes del objetivo: ambos padres ya están bloqueados, por lo que
+  otro flujo no puede conservar hijos mientras espera esos usuarios. Dentro de la
+  revocación del objetivo, pendientes preceden a sus sesiones. No trasladar esta
+  excepción a operaciones que todavía no bloquearon todos los padres.
+- Un admin utilizable tiene membresía y usuario activos, en la empresa activa.
+  No desactivar ni degradar al último. Otros admins con cuenta o membresía
+  inactivas no cuentan. Auto-desactivación/degradación permitida si queda otro,
+  revocando también la sesión que solicita el cambio. No hay recuperación implícita
+  ni promesa de proteger SQL manual o cambios globales aún no implementados.
+- Cambio real: revocar todas las sesiones de la membresía objetivo, cancelar todos
+  los pendientes globales del usuario y registrar antes/después/autor en el mismo
+  commit. Otras sesiones de ese usuario en otras empresas continúan vigentes.
+  Reactivar exige nuevo login; no revive tokens. Un no-op no revoca ni audita,
+  aunque renueva actividad del actor. No es idempotencia general: si el actor se
+  quitó acceso, un reintento con su token revocado se rechaza.
+- `audit_events` comienza tipada solo para membership_changed, con roles/estados
+  antes/después, empresa, actor/objetivo mediante FK compuestas y fecha de DB.
+  Sin JSON libre, correo, token, IP, contraseña ni campos comerciales inventados.
+  CHECK de roles/acción/cambio efectivo y FK RESTRICT sin cascadas. El runtime
+  conserva SELECT/INSERT; se retiran UPDATE/DELETE en la migración. El owner sigue
+  pudiendo mantener la DB: no es un registro a prueba de administradores de DB.
+- Ningún resultado sale antes de commit; SQL/lock/commit fallidos se traducen a
+  error saneado y rollback. No retry automático. La API futura deberá aplicar
+  CSRF, política de cookies, traducción HTTP segura y denegación por defecto.
+
+Referencias: [bloqueos PostgreSQL](https://www.postgresql.org/docs/current/explicit-locking.html),
+[transacciones SQLAlchemy](https://docs.sqlalchemy.org/en/20/orm/session_basics.html#framing-out-a-begin-commit-rollback-block),
+[privilegios PostgreSQL](https://www.postgresql.org/docs/current/sql-revoke.html).
