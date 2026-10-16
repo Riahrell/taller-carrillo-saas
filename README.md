@@ -3,15 +3,16 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: fundación 1.3
+## Estado: fundación 1.4
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial indica que el acceso
 aún no está habilitado. Sin autenticación ni operaciones comerciales todavía.
-El hito 1 sigue en progreso: falta CI. No usar en producción.
+La fundación tiene validación integral local y workflow CI preparado. Su primera
+ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 1.3](docs/deliveries/foundation-1.3.md).
+- [Aceptación](docs/acceptance.md) y [entrega 1.4](docs/deliveries/foundation-1.4.md).
 - Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
   en 8080, y el arranque requiere DB.
 
@@ -210,8 +211,57 @@ Para el frontend: [salida standalone de Next.js](https://nextjs.org/docs/app/api
 [Vitest con Next.js](https://nextjs.org/docs/app/guides/testing/vitest) y
 [proxy Nginx](https://nginx.org/en/docs/http/ngx_http_proxy_module.html).
 
+## CI y validación integral
+
+Desde la raíz, con Docker/Compose y Python 3.11 o posterior para el ejecutor:
+
+```bash
+python3 -m scripts.ci
+```
+
+Es el mismo comando que usa `.github/workflows/ci.yml`. No necesita generar
+entornos development/test previamente ni instalar Node o dependencias Python
+de aplicación en el host. Los lenguajes de aplicación se ejecutan en sus imágenes
+fijadas; el ejecutor solo usa la biblioteca estándar de Python.
+
+El pipeline crea un proyecto `carrillo-ci-...` aleatorio con credenciales nuevas,
+base PostgreSQL en tmpfs, imágenes con etiquetas propias y proxy en un puerto
+loopback libre. Ignora variables locales de Compose/DB que podrían interferir.
+No usa ni reinicia el proyecto `carrillo-dev` ni modifica sus contraseñas.
+
+Valida, en orden:
+
+1. Configuración de aislamiento, seis pruebas de seguridad del ejecutor y shell.
+2. Builds de las cuatro imágenes de aplicación/pruebas.
+3. Sintaxis de GitHub Actions con actionlint fijado por digest.
+4. Ruff, formato Python y coherencia de dependencias; ESLint, Prettier y TypeScript.
+5. Pruebas frontend, migración explícita y pruebas backend con PostgreSQL aislado.
+6. Arranque del conjunto y smoke HTTP contra el proxy de ese proyecto.
+
+El ejecutor retira contenedores, redes, volúmenes y credenciales temporales al
+terminar. También intenta limpiar al propagarse un fallo; los tags de imágenes
+propios se retiran sin borrar las imágenes fijadas o la caché compartida de build.
+Un corte forzado del host/daemon no permite garantizar esa limpieza.
+
+Solo las pruebas del ejecutor, sin Docker:
+
+```bash
+python3 -m unittest discover -s scripts/tests
+```
+
+El workflow se configura para push, pull request y ejecución manual. Tiene solo
+`contents: read`, checkout fijado por commit y sin persistir credenciales; no
+publica imágenes ni despliega. Tiene límite de tiempo y cancelación de ejecuciones
+anteriores del mismo ref. Hasta el primer run real remoto, solo se puede afirmar
+que el workflow pasó actionlint y el pipeline completo pasó localmente.
+
+No hay remoto Git configurado en esta entrega. Activar CI remota requerirá conectar
+el repositorio de destino y publicar los commits con autorización; no se hizo push.
+Referencias: [sintaxis de GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax),
+[checkout](https://github.com/actions/checkout) y [actionlint](https://github.com/rhysd/actionlint).
+
 ## Siguiente tarea
 
-Fundación 1.4: CI de backend/frontend, builds y pruebas de integración para
-cerrar el hito 1. Después comienza acceso multiempresa; sin negocio antes de
-autorización y aislamiento comprobados.
+Acceso 2.1: modelo y migración de empresas, usuarios y membresías, con restricciones
+y primeras pruebas de aislamiento. La primera ejecución remota de CI permanece
+pendiente hasta conectar un repositorio; sin negocio antes de autorización probada.

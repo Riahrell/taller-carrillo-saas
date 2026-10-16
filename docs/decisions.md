@@ -215,4 +215,6 @@ en `deliveries/foundation-1.1.md`.
 Fundación 1.2 incorpora PostgreSQL/Alembic/Compose; fundación 1.3 añade
 Next.js/TypeScript y proxy del mismo origen. Los resultados constan en
 `deliveries/foundation-1.2.md` y `deliveries/foundation-1.3.md`.
-Continuar con CI; el hito 1 solo termina al validar el conjunto.
+Fundación 1.4 automatiza y valida localmente el conjunto mediante `scripts.ci`.
+El workflow pasó actionlint; ejecución remota pendiente hasta conectar GitHub.
+La evidencia y ese límite constan en `deliveries/foundation-1.4.md`.

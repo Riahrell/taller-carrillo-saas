@@ -1,0 +1,50 @@
+# Only used by scripts.ci, with a fresh generated project and credentials.
+services:
+  backend:
+    image: ${CI_PROJECT_NAME:?Use python3 -m scripts.ci}-backend:ci
+  tests:
+    image: ${CI_PROJECT_NAME:?Use python3 -m scripts.ci}-backend-tests:ci
+  migrate:
+    image: ${CI_PROJECT_NAME:?Use python3 -m scripts.ci}-backend:ci
+  frontend:
+    image: ${CI_PROJECT_NAME:?Use python3 -m scripts.ci}-frontend:ci
+  frontend-tests:
+    image: ${CI_PROJECT_NAME:?Use python3 -m scripts.ci}-frontend-tests:ci
+  proxy:
+    ports:
+      - "127.0.0.1::8080"
+
+  backend-lint:
+    image: ${CI_PROJECT_NAME:?Use python3 -m scripts.ci}-backend-tests:ci
+    profiles: [ci]
+    network_mode: none
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      RUFF_CACHE_DIR: /tmp/ruff
+    volumes:
+      - ./backend:/checks/backend:ro
+      - ./scripts:/checks/scripts:ro
+    command:
+      - sh
+      - -c
+      - >-
+        python -m ruff check --config /checks/backend/pyproject.toml /checks/backend /checks/scripts
+        && python -m ruff format --check --config /checks/backend/pyproject.toml /checks/backend /checks/scripts
+        && python -m pip check
+
+  workflow-lint:
+    image: rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+    profiles: [ci]
+    user: "10001:10001"
+    working_dir: /repo
+    network_mode: none
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ./.github:/repo/.github:ro
+    command: [-color, .github/workflows/ci.yml]

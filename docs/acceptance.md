@@ -1,9 +1,10 @@
 # Plan incremental y aceptación
 
-Estado: hito 0 documentado y fundación 1.3 ejecutada. Backend, PostgreSQL,
-migraciones, frontend inicial y proxy del mismo origen con pruebas locales.
-CI sigue pendiente. Resultados actuales en `deliveries/foundation-1.3.md`;
-las entregas anteriores quedan como registros históricos.
+Estado: hito 0 documentado y fundación 1.4 implementada y validada integralmente
+en local. Workflow CI comprobado con actionlint; primera ejecución en GitHub
+pendiente porque no hay remoto configurado. Ese resultado remoto no se presume.
+Resultados actuales en `deliveries/foundation-1.4.md`; entregas anteriores como
+registros históricos. Siguiente trabajo de producto: acceso 2.1.
 No confundir criterios futuros de esta lista con verificaciones realizadas.
 
 ## Hitos

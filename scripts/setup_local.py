@@ -8,8 +8,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def generate(environment: str) -> Path:
-    base = ROOT / ".local"
+def generate(environment: str, *, base: Path | None = None) -> Path:
+    base = base if base is not None else ROOT / ".local"
     base.mkdir(mode=0o700, exist_ok=True)
     destination = base / environment
     # Fail if anything already exists: regenerating would invalidate DB volumes.
