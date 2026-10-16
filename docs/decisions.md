@@ -330,3 +330,39 @@ Referencias: [autenticación OWASP](https://cheatsheetseries.owasp.org/cheatshee
 
 Referencia: [CSRF OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html),
 [middleware Starlette](https://www.starlette.io/middleware/).
+
+## Acceso 2.6: identidad verificada y selección de empresa
+
+- Una membresía activa se elige en servidor; varias requieren confirmación
+  explícita desde identidad ya verificada. Cero membresías rechaza genéricamente.
+  No devolver nombres de empresas por correo antes de verificar contraseña.
+- Servicio interno begin_login: credenciales estrictas, IP del adaptador confiable
+  y binding de cookie HttpOnly del servidor. El adaptador futuro debe verificar
+  origen, CSRF y cookie; el formato por sí solo no prueba su procedencia.
+- Estado provisional independiente de sesión y nonce CSRF: token aleatorio de
+  256 bits; únicamente SHA-256 de token y binding en DB. Vigencia técnica inicial
+  de cinco minutos desde reloj DB. No conceder permisos con ese estado.
+- Selección de una membresía del mismo usuario, con los estados activos releídos.
+  Usuario y rol no se reciben del cliente. Uso único ligado al navegador: un
+  intento con binding correcto consume el pendiente incluso si la opción es
+  inválida. Con otro binding no se puede utilizar ni consumir el pendiente.
+- Una nueva autenticación correcta cierra pendientes anteriores del usuario;
+  contraseñas rechazadas no lo hacen. La invalidación de pendientes no cierra
+  sesiones ya emitidas ni cambia su tenant. El cambio desde interfaz queda pendiente.
+- Huella SHA-256 del hash Argon2 invalida pendientes cuando cambia contraseña/hash,
+  incluido un rehash externo de la misma contraseña. El rehash de begin_login
+  sucede antes de guardar esa huella. No persistir contraseña en el pendiente.
+- Lock de usuario antes de pendientes/sesiones; releer después de esperar y usar
+  reloj DB posterior al lock. Consumir e insertar sesión en la misma transacción;
+  solo devolver token tras commit. Los rechazos de selección también confirman.
+- Revocación de pendientes por usuario disponible dentro de la transacción del
+  llamador. Futuros cambios de cuenta/contraseña deberán usarla junto a revocación
+  de sesiones. Sin triggers ni garantía frente a SQL manual arbitrario.
+- No se agregan rutas, campos comerciales ni dependencias en esta entrega.
+  HTTP, IP confiable por proxy real, límites de volumen/espera, mantenimiento,
+  permisos, auditoría y formulario siguen pendientes antes de habilitar acceso.
+
+La vigencia y el intento único son decisiones técnicas de este proyecto; no se
+presentan como valores impuestos por las referencias.
+Referencias: [autenticación OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html),
+[bloqueos PostgreSQL 18](https://www.postgresql.org/docs/18/explicit-locking.html).

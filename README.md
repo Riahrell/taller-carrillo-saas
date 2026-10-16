@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.5
+## Estado: acceso 2.6
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial indica que el acceso
@@ -11,14 +11,16 @@ aún no está habilitado. Modelos de empresas, usuarios y membresías migrados, 
 consulta interna de membresía activa probada en PostgreSQL. Sesiones internas
 revocables con hash de token y expiración probadas. Autenticación interna con
 límites compartidos por cuenta/IP. La API ya exige origen/CSRF firmado en
-peticiones con efectos y tiene política de cookies probada. Sin login HTTP
+peticiones con efectos y tiene política de cookies probada. La selección interna
+multiempresa exige contraseña verificada y un estado temporal ligado al navegador,
+con caducidad y uso único probados. Sin login HTTP
 ni operaciones comerciales todavía. Bootstrap CLI atómico y hashing Argon2id
 disponibles; no se creó una cuenta real automáticamente.
 La fundación tiene validación integral local y workflow CI preparado. Su primera
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 2.5](docs/deliveries/access-2.5.md).
+- [Aceptación](docs/acceptance.md) y [entrega 2.6](docs/deliveries/access-2.6.md).
 - Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
   en 8080, y el arranque requiere DB.
 
@@ -83,14 +85,16 @@ La API comprueba la conexión al arrancar y dispone su engine al detenerse.
 Liveness indica vida del proceso, no disponibilidad continua de DB o versión de
 esquema. Las migraciones no se ejecutan desde la API.
 
-La revisión actual `0004_login_throttles` añade contadores de acceso
-sobre `0003_sessions` (sesiones) y `0002_access` (identidades). No inserta cuentas. Los roles
+La revisión actual `0005_login_challenges` añade selección temporal de empresa
+sobre `0004_login_throttles` (contadores), `0003_sessions` (sesiones) y
+`0002_access` (identidades). No inserta cuentas. Los roles
 son `admin`, `cashier`, `mechanic` y `read_only`, sin rol predeterminado.
 La consulta interna de membresía comprueba los tres estados activos en DB;
 requiere IDs obtenidos por el servidor y no concede permisos de módulo.
 No hay endpoints de acceso ni cookies de autenticación todavía. Argon2id se usa
 en el bootstrap CLI; la creación inicial se ejecuta únicamente por el operador.
-Los servicios internos de sesión aún no se conectan a la capa HTTP.
+Los servicios internos de sesión y selección aún no se conectan a la capa HTTP.
+Una selección pendiente no autoriza módulos ni sustituye una sesión activa.
 Consultar revisión:
 
 ```bash
@@ -243,7 +247,8 @@ con error genérico. La revocación individual es idempotente.
 Todas las operaciones coordinadas bloquean primero usuario y luego sesiones por
 UUID; se retienen hasta commit/rollback. Esto serializa operaciones de un mismo
 usuario: mantener transacciones cortas y no esperar red externa dentro de ellas.
-Los futuros cambios de contraseña deben llamar revoke_user_sessions y los de
+Los futuros cambios de contraseña deben llamar revoke_user_sessions y
+revoke_user_challenges en su misma transacción; los de
 privilegios revoke_membership_sessions en su misma transacción. El SQL manual no
 revoca sesiones automáticamente. No hay endpoints para estas funciones todavía.
 
@@ -261,7 +266,7 @@ intentos siguientes hasta su vencimiento, incluso con contraseña correcta. Las
 peticiones bloqueadas no extienden el plazo. Un éxito reinicia la cuenta y conserva
 los fallos de la IP compartida. No se bloquea permanentemente un usuario.
 
-Orden de bloqueo: IP, cuenta, usuario y sesiones. Los contadores son PostgreSQL,
+Orden de bloqueo actual: IP, cuenta, usuario, pendientes y sesiones. Los contadores son PostgreSQL,
 compartidos entre workers; solo el hash del correo/IP se guarda como clave. Eso
 no anonimiza los valores, que pueden ser deducibles. IPv4 y su representación
 IPv6 mapeada comparten contador. La IP debe venir de un adaptador confiable.
@@ -277,6 +282,24 @@ El servicio no está conectado al servidor HTTP ni a la pantalla inicial. Consul
 y pendientes explícitos.
 La selección de empresa es una candidatura interna sujeta a membresía; el contrato
 de Credentials rechaza tenant, rol e identidad elegidos por cliente.
+
+## Selección interna de empresa (acceso 2.6)
+
+begin_login verifica credenciales antes de obtener empresas. Una membresía activa
+permite emitir sesión; varias devuelven opciones y PendingLogin, ligado a una
+cookie de navegador que el adaptador futuro deberá verificar. Cero rechaza de
+forma genérica. No hay lookup público de empresas por correo.
+
+El pendiente dura cinco minutos y guarda solo hashes de token, binding y hash
+Argon2 actual. No autoriza módulos. select_membership deriva usuario desde el
+pendiente y tenant/rol desde una membresía actual que le pertenece. Un intento
+con binding correcto consume el pendiente, incluso con opción inválida; otro
+navegador no puede usarlo ni consumirlo. Consumo y sesión confirman juntos.
+
+Un nuevo login correcto cancela pendientes previos; una contraseña incorrecta
+no los cancela. Cambio de hash de contraseña o revocación invalida el pendiente.
+Los servicios están probados con concurrencia PostgreSQL y todavía no se exponen
+en HTTP. Detalles y comandos en la [entrega 2.6](docs/deliveries/access-2.6.md).
 
 ## Protección HTTP (acceso 2.5)
 
@@ -433,7 +456,7 @@ Referencias: [sintaxis de GitHub Actions](https://docs.github.com/en/actions/ref
 
 ## Siguiente tarea
 
-Acceso 2.6: cerrar e implementar login/logout HTTP, IP de proxy confiable y
-selección de empresa desde estado verificado, reutilizando la protección probada.
+Acceso 2.7: cerrar e implementar login/logout HTTP, emisor de CSRF, IP de proxy
+confiable y transporte de selección usando el servicio verificado.
 Después conectar el formulario y probar el flujo completo. CI remota sigue
 pendiente hasta conectar un repositorio autorizado.

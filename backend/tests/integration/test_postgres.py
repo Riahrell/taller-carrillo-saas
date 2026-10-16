@@ -33,7 +33,7 @@ def test_migrations_upgrade_check_downgrade_upgrade(databases) -> None:
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
         assert MigrationContext.configure(connection).get_current_revision() == (
-            "0004_login_throttles"
+            "0005_login_challenges"
         )
         command.check(config)
         command.downgrade(config, "base")

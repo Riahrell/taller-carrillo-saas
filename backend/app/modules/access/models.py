@@ -132,3 +132,32 @@ class LoginThrottle(Base):
         DateTime(timezone=True), index=True
     )
     failures: Mapped[int] = mapped_column(Integer)
+
+
+class LoginChallenge(Base):
+    """Short-lived verified identity; never an authenticated tenant session."""
+
+    __tablename__ = "login_challenges"
+    __table_args__ = (
+        CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="token_hash_sha256"),
+        CheckConstraint("binding_hash ~ '^[0-9a-f]{64}$'", name="binding_hash_sha256"),
+        CheckConstraint(
+            "password_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="password_fingerprint_sha256",
+        ),
+        CheckConstraint(
+            "expires_at = created_at + interval '5 minutes'", name="absolute_lifetime"
+        ),
+        CheckConstraint("finished_at >= created_at", name="finish_window"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    binding_hash: Mapped[str] = mapped_column(String(64))
+    password_fingerprint: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

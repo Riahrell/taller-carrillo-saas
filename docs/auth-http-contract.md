@@ -1,10 +1,11 @@
 # Contrato de seguridad del adaptador HTTP de acceso
 
-Estado: acceso 2.5 implementa la política de cookies, firma CSRF, guard de origen
-conectado globalmente a la API y saneamiento de validación. Las rutas que emiten
-cookies son exclusivas de tests; **no hay login/logout ni emisión de CSRF públicos**.
-Las URLs y el selector de empresa se cerrarán junto con sus handlers antes de
-habilitarlos. No confundir el middleware de intención con autorización de sesión.
+Estado: acceso 2.6 añade el servicio interno de selección multiempresa desde
+identidad verificada. Acceso 2.5 implementó cookies, firma CSRF, guard de origen
+global y saneamiento de validación. Las rutas que emiten cookies son exclusivas
+de tests; **no hay login/logout ni emisión de CSRF públicos**. Las URLs y el
+transporte de selección se cerrarán junto con sus handlers antes de habilitarlos.
+No confundir el middleware de intención con autorización de sesión.
 
 ## Entradas y autoridad
 
@@ -21,10 +22,11 @@ habilitarlos. No confundir el middleware de intención con autorización de sesi
   contraseña, usuario, empresa y membresía activos en servidor.
 - La interfaz no consultará la lista de empresas de un correo sin autenticarlo.
   Si hay una sola membresía activa se seleccionará desde DB. Para varias, el
-  selector deberá usar un estado provisional verificado por el servidor y volver
-  a comprobar pertenencia al confirmar. Ese flujo y su transporte se implementarán
-  antes de permitir login multiempresa; no elegir silenciosamente el primer UUID
-  ni aceptar un tenant arbitrario como contexto autenticado.
+  selector usa un estado provisional verificado por el servidor y vuelve a
+  comprobar pertenencia al confirmar. El servicio interno ya está implementado;
+  falta su transporte antes de permitir login multiempresa desde HTTP. No elegir
+  silenciosamente el primer UUID ni aceptar un tenant arbitrario como contexto
+  autenticado.
 - La autenticación posee su transacción: None equivale a rechazo **ya confirmado**
   con contadores persistidos. No envolver el servicio en una unidad de trabajo que
   revierta por devolver error HTTP. Un token solo sale después del commit exitoso.
@@ -90,7 +92,52 @@ sigue siendo autoridad de PostgreSQL, con 30 minutos de inactividad y máximo 8h
 
 Pendientes antes de exposición: login/logout y emisor/renovador de prueba HTTP,
 validación de sesión/roles en handlers, prueba de IP a través del proxy, límites
-de volumen/espera y flujo multiempresa. El formulario tampoco está conectado.
+de volumen/espera y transporte multiempresa. El formulario tampoco está conectado.
+
+## Servicio interno de selección (acceso 2.6)
+
+`Authenticator.begin_login` recibe Credentials, IP confiable y `browser_binding`
+SecretStr del adaptador. El binding será una cookie HttpOnly emitida y verificada
+por servidor; jamás el CSRF legible, un campo del JSON o una prueba de identidad.
+Comprobar su formato no verifica la firma ni la procedencia: el adaptador HTTP
+deberá hacerlo además de comprobar origen/CSRF. Esta fase no expone ese argumento
+ni emite cookies nuevas.
+
+Tras contraseña válida y los tres estados activos: cero empresas rechaza de forma
+genérica; una emite sesión de esa membresía; varias crean PendingLogin y devuelven
+solo membership_id/nombre de las empresas autorizadas como opciones. Nunca se
+consulta esa lista antes de verificar contraseña. Límites cuenta/IP y rehash se
+mantienen. El contador de cuenta se reinicia al verificar credenciales y membresías;
+el historial de IP no se borra. Resultados y tokens solo salen después del commit.
+
+PendingLogin dura cinco minutos desde reloj DB, lleva token aleatorio de 256 bits
+y binding al navegador mediante hashes; no es una sesión y no autoriza módulos.
+El futuro transporte guardará el token en cookie HttpOnly con scope/flags de
+seguridad; nunca serializar el dataclass completo a JSON ni persistirlo en JS.
+Si se reemplaza la cookie usada como binding, la selección anterior deja de ser
+utilizable desde ese navegador y habrá que reiniciar el acceso.
+
+`select_membership` acepta únicamente el UUID candidato de membresía, token
+provisional y binding verificados por el adaptador. Usuario se deriva del registro;
+tenant/rol, de la membresía actual que le pertenece. Revisa vigencia, consumo,
+binding, usuario, huella del hash de contraseña y empresa/membresía activos.
+Otra cookie de navegador no consume ni utiliza el pendiente. Una selección con
+binding correcto consume el único intento, incluso si propone una membresía
+inválida: rechaza genéricamente y exige reiniciar login. No incrementa contadores
+de contraseña porque no está verificando una contraseña en este paso.
+
+Consumo y sesión confirman juntos; ante fallo de insert/commit se revierten ambos.
+Un nuevo login correcto cierra pendientes anteriores del usuario, también desde
+otro navegador; no revoca sesiones ya emitidas. Un rechazo de contraseña no
+invalida una selección pendiente. No se cambia de tenant en una sesión existente.
+El rol se relee y no queda congelado en las opciones mostradas.
+
+Cambiar el hash de contraseña, incluso rehash de la misma contraseña, invalida
+un pendiente previo. El propio rehash de begin_login sucede antes de guardar la
+huella. Los futuros cambios de cuenta/contraseña deben revocar tanto sesiones
+como pendientes en la transacción del cambio; `revoke_user_challenges` ya permite
+lo segundo. No hay aún handlers de administración ni triggers sobre SQL manual.
+Limpieza de registros y límites generales de volumen/espera siguen pendientes.
 
 ## Pruebas antes de habilitar acceso web (parcialmente cubiertas)
 

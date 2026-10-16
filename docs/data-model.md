@@ -134,3 +134,31 @@ sin tenant, correo ni IP en claro. No representa anonimización criptográfica.
 La ventana se renueva al vencer y sus contadores se actualizan bajo bloqueo; no
 hay tarea de limpieza implementada todavía. El servicio de autenticación confirma
 tanto sus rechazos como los éxitos antes de devolver el resultado al transporte.
+
+## Contrato implementado: acceso 2.6
+
+`login_challenges`: id UUID; user_id con FK restrictiva e índice; token_hash
+único, binding_hash y password_fingerprint, los tres SHA-256 hex minúsculos;
+created_at, expires_at indexado y finished_at opcional, todos con zona horaria.
+No hay valores por defecto que acrediten identidad ni contraseña/token/cookie
+en claro. La huella corresponde al hash Argon2 almacenado, no a la contraseña.
+No es anonimización y debe protegerse como material de seguridad.
+
+CHECK de formato de las tres huellas, vida exacta de cinco minutos y finished_at
+no anterior a creación. finished_at significa consumido o cancelado, incluso
+después de caducar. El índice de expiración prepara la limpieza, aún no implementada.
+El servicio, no el CHECK, garantiza aleatoriedad, procedencia y verificaciones.
+
+El pendiente acredita solo contraseña verificada de un usuario global. No lleva
+tenant/rol ni concede acceso comercial. Las opciones son IDs de membresías y nombres
+consultados tras autenticar; la selección vuelve a comprobar pertenencia y estados
+actuales. No crea sesión hasta confirmar una opción válida. Sin snapshots de permisos.
+Un nuevo login correcto cierra pendientes anteriores bajo lock del usuario; las
+sesiones ya emitidas tienen su ciclo de revocación independiente.
+
+Orden de bloqueo global: IP -> cuenta -> usuario -> pendientes por UUID -> sesiones.
+La selección/revocación no adquiere buckets de cuenta/IP. El lock del usuario se
+mantiene desde verificación hasta commit y serializa nuevas selecciones, consumo,
+revocación y cambios coordinados de contraseña. Consumo y emisión son una única
+transacción; resultado/token no sale si falla commit. No hay RLS ni protección
+contra SQL arbitrario del rol de aplicación.

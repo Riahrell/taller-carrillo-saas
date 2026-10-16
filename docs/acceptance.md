@@ -3,13 +3,21 @@
 Estado: hito 0 documentado y fundación 1.4 implementada y validada integralmente
 en local. Workflow CI comprobado con actionlint; primera ejecución en GitHub
 pendiente porque no hay remoto configurado. Ese resultado remoto no se presume.
-Acceso 2.5 añade política de cookies, origen/CSRF firmado en middleware HTTP,
-límite de cuerpo en proxy/API y validación saneada. Resultados actuales en
-`deliveries/access-2.5.md`; entregas anteriores como registros históricos.
+Acceso 2.6 añade el servicio interno de selección multiempresa desde contraseña
+verificada, ligado al navegador, con caducidad, uso único y concurrencia probados.
+Conserva cookies, origen/CSRF, límites de cuerpo y validación de acceso 2.5.
+Resultados actuales en `deliveries/access-2.6.md`; entregas anteriores como
+registros históricos.
 El hito 2 sigue abierto: faltan login/logout HTTP, emisor de pruebas CSRF público,
-IP confiable del proxy, selección multiempresa, permisos por operación y formulario.
+IP confiable del proxy, transporte HTTP de selección, permisos por operación y formulario.
 Contrato actualizado en `auth-http-contract.md`, con límites y pendientes explícitos.
 No confundir criterios futuros de esta lista con verificaciones realizadas.
+
+La selección interna ya verifica pertenencia actual y rol desde DB. Se probaron
+IDs ajenos, otro navegador, expiración exacta, contraseña cambiada/rehash,
+revocación, consumo y emisión atómicos, rollback y dos conexiones concurrentes
+esperando realmente locks en PostgreSQL. Esto no demuestra todavía un recorrido
+de login/logout por proxy ni un cambio de empresa desde la interfaz.
 
 ## Hitos
 

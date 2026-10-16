@@ -15,6 +15,16 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.database import create_session_factory
+from app.modules.access.login_challenges import (
+    MembershipChoice,
+    PendingLogin,
+    _active_memberships,
+    _binding_digest,
+    _close_pending,
+    _issue_challenge,
+    _select_membership,
+    _token_digest,
+)
 from app.modules.access.membership import AccessDenied, resolve_membership
 from app.modules.access.models import LoginThrottle, User
 from app.modules.access.passwords import (
@@ -145,9 +155,10 @@ class Authenticator:
         credentials: Credentials,
         *,
         ip_key: str,
-        tenant_id: UUID,
-    ) -> IssuedSession | None:
-        # Global order: IP bucket, account bucket, user, session rows.
+        tenant_id: UUID | None,
+        binding_hash: str | None = None,
+    ) -> IssuedSession | PendingLogin | None:
+        # Global order: IP bucket, account bucket, user, challenges, session rows.
         ip = _lock_bucket(session, "ip", ip_key)
         now = _now(session)
         _refresh(ip, now)
@@ -173,7 +184,11 @@ class Authenticator:
             credentials.password, encoded if usable else self._dummy_hash
         )
         allowed = valid and usable and user is not None and user.is_active
-        if allowed:
+        memberships = []
+        if allowed and tenant_id is None:
+            memberships = _active_memberships(session, user.id)
+            allowed = bool(memberships) and binding_hash is not None
+        elif allowed:
             try:
                 resolve_membership(session, user_id=user.id, tenant_id=tenant_id)
             except AccessDenied:
@@ -191,8 +206,85 @@ class Authenticator:
 
         if password_needs_rehash(user.password_hash):
             user.password_hash = hash_password(credentials.password)
-        issued = issue_session(session, user_id=user.id, tenant_id=tenant_id)
+        _close_pending(session, user.id)
+        if tenant_id is not None or len(memberships) == 1:
+            selected_tenant = (
+                tenant_id if tenant_id is not None else memberships[0][0].tenant_id
+            )
+            issued = issue_session(session, user_id=user.id, tenant_id=selected_tenant)
+        else:
+            issued = _issue_challenge(
+                session,
+                user=user,
+                binding_hash=binding_hash,
+                choices=tuple(
+                    MembershipChoice(membership.id, name)
+                    for membership, name in memberships
+                ),
+            )
         account.failures = 0
         account.window_started_at = _now(session)
         session.flush()
         return issued
+
+    def begin_login(
+        self,
+        credentials: Credentials,
+        *,
+        client_ip: IPv4Address | IPv6Address,
+        browser_binding: SecretStr,
+    ) -> IssuedSession | PendingLogin | None:
+        """Choose a sole membership or return verified, bound pending identity.
+
+        The future HTTP adapter supplies a verified server cookie as binding and
+        a trusted peer IP. Neither value may come from the credential payload.
+        No companies or tokens are returned on credential/rate rejection.
+        """
+        ip_key = _ip_digest(client_ip)
+        try:
+            binding_hash = _binding_digest(browser_binding)
+        except AccessDenied:
+            return None
+        try:
+            with self._factory.begin() as session:
+                result = self._authenticate(
+                    session,
+                    credentials,
+                    ip_key=ip_key,
+                    tenant_id=None,
+                    binding_hash=binding_hash,
+                )
+            return result
+        except (SQLAlchemyError, HashingError):
+            raise AuthenticationUnavailable("Authentication unavailable") from None
+
+    def select_membership(
+        self,
+        *,
+        challenge_token: SecretStr,
+        browser_binding: SecretStr,
+        membership_id: UUID,
+    ) -> IssuedSession | None:
+        """One bound attempt, current membership checks, atomic issue/consume.
+
+        Owns its transaction, including a rejected bound selection. Publish the
+        session cookie only after this method returns successfully after commit.
+        """
+        if not isinstance(membership_id, UUID):
+            return None
+        try:
+            token_hash = _token_digest(challenge_token)
+            binding_hash = _binding_digest(browser_binding)
+        except AccessDenied:
+            return None
+        try:
+            with self._factory.begin() as session:
+                result = _select_membership(
+                    session,
+                    token_hash=token_hash,
+                    binding_hash=binding_hash,
+                    membership_id=membership_id,
+                )
+            return result
+        except SQLAlchemyError:
+            raise AuthenticationUnavailable("Authentication unavailable") from None
