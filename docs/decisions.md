@@ -270,3 +270,35 @@ Referencias: [argon2-cffi](https://argon2-cffi.readthedocs.io/en/stable/api.html
 
 Referencias: [gestión de sesiones OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html),
 [reloj PostgreSQL](https://www.postgresql.org/docs/current/functions-datetime.html).
+
+## Acceso 2.4: autenticación y límites compartidos
+
+- Se mantienen los límites ya adoptados: cinco fallos por cuenta y treinta por IP
+  en 15 minutos. Ventana fija iniciada por el primer fallo; vencimiento inclusivo.
+  Bloquear intentos posteriores al límite, sin extender ventanas por rechazos.
+  Un éxito reinicia cuenta; nunca borra el historial de fallos de una IP compartida.
+- Contadores globales por SHA-256 del correo canónico o IP normalizada, con estado
+  de ventana en PostgreSQL. No llevan tenant para impedir evasión al cambiarlo.
+  Hash determinista no equivale a anonimización. Índice temporal para futura limpieza.
+- Bloqueos en orden IP -> cuenta -> usuario -> sesiones. Verificar IP antes de crear
+  un bucket de cuenta reduce acumulación de correos cuando el origen ya está limitado.
+  INSERT ON CONFLICT + SELECT FOR UPDATE coordinan instancias independientes.
+- El servicio Authenticator posee la transacción y devuelve None tras confirmar
+  el rechazo. Credenciales correctas, rehash si procede y nueva sesión confirman
+  juntos; no emitir tokens al fallar el commit. DB/hashing fallidos son un error
+  de infraestructura saneado, distinto del rechazo ordinario.
+- Verificación Argon2id de descarte para cuenta desconocida/hash inválido. Hash
+  aleatorio por instancia de worker inicializada antes de admitir peticiones.
+  No garantiza tiempo constante, y el coste se sigue limitando antes de verificar.
+- El contrato de credenciales solo email/password, estricto y sin autoridad del
+  cliente. Password login permite 1–128 caracteres para verificar sin reinterpretar
+  políticas de alta; alta/bootstrap conserva mínimo 15. No recortar la contraseña.
+- selected_tenant_id es un candidato interno con comprobación de membresía después
+  de verificar contraseña. La IP validada procede de red confiable. No aceptar
+  X-Forwarded-For sin verificar ni IP del body. No hay rutas de acceso en esta fase.
+- Contrato HTTP/cookies/CSRF previo a implementación en auth-http-contract.md;
+  double-submit firmado ligado a sesión/preautenticación, con clave externa y
+  validación de origen. Su implementación y pruebas siguen pendientes.
+
+Referencias: [autenticación OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html),
+[INSERT PostgreSQL 18](https://www.postgresql.org/docs/18/sql-insert.html).

@@ -3,12 +3,12 @@
 Estado: hito 0 documentado y fundación 1.4 implementada y validada integralmente
 en local. Workflow CI comprobado con actionlint; primera ejecución en GitHub
 pendiente porque no hay remoto configurado. Ese resultado remoto no se presume.
-Acceso 2.3 añade persistencia y servicios internos de sesiones opacas revocables,
-con aislamiento, expiración y concurrencia PostgreSQL probados. Resultados actuales
-en `deliveries/access-2.3.md`; entregas anteriores como registros históricos.
-Siguiente trabajo: autenticación con límites compartidos y protección HTTP.
-El hito 2 sigue abierto: faltan login HTTP, CSRF, límites de intentos
-y autorización por operación.
+Acceso 2.4 añade autenticación interna y límites compartidos por cuenta/IP, con
+persistencia de rechazos y concurrencia PostgreSQL probadas. Resultados actuales
+en `deliveries/access-2.4.md`; entregas previas como registros históricos.
+El hito 2 sigue abierto: faltan adaptador HTTP, cookies/CSRF, proxy confiable para
+IP, selección de empresa en el acceso web, permisos por operación y formulario.
+Contrato previo de transporte en `auth-http-contract.md`, aún sin implementar.
 No confundir criterios futuros de esta lista con verificaciones realizadas.
 
 ## Hitos

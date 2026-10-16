@@ -121,3 +121,16 @@ sesiones simultáneas máximas no se definen en esta fase. No hay uso desde HTTP
 Los cambios de contraseña/privilegios deberán utilizar las funciones de revocación,
 ya probadas con el cambio y rollback en una única transacción; no hay aún APIs
 para esos cambios ni protección del último administrador.
+
+## Contrato implementado: acceso 2.4
+
+login_throttles: clave primaria (scope, key_hash), scope account/ip, SHA-256
+hexadecimal minúsculo, window_started_at con zona y failures obligatorio.
+CHECK de ámbito, formato de clave y rango 0–5 para cuenta/0–30 para IP. Índice de
+window_started_at para mantenimiento futuro. Sin FK a usuarios: también protege
+correos inexistentes sin crear identidades ni filtrar si existen. Estado global,
+sin tenant, correo ni IP en claro. No representa anonimización criptográfica.
+
+La ventana se renueva al vencer y sus contadores se actualizan bajo bloqueo; no
+hay tarea de limpieza implementada todavía. El servicio de autenticación confirma
+tanto sus rechazos como los éxitos antes de devolver el resultado al transporte.

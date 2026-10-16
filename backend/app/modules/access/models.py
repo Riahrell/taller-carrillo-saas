@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Integer,
     String,
     UniqueConstraint,
     func,
@@ -111,3 +112,23 @@ class SessionRecord(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class LoginThrottle(Base):
+    __tablename__ = "login_throttles"
+    __table_args__ = (
+        CheckConstraint("scope IN ('account', 'ip')", name="scope_allowed"),
+        CheckConstraint("key_hash ~ '^[0-9a-f]{64}$'", name="key_hash_sha256"),
+        CheckConstraint(
+            "failures >= 0 AND failures <= "
+            "CASE WHEN scope = 'account' THEN 5 ELSE 30 END",
+            name="failure_bounds",
+        ),
+    )
+
+    scope: Mapped[str] = mapped_column(String(7), primary_key=True)
+    key_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    failures: Mapped[int] = mapped_column(Integer)
