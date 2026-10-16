@@ -1,0 +1,113 @@
+name: taller-carrillo
+
+x-backend: &backend
+  image: taller-carrillo-backend:dev
+  build:
+    context: ./backend
+    target: runtime
+  environment:
+    APP_ENV: ${APP_ENV:?Generate the local environment first}
+    DATABASE_URL_FILE: /run/secrets/database_url
+    DOCS_ENABLED: "false"
+  secrets:
+    - database_url
+  depends_on:
+    db:
+      condition: service_healthy
+  networks:
+    - private
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  db:
+    image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    environment:
+      POSTGRES_USER: carrillo_bootstrap
+      POSTGRES_DB: ${DB_NAME:?Generate the local environment first}
+      POSTGRES_PASSWORD_FILE: /run/secrets/bootstrap_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    secrets:
+      - bootstrap_password
+      - owner_password
+      - app_password
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    configs:
+      - source: postgres_init
+        target: /docker-entrypoint-initdb.d/10-roles.sh
+    networks:
+      - private
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U carrillo_bootstrap -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  backend:
+    <<: *backend
+    networks:
+      - private
+      - edge
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3).close()"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  migrate:
+    <<: *backend
+    profiles: [tools]
+    environment:
+      APP_ENV: ${APP_ENV:?Generate the local environment first}
+      DATABASE_URL_FILE: /run/secrets/migration_database_url
+    secrets:
+      - migration_database_url
+    command: ["python", "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"]
+
+  tests:
+    <<: *backend
+    image: taller-carrillo-backend:test
+    build:
+      context: ./backend
+      target: tests
+    profiles: [test]
+    environment:
+      APP_ENV: test
+      DATABASE_URL_FILE: /run/secrets/database_url
+      MIGRATION_DATABASE_URL_FILE: /run/secrets/migration_database_url
+      RUN_DB_INTEGRATION: "1"
+    secrets:
+      - database_url
+      - migration_database_url
+
+networks:
+  private:
+    internal: true
+  edge:
+
+volumes:
+  postgres_data:
+
+configs:
+  postgres_init:
+    file: ./ops/postgres/init.sh
+
+secrets:
+  bootstrap_password:
+    file: ${DB_SECRETS_DIR:?Generate the local environment first}/bootstrap_password
+  owner_password:
+    file: ${DB_SECRETS_DIR:?Generate the local environment first}/owner_password
+  app_password:
+    file: ${DB_SECRETS_DIR:?Generate the local environment first}/app_password
+  database_url:
+    file: ${DB_SECRETS_DIR:?Generate the local environment first}/database_url
+  migration_database_url:
+    file: ${DB_SECRETS_DIR:?Generate the local environment first}/migration_database_url

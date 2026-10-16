@@ -1,0 +1,6 @@
+# Use only with the generated TEST environment and a separate project name.
+services:
+  db:
+    volumes: !reset []
+    tmpfs:
+      - /var/lib/postgresql
