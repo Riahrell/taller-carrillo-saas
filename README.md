@@ -3,19 +3,20 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.2
+## Estado: acceso 2.3
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial indica que el acceso
 aún no está habilitado. Modelos de empresas, usuarios y membresías migrados, con
-consulta interna de membresía activa probada en PostgreSQL. Sin autenticación
+consulta interna de membresía activa probada en PostgreSQL. Sesiones internas
+revocables con hash de token y expiración probadas; sin login HTTP
 ni operaciones comerciales todavía. Bootstrap CLI atómico y hashing Argon2id
 disponibles; no se creó una cuenta real automáticamente.
 La fundación tiene validación integral local y workflow CI preparado. Su primera
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 2.2](docs/deliveries/access-2.2.md).
+- [Aceptación](docs/acceptance.md) y [entrega 2.3](docs/deliveries/access-2.3.md).
 - Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
   en 8080, y el arranque requiere DB.
 
@@ -68,13 +69,14 @@ La API comprueba la conexión al arrancar y dispone su engine al detenerse.
 Liveness indica vida del proceso, no disponibilidad continua de DB o versión de
 esquema. Las migraciones no se ejecutan desde la API.
 
-La revisión actual `0002_access` añade `tenants`, `users` y
-`tenant_memberships` sobre `0001_foundation`. No inserta cuentas. Los roles
+La revisión actual `0003_sessions` añade `sessions` sobre `0002_access`
+(empresas, usuarios y membresías). No inserta cuentas. Los roles
 son `admin`, `cashier`, `mechanic` y `read_only`, sin rol predeterminado.
 La consulta interna de membresía comprueba los tres estados activos en DB;
 requiere IDs obtenidos por el servidor y no concede permisos de módulo.
-No hay endpoints de acceso ni sesiones todavía. Argon2id se usa en el
-bootstrap CLI; la creación inicial se ejecuta únicamente por el operador.
+No hay endpoints de acceso ni cookies de autenticación todavía. Argon2id se usa
+en el bootstrap CLI; la creación inicial se ejecuta únicamente por el operador.
+Los servicios internos de sesión aún no se conectan a la capa HTTP.
 Consultar revisión:
 
 ```bash
@@ -115,7 +117,7 @@ docker compose --project-name carrillo-dev --env-file .local/development/compose
 ```
 
 Códigos de salida: 0 completado/ayuda, 1 fallo de operación y 2 entrada inválida
-o cancelación. El login web, sesiones, CSRF y límites de intentos siguen pendientes.
+o cancelación. El login web, cookies, CSRF y límites de intentos siguen pendientes.
 La cuenta creada no habilita por sí sola acceso desde la pantalla inicial.
 
 Detener conservando los datos de desarrollo:
@@ -198,6 +200,31 @@ por tenant: el SQL directo con la credencial app no se limita a una empresa.
 La consulta interna de acceso filtra por identidad y empresa; los futuros
 endpoints deberán obtenerlos de una sesión verificada y aplicar los permisos.
 El hito 2 sigue incompleto y no se debe exponer el sistema públicamente.
+
+## Sesiones internas (acceso 2.3)
+
+`app.modules.access.sessions` permite emitir, resolver y revocar sesiones dentro de
+una transacción del llamador. La emisión exige credenciales ya verificadas por
+el servidor y una membresía activa; no constituye un login por sí misma. El
+futuro login debe bloquear el usuario antes de verificar su contraseña y mantener
+ese bloqueo hasta commit. Nunca publicar el token antes de confirmar la transacción.
+
+Token generado con 32 bytes aleatorios (256 bits), representado como SecretStr;
+solo SHA-256 se persiste. Empresa y rol se obtienen del servidor. La FK compuesta
+impide una sesión con membresía de otra empresa. Cada resolución consulta los
+estados activos y el rol vigente; los servicios no conceden permisos de módulo.
+
+Caducidad exacta: 30 minutos sin actividad o 8 horas desde creación. La actividad
+válida actualiza last_seen_at sin mover expires_at. El reloj es clock_timestamp()
+de PostgreSQL leído tras los bloqueos. Una sesión revocada/expirada se rechaza
+con error genérico. La revocación individual es idempotente.
+
+Todas las operaciones coordinadas bloquean primero usuario y luego sesiones por
+UUID; se retienen hasta commit/rollback. Esto serializa operaciones de un mismo
+usuario: mantener transacciones cortas y no esperar red externa dentro de ellas.
+Los futuros cambios de contraseña deben llamar revoke_user_sessions y los de
+privilegios revoke_membership_sessions en su misma transacción. El SQL manual no
+revoca sesiones automáticamente. No hay endpoints para estas funciones todavía.
 
 ## Frontend y proxy
 
@@ -311,7 +338,7 @@ Referencias: [sintaxis de GitHub Actions](https://docs.github.com/en/actions/ref
 
 ## Siguiente tarea
 
-Acceso 2.3: persistencia y servicio interno de sesiones opacas revocables,
-con expiración absoluta/inactiva y aislamiento por membresía. Los contratos HTTP,
-CSRF y login se añadirán después de probar esta base de sesiones. La primera
-ejecución remota de CI permanece pendiente hasta conectar un repositorio; sin negocio antes de autorización probada.
+Acceso 2.4: autenticación segura sobre estas sesiones, con límites de intentos
+compartidos en PostgreSQL y contratos HTTP/cookies/CSRF definidos antes de
+habilitar login. La interfaz y el acceso web permanecen pendientes. CI remota
+sigue pendiente hasta conectar un repositorio autorizado.

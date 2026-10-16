@@ -244,3 +244,29 @@ Referencias: [argon2-cffi](https://argon2-cffi.readthedocs.io/en/stable/api.html
 [RFC 9106](https://www.rfc-editor.org/rfc/rfc9106.html),
 [OWASP autenticación](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html),
 [bloqueos PostgreSQL](https://www.postgresql.org/docs/current/functions-admin.html).
+
+## Acceso 2.3: persistencia y servicio interno de sesiones
+
+- Token opaco generado con secrets.token_urlsafe(32), 256 bits, sin IDs ni roles.
+  Únicamente digest SHA-256 único en DB; el token sale como SecretStr al llamador.
+  No se aceptan tokens elegidos al emitir ni tenant/rol al resolver.
+- Sesión asociada a tenant y membresía mediante FK compuesta restrictiva. Usuario
+  y rol se derivan de membresía actual, sin snapshots de permisos en el token.
+- Rechazo al alcanzar exactamente 30 minutos de inactividad u ocho horas de vida.
+  Actividad válida renueva solo last_seen_at. PostgreSQL clock_timestamp() leído
+  tras bloqueos evita usar el inicio antiguo de una transacción que estuvo esperando.
+- Orden de bloqueo: usuario FOR UPDATE y sesiones por UUID FOR UPDATE. Creación,
+  resolución y revocación usan el mismo orden, con relectura tras esperar. No
+  guardar contextos entre peticiones. No esperar servicios externos con estos locks.
+- El llamador posee commit/rollback, también para renovar actividad. No entregar
+  cookies/tokens hasta commit. El login futuro verifica credenciales bajo el mismo
+  bloqueo del usuario para coordinarse con cambios concurrentes de contraseña.
+- Revocación individual idempotente, por membresía para privilegios y por usuario
+  para contraseña/desactivación. Los futuros servicios de administración deben
+  invocarlas dentro de la transacción del cambio. No son triggers sobre SQL manual.
+- Estos bloqueos serializan sesiones del mismo usuario y protegen sus operaciones
+  coordinadas; la autorización y bloqueos de negocio tendrán su propio protocolo.
+  Aún no hay login/logout HTTP, cookies, CSRF, límites de intentos ni auditoría.
+
+Referencias: [gestión de sesiones OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html),
+[reloj PostgreSQL](https://www.postgresql.org/docs/current/functions-datetime.html).

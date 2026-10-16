@@ -3,9 +3,11 @@
 import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from threading import Event
 
 import pytest
+from alembic.script import ScriptDirectory
 from pydantic import SecretStr
 from sqlalchemy import delete, event, func, select, text
 from sqlalchemy.orm import Session
@@ -130,7 +132,12 @@ def test_outdated_migration_refuses_bootstrap_before_writes(bootstrap_db):
     finally:
         with owner.begin() as connection:
             connection.execute(
-                text("UPDATE alembic_version SET version_num = '0002_access'")
+                text("UPDATE alembic_version SET version_num = :head"),
+                {
+                    "head": ScriptDirectory(
+                        str(Path(__file__).resolve().parents[2] / "migrations")
+                    ).get_current_head()
+                },
             )
 
 

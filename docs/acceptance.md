@@ -3,11 +3,12 @@
 Estado: hito 0 documentado y fundación 1.4 implementada y validada integralmente
 en local. Workflow CI comprobado con actionlint; primera ejecución en GitHub
 pendiente porque no hay remoto configurado. Ese resultado remoto no se presume.
-Acceso 2.2 añade hashing Argon2id y bootstrap CLI atómico con pruebas de
-concurrencia PostgreSQL. Resultados actuales en `deliveries/access-2.2.md`;
-entregas anteriores como registros históricos. Siguiente trabajo: acceso 2.3,
-persistencia y servicio de sesiones opacas revocables.
-El hito 2 sigue abierto: faltan sesiones, CSRF y autorización por operación.
+Acceso 2.3 añade persistencia y servicios internos de sesiones opacas revocables,
+con aislamiento, expiración y concurrencia PostgreSQL probados. Resultados actuales
+en `deliveries/access-2.3.md`; entregas anteriores como registros históricos.
+Siguiente trabajo: autenticación con límites compartidos y protección HTTP.
+El hito 2 sigue abierto: faltan login HTTP, CSRF, límites de intentos
+y autorización por operación.
 No confundir criterios futuros de esta lista con verificaciones realizadas.
 
 ## Hitos

@@ -9,6 +9,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     String,
     UniqueConstraint,
     func,
@@ -80,3 +81,33 @@ class TenantMembership(AccessRecord, Base):
         ForeignKey("users.id", ondelete="RESTRICT"), index=True
     )
     role: Mapped[str] = mapped_column(String(16))
+
+
+class SessionRecord(Base):
+    __tablename__ = "sessions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "membership_id"],
+            ["tenant_memberships.tenant_id", "tenant_memberships.id"],
+            ondelete="RESTRICT",
+            name="fk_sessions_tenant_membership",
+        ),
+        CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="token_hash_sha256"),
+        CheckConstraint(
+            "expires_at = created_at + interval '8 hours'", name="absolute_lifetime"
+        ),
+        CheckConstraint(
+            "last_seen_at >= created_at AND last_seen_at < expires_at",
+            name="activity_window",
+        ),
+        CheckConstraint("revoked_at >= created_at", name="revocation_window"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column()
+    membership_id: Mapped[UUID] = mapped_column(index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -100,3 +100,24 @@ entre cobro, consumo, cierre y anulación, no solo entre dos ventas idénticas.
 - No se permiten borrados de empresas/usuarios referenciados por membresías.
   La protección del último administrador y la revocación de sesiones requieren
   servicios transaccionales posteriores; no están resueltas por estas FK.
+
+## Contrato implementado: acceso 2.3
+
+`sessions` añade id UUID, tenant_id, membership_id, token_hash único de 64 hex
+minúsculas, created_at, last_seen_at, expires_at y revoked_at opcional. No incluye
+contraseña, token en claro, rol elegido por cliente ni IP/agent de navegador.
+Todas las fechas llevan zona horaria. El servicio asigna fechas desde DB; no hay
+valores de creación automáticos que puedan construir una sesión a medias.
+
+FK `(tenant_id, membership_id)` a `(tenant_id, id)` de membresías, con RESTRICT.
+Índice por membership_id para revocación y unique de token_hash para resolución.
+CHECK: expires_at = created_at + 8h, actividad en [creación, expiración), revocación
+no anterior a creación y digest SHA-256 con formato canónico. El CHECK de formato
+no demuestra aleatoriedad; el servicio es quien genera el token seguro.
+
+La vigencia se comprueba en cada resolución y la actividad se escribe dentro de
+la transacción del llamador. Caducar no borra registros; limpieza/retención y
+sesiones simultáneas máximas no se definen en esta fase. No hay uso desde HTTP.
+Los cambios de contraseña/privilegios deberán utilizar las funciones de revocación,
+ya probadas con el cambio y rollback en una única transacción; no hay aún APIs
+para esos cambios ni protección del último administrador.
