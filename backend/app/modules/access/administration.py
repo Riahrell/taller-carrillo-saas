@@ -1,10 +1,18 @@
 """Session-authorized membership reads and atomic, audited state changes."""
 
 import hashlib
+import re
 from dataclasses import dataclass
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, SecretStr, StrictBool
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    StrictBool,
+    field_validator,
+)
 from sqlalchemy import Engine, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -67,6 +75,39 @@ class MembershipView(BaseModel):
         # Representation validator, not authorization, history version or secret.
         digest = hashlib.sha256(self.model_dump_json().encode()).hexdigest()
         return f'"membership-v1-{digest}"'
+
+
+class MembershipListQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+
+    limit: int = Field(default=25, ge=1, le=100, strict=True)
+    after: UUID | None = None
+
+    @field_validator("limit", mode="before")
+    @classmethod
+    def canonical_limit(cls, value: object) -> object:
+        if isinstance(value, str):
+            if re.fullmatch(r"[1-9][0-9]{0,2}", value, flags=re.ASCII) is None:
+                raise ValueError("Invalid page limit")
+            return int(value)
+        return value
+
+
+class MembershipListItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    membership_id: UUID
+    email: str
+    role: MembershipRole
+    is_active: bool
+    user_is_active: bool
+
+
+class MembershipPage(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: tuple[MembershipListItem, ...]
+    next_after: UUID | None
 
 
 @dataclass(frozen=True)
@@ -135,6 +176,57 @@ class MembershipAdministrator:
         except SQLAlchemyError:
             raise AdministrationUnavailable("Administration unavailable") from None
 
+    def list_memberships(
+        self, token: SecretStr, *, query: MembershipListQuery
+    ) -> MembershipPage:
+        if not isinstance(query, MembershipListQuery):
+            raise AccessDenied("Access denied")
+        digest = _token_hash(token)
+        try:
+            with self._factory.begin() as session:
+                _limit_transaction(session)
+                tenant, user_id = self._locked_tenant(session, digest)
+                if _lock_user(session, user_id) is None:
+                    raise AccessDenied("Access denied")
+                actor = self._administrator(session, token, tenant.id)
+                statement = (
+                    select(
+                        TenantMembership.id,
+                        User.email,
+                        TenantMembership.role,
+                        TenantMembership.is_active,
+                        User.is_active.label("user_is_active"),
+                    )
+                    .join(User, User.id == TenantMembership.user_id)
+                    .where(TenantMembership.tenant_id == actor.tenant_id)
+                    .order_by(TenantMembership.id)
+                    .limit(query.limit + 1)
+                )
+                if query.after is not None:
+                    statement = statement.where(TenantMembership.id > query.after)
+                # Plain read of targets: never lock more users after the actor's
+                # session. The tenant lock already serializes coordinated changes.
+                rows = session.execute(statement).all()
+                items = tuple(
+                    MembershipListItem(
+                        membership_id=row.id,
+                        email=row.email,
+                        role=row.role,
+                        is_active=row.is_active,
+                        user_is_active=row.user_is_active,
+                    )
+                    for row in rows[: query.limit]
+                )
+                result = MembershipPage(
+                    items=items,
+                    next_after=items[-1].membership_id
+                    if len(rows) > query.limit
+                    else None,
+                )
+            return result
+        except SQLAlchemyError:
+            raise AdministrationUnavailable("Administration unavailable") from None
+
     @staticmethod
     def _view(target: TenantMembership) -> MembershipView:
         return MembershipView(
@@ -142,12 +234,7 @@ class MembershipAdministrator:
         )
 
     @staticmethod
-    def _authorized_target(
-        session: Session,
-        token: SecretStr,
-        digest: str,
-        membership_id: UUID,
-    ) -> tuple[MembershipContext, TenantMembership]:
+    def _locked_tenant(session: Session, digest: str) -> tuple[Tenant, UUID]:
         # Unlocked hints locate the parents. They confer no authority and all
         # relevant state is re-read after the ordered parent locks below.
         hint = session.execute(
@@ -165,6 +252,26 @@ class MembershipAdministrator:
         )
         if tenant is None or not tenant.is_active:
             raise AccessDenied("Access denied")
+        return tenant, hint.user_id
+
+    @staticmethod
+    def _administrator(
+        session: Session, token: SecretStr, tenant_id: UUID
+    ) -> MembershipContext:
+        actor = resolve_session(session, token)
+        if actor.tenant_id != tenant_id or actor.role != MembershipRole.ADMIN:
+            raise AdministrationDenied("Access denied")
+        return actor
+
+    @classmethod
+    def _authorized_target(
+        cls,
+        session: Session,
+        token: SecretStr,
+        digest: str,
+        membership_id: UUID,
+    ) -> tuple[MembershipContext, TenantMembership]:
+        tenant, actor_user = cls._locked_tenant(session, digest)
         target_user = session.scalar(
             select(TenantMembership.user_id).where(
                 TenantMembership.id == membership_id,
@@ -173,12 +280,10 @@ class MembershipAdministrator:
         )
         # Lock ALL involved users before any child row. This also prevents
         # crossed actor/target operations in different tenants from deadlocking.
-        for user_id in sorted({hint.user_id, target_user} - {None}):
+        for user_id in sorted({actor_user, target_user} - {None}):
             if _lock_user(session, user_id) is None:
                 raise AccessDenied("Access denied")
-        actor = resolve_session(session, token)
-        if actor.tenant_id != tenant.id or actor.role != MembershipRole.ADMIN:
-            raise AdministrationDenied("Access denied")
+        actor = cls._administrator(session, token, tenant.id)
         if target_user is None:
             raise AdministrationDenied("Access denied")
         target = session.scalar(

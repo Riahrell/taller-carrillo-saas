@@ -3,7 +3,7 @@
 Estado: acceso 2.8 conecta formulario, selección y logout al contrato HTTP de
 acceso 2.7. Probados con PostgreSQL, Nginx/Uvicorn y recorrido real de navegador
 con identidades sintéticas en una base efímera. No hay rutas comerciales ni
-registro público de usuarios. Acceso 2.10 añade consulta/cambio de membresías
+registro público de usuarios. Acceso 2.10–2.11 añade listado/consulta/cambio de membresías
 existentes solo para administradores: [contrato específico](membership-http-contract.md).
 
 ## Rutas y contratos
@@ -160,7 +160,7 @@ Nginx/Uvicorn y PostgreSQL reales: IP falsificada no cambia bucket, conexión di
 rechazada, sesión/logout/replay y selección multiempresa. No es aún una prueba de
 interfaz ni HTTPS real; flags Secure se verifican con el perfil HTTPS de tests.
 
-Siguiente: listado/pantalla de administración, altas/cuentas, permisos de módulos,
+Siguiente: pantalla de administración, altas/cuentas, permisos de módulos,
 ampliación/consulta de auditoría, recuperación y limpieza. El servicio interno de
 membresías ya protege al último administrador; no cubre aún cambios globales de
 usuario. Hito 2 abierto; producción e inventario/comercio pendientes.

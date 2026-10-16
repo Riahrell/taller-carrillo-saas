@@ -536,3 +536,35 @@ Referencias: [bloqueos PostgreSQL](https://www.postgresql.org/docs/current/expli
 Referencias: [If-Match RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html#name-if-match),
 [428 RFC 6585](https://www.rfc-editor.org/rfc/rfc6585.html#section-3),
 [manejo de errores FastAPI](https://fastapi.tiangolo.com/tutorial/handling-errors/).
+
+## Acceso 2.11: listado paginado de membresías
+
+- GET /api/auth/memberships, ruta canónica sin barra final. Query model Pydantic
+  con extra forbid, limit por defecto 25 y máximo 100, after UUID opcional.
+  Rechazar duplicados y valores no canónicos de limit. Ninguna opción de tenant,
+  rol, búsqueda, offset u orden elegidos por el cliente.
+- Estado mínimo útil para administrar: membership_id, email existente, role,
+  is_active de membresía y user_is_active de cuenta. El correo identifica al
+  usuario dentro de la empresa autorizada. Sin ID global, hash, token ni datos
+  de otras empresas. Mostrar estados inactivos no los habilita ni permite cambiar
+  cuentas globales. Sin nuevo campo persistido o regla comercial.
+- Autorización común para detalle/cambio/listado. Prebloquear empresa del token,
+  luego actor, verificar sesión y admin actual. La consulta de página es un SELECT
+  acotado con join de usuarios; no bloquea sus filas después de la sesión del
+  actor ni invierte el orden de padres. Mantener locks de autoridad hasta commit.
+- Cursor directo por UUID, frontera exclusiva id > after y ORDER BY id ascendente.
+  Aprovechar índice único (tenant_id, id) existente, LIMIT limit+1 para saber si
+  queda otra página; sin COUNT global ni OFFSET. No buscar existencia del cursor.
+  Page contiene items y next_after, null si no se observó registro adicional.
+- Listado vivo, sin snapshot entre requests: inserciones anteriores al cursor
+  requieren reiniciar para observarse; cambios posteriores se leen al consultar.
+  No se promete exportación estable ni total. Una nueva consulta del detalle
+  proporciona el estado a revisar y su ETag antes de escribir.
+- Respuesta solo tras commit y sin cookies/ETag de colección, no-store y CORS
+  cerrado. GET exige intención de navegador según política existente; cada página
+  vuelve a autenticar/autorizar y toca actividad. No auditoría/revocación por listar.
+  El lock de empresa serializa lecturas administrativas; medir capacidad antes de
+  ampliar concurrencia. Sin migraciones, dependencias o UI nuevas.
+
+Referencias: [query models FastAPI](https://fastapi.tiangolo.com/tutorial/query-param-models/),
+[orden y LIMIT PostgreSQL](https://www.postgresql.org/docs/current/queries-limit.html).

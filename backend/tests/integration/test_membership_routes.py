@@ -11,7 +11,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
-from sqlalchemy import event, func, select, text, update
+from sqlalchemy import delete, event, func, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -544,6 +544,7 @@ def test_pending_identity_is_not_an_administrator_session(membership_web):
             == 202
         )
         assert pending.get(path(state), headers=READ).status_code == 401
+        assert pending.get("/auth/memberships", headers=READ).status_code == 401
         tag = client.get(path(state), headers=READ).headers["etag"]
         before = stored(state)
         assert patch(pending, state, policy, etag=tag).status_code == 401
@@ -639,3 +640,265 @@ def test_two_different_changes_with_same_reviewed_tag_commit_only_one(membership
         event.remove(engine, "before_cursor_execute", observe)
     result = stored(state)
     assert result[:3] == ("mechanic", True, 1)
+
+
+@pytest.fixture
+def membership_pages(membership_web):
+    client, state, policy = membership_web
+    user_ids, member_ids = [], []
+    try:
+        with Session(state["runtime"]) as session, session.begin():
+            for index in range(103):
+                user = User(
+                    email=f"page-{uuid4().hex}@example.com",
+                    password_hash="synthetic",
+                    is_active=index % 3 != 0,
+                )
+                session.add(user)
+                session.flush()
+                member = TenantMembership(
+                    user_id=user.id,
+                    tenant_id=state["tenant"],
+                    role="read_only",
+                    is_active=index % 2 != 0,
+                )
+                session.add(member)
+                session.flush()
+                user_ids.append(user.id)
+                member_ids.append(member.id)
+        yield client, state, sorted(member_ids + [state["membership"], state["target"]])
+    finally:
+        # Restricted to these fixture IDs in the ephemeral test DB.
+        with state["owner"].begin() as connection:
+            connection.execute(
+                delete(AuditEvent).where(
+                    AuditEvent.target_membership_id.in_(member_ids)
+                )
+            )
+            connection.execute(
+                delete(TenantMembership).where(TenantMembership.id.in_(member_ids))
+            )
+            connection.execute(delete(User).where(User.id.in_(user_ids)))
+
+
+@pytest.mark.parametrize("limit", [1, 25, 100])
+def test_list_pagination_order_boundaries_and_privacy(membership_pages, limit):
+    client, state, expected_ids = membership_pages
+    seen, cursor = [], None
+    for _ in range(106):
+        query = {"limit": limit, **({"after": cursor} if cursor else {})}
+        response = client.get("/auth/memberships", params=query, headers=READ)
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-store"
+        assert "etag" not in response.headers and "set-cookie" not in response.headers
+        page = response.json()
+        assert set(page) == {"items", "next_after"}
+        assert len(page["items"]) <= limit
+        for row in page["items"]:
+            assert set(row) == {
+                "membership_id",
+                "email",
+                "role",
+                "is_active",
+                "user_is_active",
+            }
+            assert row["membership_id"] != str(state["foreign_membership"])
+        ids = [row["membership_id"] for row in page["items"]]
+        seen.extend(ids)
+        cursor = page["next_after"]
+        if cursor is None:
+            break
+        assert cursor == ids[-1]
+    else:
+        pytest.fail("Pagination must terminate")
+    assert seen == [str(value) for value in expected_ids]
+    assert len(seen) == len(set(seen)) == 105
+    assert (
+        client.get("/auth/memberships", headers=READ).json()["items"]
+        == client.get("/auth/memberships?limit=25", headers=READ).json()["items"]
+    )
+
+
+def test_list_includes_inactive_membership_and_account_but_no_other_company(
+    membership_web,
+):
+    client, state, _ = membership_web
+    with state["owner"].begin() as connection:
+        connection.execute(
+            update(User).where(User.id == state["foreign"]).values(is_active=False)
+        )
+        connection.execute(
+            update(TenantMembership)
+            .where(TenantMembership.id == state["target"])
+            .values(is_active=False)
+        )
+    before = stored(state)
+    response = client.get("/auth/memberships", headers=READ)
+    assert response.status_code == 200
+    items = {row["membership_id"]: row for row in response.json()["items"]}
+    assert set(items) == {str(state["target"]), str(state["membership"])}
+    target = items[str(state["target"])]
+    assert target["is_active"] is False and target["user_is_active"] is False
+    with Session(state["runtime"]) as session:
+        assert target["email"] == session.get(User, state["foreign"]).email
+    assert stored(state) == before
+
+
+@pytest.mark.parametrize("role", ["cashier", "mechanic", "read_only"])
+def test_list_requires_current_admin_role(membership_web, role):
+    client, state, _ = membership_web
+    assert client.get("/auth/memberships", headers=READ).status_code == 200
+    with state["owner"].begin() as connection:
+        connection.execute(
+            update(TenantMembership)
+            .where(TenantMembership.id == state["membership"])
+            .values(role=role)
+        )
+    before = stored(state)
+    response = client.get("/auth/memberships", headers=READ)
+    assert response.status_code == 403 and response.json() == {
+        "detail": "Access denied"
+    }
+    assert response.headers["cache-control"] == "no-store" and stored(state) == before
+
+
+@pytest.mark.parametrize(
+    "invalid", ["absent", "revoked", "user", "membership", "tenant", "expired"]
+)
+def test_list_requires_live_identity(membership_web, invalid):
+    client, state, _ = membership_web
+    if invalid == "absent":
+        client.cookies.clear()
+    else:
+        with Session(state["runtime"]) as session, session.begin():
+            if invalid in {"revoked", "expired"}:
+                record = session.scalar(
+                    select(SessionRecord).where(
+                        SessionRecord.membership_id == state["membership"]
+                    )
+                )
+                if invalid == "revoked":
+                    record.revoked_at = record.created_at
+                else:
+                    record.created_at -= timedelta(hours=9)
+                    record.last_seen_at -= timedelta(hours=9)
+                    record.expires_at -= timedelta(hours=9)
+            else:
+                model, key = {
+                    "user": (User, "user"),
+                    "membership": (TenantMembership, "membership"),
+                    "tenant": (Tenant, "tenant"),
+                }[invalid]
+                session.execute(
+                    update(model).where(model.id == state[key]).values(is_active=False)
+                )
+    response = client.get("/auth/memberships", headers=READ)
+    assert response.status_code == 401 and response.json() == {
+        "detail": "Access denied"
+    }
+    assert "items" not in response.json() and "set-cookie" not in response.headers
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "limit=0",
+        "limit=101",
+        "limit=1.0",
+        "limit=01",
+        "limit=-1",
+        "limit=true",
+        "limit=",
+        "after=invalid",
+        "tenant_id=canary",
+        "role=admin",
+        "offset=0",
+        "limit=1&limit=2",
+        "after=00000000-0000-4000-8000-000000000000&after=00000000-0000-4000-8000-000000000000",
+    ],
+)
+def test_list_rejects_invalid_extra_or_ambiguous_query(membership_web, query):
+    client, state, _ = membership_web
+    before = stored(state)
+    response = client.get("/auth/memberships?" + query, headers=READ)
+    assert response.status_code == 422 and response.json() == {
+        "detail": "Invalid request"
+    }
+    assert response.headers["cache-control"] == "no-store" and stored(state) == before
+
+
+def test_list_unknown_or_foreign_cursor_only_changes_boundary(membership_web):
+    client, state, _ = membership_web
+    for cursor in (state["foreign_membership"], uuid4()):
+        response = client.get(
+            "/auth/memberships", params={"after": str(cursor)}, headers=READ
+        )
+        assert response.status_code == 200
+        assert [row["membership_id"] for row in response.json()["items"]] == [
+            str(value)
+            for value in sorted([state["membership"], state["target"]])
+            if value > cursor
+        ]
+    empty = client.get(
+        "/auth/memberships?after=ffffffff-ffff-ffff-ffff-ffffffffffff", headers=READ
+    )
+    assert empty.json() == {"items": [], "next_after": None}
+
+
+@pytest.mark.parametrize(
+    "headers", [{}, READ | {"Origin": "null"}, READ | {"Sec-Fetch-Site": "cross-site"}]
+)
+def test_list_requires_browser_read_intent(membership_web, headers):
+    client, _, _ = membership_web
+    response = client.get("/auth/memberships", headers=headers)
+    assert response.status_code == 403 and "items" not in response.json()
+
+
+def test_list_commit_failure_does_not_publish_personal_data(membership_web):
+    client, state, _ = membership_web
+    engine = client.app.state.membership_administrator._factory.kw["bind"]
+    before = stored(state)
+
+    def fail_commit(_connection):
+        raise SQLAlchemyError("synthetic-list-commit-canary")
+
+    event.listen(engine, "commit", fail_commit)
+    try:
+        response = client.get("/auth/memberships", headers=READ)
+        assert response.status_code == 503 and response.json() == {
+            "detail": "Authentication unavailable"
+        }
+        assert state["email"] not in response.text and "canary" not in response.text
+        assert "set-cookie" not in response.headers and "etag" not in response.headers
+    finally:
+        event.remove(engine, "commit", fail_commit)
+    assert stored(state) == before
+
+
+def test_list_next_page_reads_current_state_after_a_change(membership_pages):
+    client, state, expected_ids = membership_pages
+    policy = client.app.state.http_security
+    first = client.get("/auth/memberships?limit=1", headers=READ).json()
+    target = next(value for value in expected_ids[1:] if value != state["membership"])
+    detail_path = f"/auth/memberships/{target}"
+    detail = client.get(detail_path, headers=READ)
+    assert (
+        patch(
+            client,
+            state,
+            policy,
+            target=detail_path,
+            etag=detail.headers["etag"],
+            body={"role": "mechanic", "is_active": False},
+        ).status_code
+        == 200
+    )
+    following = client.get(
+        "/auth/memberships",
+        params={"limit": 100, "after": first["next_after"]},
+        headers=READ,
+    ).json()
+    updated = next(
+        row for row in following["items"] if row["membership_id"] == str(target)
+    )
+    assert updated["role"] == "mechanic" and updated["is_active"] is False

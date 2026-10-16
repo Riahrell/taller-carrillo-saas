@@ -12,10 +12,12 @@ Acceso 2.9 implementa el servicio interno de cambio de rol/estado de membresías
 sesión y permiso admin actuales, aislamiento, protección del último administrador,
 revocación/cancelación y auditoría atómicas. Acceso 2.10 lo conecta a GET/PATCH
 para membresías existentes, con sesión/permiso actuales, CSRF y comparación
-If-Match dentro de la transacción. Aún sin listado ni pantalla administrativa.
-Resultados actuales en `deliveries/access-2.10.md`; entregas anteriores como
+If-Match dentro de la transacción. Acceso 2.11 añade listado paginado con límites,
+cursor por UUID, correo/estados existentes y filtro de empresa desde sesión.
+Aún sin pantalla administrativa.
+Resultados actuales en `deliveries/access-2.11.md`; entregas anteriores como
 registros históricos.
-El hito 2 sigue abierto: faltan listado y pantalla administrativa, altas,
+El hito 2 sigue abierto: faltan pantalla administrativa, altas,
 gestión global de cuentas, permisos de otros módulos, consulta/ampliación de
 auditoría, recuperación y limpieza de registros de acceso.
 Contrato actualizado en `auth-http-contract.md`, con límites y pendientes explícitos.

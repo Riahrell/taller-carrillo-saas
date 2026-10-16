@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.10
+## Estado: acceso 2.11
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -21,15 +21,16 @@ cabeceras falsificadas. Formulario probado en navegador con identidades sintéti
 y PostgreSQL aislado. El servicio interno de administración ya verifica sesión
 y rol actual, cambia rol/estado de una membresía, conserva un administrador activo
 y confirma auditoría/revocaciones en una transacción. Ya tiene consulta y cambio
-por HTTP con sesión/CSRF y precondición If-Match; la pantalla administrativa y el
-listado siguen pendientes. Las operaciones comerciales siguen pendientes.
+por HTTP con sesión/CSRF y precondición If-Match. El listado paginado ya limita
+resultados a la empresa autorizada y al perfil admin. La pantalla administrativa
+y las operaciones comerciales siguen pendientes.
 Bootstrap CLI atómico y hashing Argon2id
 disponibles; no se creó una cuenta real automáticamente.
 La fundación tiene validación integral local y workflow CI preparado. Su primera
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 2.10](docs/deliveries/access-2.10.md).
+- [Aceptación](docs/acceptance.md) y [entrega 2.11](docs/deliveries/access-2.11.md).
 - Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
   en 8080, y el arranque requiere DB.
 
@@ -504,7 +505,7 @@ el repositorio de destino y publicar los commits con autorización; no se hizo p
 Referencias: [sintaxis de GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax),
 [checkout](https://github.com/actions/checkout) y [actionlint](https://github.com/rhysd/actionlint).
 
-## Administración de membresías (2.9–2.10)
+## Administración de membresías (2.9–2.11)
 
 `MembershipAdministrator.change_membership` recibe el token privado de sesión,
 el UUID objetivo y un `MembershipChange` explícito de rol/estado. El servidor
@@ -531,13 +532,21 @@ por enviar un rol. Si el actor modifica su propio acceso, se borran cookies solo
 tras el commit que revoca su sesión. Fallo de commit conserva cookies y devuelve
 503; no reintentar automáticamente. Las rutas no aceptan query params.
 
-Sin altas/listado, cambios de usuario global ni consulta HTTP de auditoría en esta
+GET `/api/auth/memberships` lista ID, correo, rol y estados de membresía/cuenta
+existentes, solo para administradores de la empresa de la sesión. Query opcional
+limit (25 por defecto, 1–100) y after (UUID), sin parámetros extra o duplicados.
+Orden UUID ascendente, respuesta items/next_after y no-store. La página siguiente
+lee estado actual; no es una exportación congelada ni un permiso obtenido del cursor.
+Antes de editar se consulta el detalle y su ETag. No se expone hash/token ni otras
+empresas del usuario. No hay nueva migración: aprovecha (tenant_id, id) existente.
+
+Sin altas, cambios de usuario global ni consulta HTTP de auditoría en esta
 fase. La pantalla inicial mantiene el acceso de 2.8, sin controles administrativos
 simulados. No se necesitan usuarios reales nuevos para ejecutar el pipeline.
 
 ## Siguiente tarea
 
-Acceso 2.11: consulta paginada de membresías de la empresa autorizada para preparar
-la pantalla administrativa, con permiso admin, límites y pruebas de aislamiento.
+Acceso 2.12: pantalla de membresías existentes con listado, revisión y cambio de
+rol/estado sobre el contrato probado, gestionando 401/403/409/412 y contexto de sesión.
 CI remota sigue
 pendiente hasta conectar un repositorio autorizado.

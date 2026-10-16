@@ -1,13 +1,18 @@
 """Thin HTTP adapter for existing memberships; no registration or tenant input."""
 
 import re
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import SecretStr
 
-from app.modules.access.administration import MembershipChange, MembershipView
+from app.modules.access.administration import (
+    MembershipChange,
+    MembershipListQuery,
+    MembershipView,
+)
 from app.modules.access.membership import AccessDenied
 
 router = APIRouter(prefix="/auth/memberships", tags=["membership administration"])
@@ -15,8 +20,9 @@ _ETAG = re.compile(r'"membership-v1-[0-9a-f]{64}"', re.ASCII)
 _NO_STORE = {"Cache-Control": "no-store"}
 
 
-def _token(request: Request) -> SecretStr:
-    if request.query_params:
+def _token(request: Request, *, pagination: bool = False) -> SecretStr:
+    keys = [key for key, _ in request.query_params.multi_items()]
+    if (not pagination and keys) or len(keys) != len(set(keys)):
         raise HTTPException(422, "Invalid request", headers=_NO_STORE)
     policy = request.app.state.http_security
     token = policy.read_cookies(request.headers).get(policy.session_cookie)
@@ -38,6 +44,17 @@ def _representation(view: MembershipView) -> JSONResponse:
     return JSONResponse(
         view.model_dump(mode="json"), headers=_NO_STORE | {"ETag": view.etag}
     )
+
+
+@router.get("")
+def list_memberships(
+    request: Request, query: Annotated[MembershipListQuery, Query()]
+) -> JSONResponse:
+    request.app.state.http_security.verify_browser_read(request.headers)
+    result = request.app.state.membership_administrator.list_memberships(
+        _token(request, pagination=True), query=query
+    )
+    return JSONResponse(result.model_dump(mode="json"), headers=_NO_STORE)
 
 
 @router.get("/{membership_id}")

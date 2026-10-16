@@ -77,4 +77,19 @@ intención de navegador para GET, con CORS cerrado y respuestas no-store.
 If-Match identifica el estado revisado, sin otorgar autoridad. Se comprueba tras
 sesión/permiso bajo los locks del cambio: un estado diferente devuelve 412 sin
 efectos. Si el cambio revoca la sesión del actor, las cookies se retiran después
-de commit. Siguen pendientes listado/UI y permisos de los módulos futuros.
+de commit. La entrega 2.11 añade el listado descrito abajo; UI y permisos de los
+módulos futuros siguen pendientes.
+
+## Listado de membresías en acceso 2.11
+
+GET `/api/auth/memberships` comprueba sesión y permiso admin actual antes de leer
+cada página. La única empresa admitida sale de la sesión. limit/after controlan
+solo tamaño/frontera; nunca tenant, rol ni autoridad. Un UUID ajeno/desconocido
+como cursor no se consulta ni revela si existe; el filtro sigue siendo la empresa.
+
+El administrador puede identificar las membresías mediante users.email existente
+y consultar role, is_active y users.is_active como user_is_active. No se expone ID
+global, hash, token ni otras empresas de la cuenta. Se incluyen accesos inactivos
+sin habilitarlos; el cambio de estado de la cuenta global sigue fuera del alcance.
+Otros perfiles, identidad pendiente o sesión inválida no reciben items/correos.
+Las páginas no emiten cookies ni ETag, llevan no-store y salen tras commit.

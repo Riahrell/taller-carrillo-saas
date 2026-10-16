@@ -186,6 +186,17 @@ def test_membership_read_patch_stale_and_foreign_rejection_through_real_proxy(
         == 200
     )
     target_path = f"/auth/memberships/{membership_id}"
+    status, page, headers = browser.request("/auth/memberships?limit=1", headers=READ)
+    assert status == 200 and len(page["items"]) == 1
+    assert headers["Cache-Control"] == "no-store" and headers.get("ETag") is None
+    status, tail, _ = browser.request(
+        "/auth/memberships?limit=1&after=" + page["next_after"], headers=READ
+    )
+    assert status == 200 and tail["next_after"] is None
+    assert {row["membership_id"] for row in page["items"] + tail["items"]} == {
+        str(membership_id),
+        str(state["membership"]),
+    }
     status, data, headers = browser.request(target_path, headers=READ)
     assert status == 200 and data == {
         "membership_id": str(membership_id),

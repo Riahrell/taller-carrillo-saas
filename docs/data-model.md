@@ -2,7 +2,7 @@
 
 Este documento distingue el modelo objetivo y los contratos implementados por
 entrega. Acceso 2.1 incorporó `tenants`, `users` y `tenant_memberships` mediante
-`0002_access`; las ampliaciones hasta 2.10 se detallan al final. Los atributos comerciales
+`0002_access`; las ampliaciones hasta 2.11 se detallan al final. Los atributos comerciales
 se limitan a los requeridos por el plan y a las decisiones de `decisions.md`.
 La especificación de cada tarea cerrará contratos antes de generar código.
 
@@ -216,3 +216,13 @@ El mismo estado produce el mismo tag, incluso si hubo cambios intermedios que
 lo restituyeron: no representa una secuencia histórica ni idempotencia general.
 Lectura y resultado de cambio salen solo después de commit. La lectura comprueba
 sesión/permiso y actualiza actividad dentro de su propia transacción breve.
+
+## Listado de administración 2.11
+
+Sin cambio de esquema: consulta tenant_memberships de la empresa de sesión y
+une users para correo/estado ya existentes. La respuesta incluye membership_id,
+email, role, is_active y user_is_active; no nueva columna, token, hash ni ID global.
+Paginación por índice (tenant_id, id), frontera UUID exclusiva y máximo 101 filas
+consultadas para devolver hasta 100. Sin contador global ni persistencia del cursor.
+Lectura viva entre páginas; no es snapshot de toda la empresa ni fuente para
+exportación histórica. No crea eventos ni cambia membresías al consultar.
