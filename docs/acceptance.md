@@ -3,12 +3,12 @@
 Estado: hito 0 documentado y fundación 1.4 implementada y validada integralmente
 en local. Workflow CI comprobado con actionlint; primera ejecución en GitHub
 pendiente porque no hay remoto configurado. Ese resultado remoto no se presume.
-Acceso 2.4 añade autenticación interna y límites compartidos por cuenta/IP, con
-persistencia de rechazos y concurrencia PostgreSQL probadas. Resultados actuales
-en `deliveries/access-2.4.md`; entregas previas como registros históricos.
-El hito 2 sigue abierto: faltan adaptador HTTP, cookies/CSRF, proxy confiable para
-IP, selección de empresa en el acceso web, permisos por operación y formulario.
-Contrato previo de transporte en `auth-http-contract.md`, aún sin implementar.
+Acceso 2.5 añade política de cookies, origen/CSRF firmado en middleware HTTP,
+límite de cuerpo en proxy/API y validación saneada. Resultados actuales en
+`deliveries/access-2.5.md`; entregas anteriores como registros históricos.
+El hito 2 sigue abierto: faltan login/logout HTTP, emisor de pruebas CSRF público,
+IP confiable del proxy, selección multiempresa, permisos por operación y formulario.
+Contrato actualizado en `auth-http-contract.md`, con límites y pendientes explícitos.
 No confundir criterios futuros de esta lista con verificaciones realizadas.
 
 ## Hitos

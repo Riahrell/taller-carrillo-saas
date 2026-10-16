@@ -139,3 +139,37 @@ def test_missing_secret_file_fails_safely(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setenv("DATABASE_URL_FILE", "missing-file")
     with pytest.raises(ConfigurationError, match="Cannot read"):
         load_settings()
+
+
+def test_csrf_key_file_is_external_and_not_disclosed(monkeypatch, tmp_path):
+    import secrets
+
+    key = secrets.token_hex(32)
+    path = tmp_path / "csrf-key"
+    path.write_text(key + "\n")
+    monkeypatch.delenv("CSRF_SIGNING_KEY")
+    settings = Settings(app_env="test", csrf_signing_key_file=path)
+    assert settings.csrf_signing_key.get_secret_value() == key
+    assert key not in repr(settings)
+
+
+@pytest.mark.parametrize("key", ["", "weak-password", "a" * 63, "A" * 64])
+def test_invalid_csrf_keys_fail_without_echo(monkeypatch, key):
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("CSRF_SIGNING_KEY", key)
+    with pytest.raises(ConfigurationError, match="csrf_signing_key") as caught:
+        load_settings()
+    if key:
+        assert key not in str(caught.value)
+
+
+def test_conflicting_csrf_sources_are_refused(monkeypatch):
+    monkeypatch.setenv("CSRF_SIGNING_KEY_FILE", "unused")
+    with pytest.raises(ConfigurationError, match="Choose CSRF"):
+        Settings(app_env="test")
+
+
+def test_unreadable_csrf_key_fails_safely(monkeypatch):
+    monkeypatch.delenv("CSRF_SIGNING_KEY")
+    with pytest.raises(ConfigurationError, match="Cannot read HTTP"):
+        Settings(app_env="test", csrf_signing_key_file="missing-secret-file")

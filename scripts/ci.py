@@ -17,12 +17,20 @@ PROJECT_PATTERN = re.compile(r"carrillo-ci-[0-9a-f]{12}")
 
 def isolated_environment() -> dict[str, str]:
     """Do not let local Compose or application settings override test config."""
-    excluded = {"APP_ENV", "DB_NAME", "DB_SECRETS_DIR", "CI_PROJECT_NAME"}
+    excluded = {
+        "APP_ENV",
+        "DB_NAME",
+        "DB_SECRETS_DIR",
+        "CI_PROJECT_NAME",
+        "PUBLIC_ORIGIN",
+    }
     return {
         key: value
         for key, value in os.environ.items()
         if key not in excluded
-        and not key.startswith(("COMPOSE_", "DATABASE_URL", "MIGRATION_DATABASE_URL"))
+        and not key.startswith(
+            ("COMPOSE_", "DATABASE_URL", "MIGRATION_DATABASE_URL", "CSRF_SIGNING_KEY")
+        )
     }
 
 
@@ -119,6 +127,7 @@ class Pipeline:
         address = self.compose("port", "proxy", "8080", capture=True).stdout.strip()
         if not re.fullmatch(r"127\.0\.0\.1:[0-9]+", address):
             raise RuntimeError("Unexpected CI proxy address")
+        self.bind_origin(address)
         self.run(
             [
                 sys.executable,
@@ -127,6 +136,18 @@ class Pipeline:
                 f"http://{address}",
             ]
         )
+
+    def bind_origin(self, address: str) -> None:
+        if not re.fullmatch(r"127\.0\.0\.1:[0-9]+", address):
+            raise RuntimeError("Unexpected CI proxy address")
+        self.env["PUBLIC_ORIGIN"] = f"http://{address}"
+        self.compose("up", "-d", "--wait", "--no-deps", "backend")
+        # Reload DNS without a container restart, which may reallocate its port.
+        self.compose("exec", "-T", "proxy", "nginx", "-s", "reload")
+        self.compose("up", "-d", "--wait", "proxy")
+        actual = self.compose("port", "proxy", "8080", capture=True).stdout.strip()
+        if actual != address:
+            raise RuntimeError("CI proxy port changed while binding its origin")
 
     def cleanup(self) -> None:
         # The name is generated and validated before any operation. Never dev/test.

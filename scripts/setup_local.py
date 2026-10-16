@@ -21,6 +21,7 @@ def generate(environment: str, *, base: Path | None = None) -> Path:
         "bootstrap_password": secrets.token_urlsafe(48),
         "owner_password": secrets.token_urlsafe(48),
         "app_password": secrets.token_urlsafe(48),
+        "csrf_signing_key": secrets.token_hex(32),
     }
     credentials["database_url"] = (
         f"postgresql+psycopg://carrillo_app:{credentials['app_password']}@db:5432/{db_name}"
@@ -40,6 +41,7 @@ def generate(environment: str, *, base: Path | None = None) -> Path:
     with os.fdopen(fd, "w") as stream:
         stream.write(
             f"APP_ENV={environment}\nDB_NAME={db_name}\nDB_SECRETS_DIR={secret_dir}\n"
+            "PUBLIC_ORIGIN=http://localhost:8080\n"
         )
     return config
 

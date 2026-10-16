@@ -302,3 +302,31 @@ Referencias: [gestión de sesiones OWASP](https://cheatsheetseries.owasp.org/che
 
 Referencias: [autenticación OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html),
 [INSERT PostgreSQL 18](https://www.postgresql.org/docs/18/sql-insert.html).
+
+## Acceso 2.5: cookies, origen y CSRF
+
+- Middleware ASGI global: métodos con efectos exigen Origin exacto, prueba CSRF
+  firmada igual al cookie y binding de sesión/preauth. Sec-Fetch-Site, si presente,
+  debe ser same-origin. GET/HEAD/OPTIONS no alteran negocio ni emiten cookies solos.
+- HMAC-SHA-256 sobre estructura con propósito, binding, caducidad y nonce aleatorio.
+  Cookie preauth también firmado con propósito distinto; no representa identidad.
+  Prueba/nonce: vida máxima 15 minutos. No incluir el token de sesión en la prueba.
+- Cookie de sesión/preauth HttpOnly; prueba CSRF legible por JS. Todos host-only,
+  Path=/ y SameSite=Lax. HTTPS usa Secure y prefijo __Host-. HTTP solo loopback
+  development/test, sin prefijo ni Secure. Producción siempre HTTPS.
+- PUBLIC_ORIGIN canónico y clave externa hex de 32 bytes obligatorios al arrancar
+  API; sin reserva. CLI/migraciones no necesitan clave HTTP. Montaje solo API/tests.
+  Generación/upgrade local no reescribe credenciales existentes. Clave entre workers
+  compartida; rotación coordinada. El formato no demuestra entropía: usar generador.
+- JSON UTF-8 hasta 8 KiB para escrituras actuales, tanto proxy como API, incluso
+  fragmentos ASGI. Adjuntos futuros requieren política explícita de contenido/tamaño.
+- Validación de Pydantic saneada sin inputs; rechazos de guard 403, contenido 415,
+  tamaño 413 y JSON inválido 400, sin reflejar datos. Escrituras/rechazos no-store.
+- No hay rutas nuevas de acceso: helpers y rutas de prueba no autentican usuarios.
+  Un CSRF válido no sustituye sesión viva/autorización DB ni publica tokens antes
+  del commit. IP confiable, selección multiempresa y handlers siguen pendientes.
+- CI configura el origen al puerto efímero real, recrea backend y recarga Nginx
+  conservando el contenedor/puerto. Se detecta si el puerto cambia antes del smoke.
+
+Referencia: [CSRF OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html),
+[middleware Starlette](https://www.starlette.io/middleware/).

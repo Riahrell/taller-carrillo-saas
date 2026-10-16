@@ -3,21 +3,22 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.4
+## Estado: acceso 2.5
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial indica que el acceso
 aún no está habilitado. Modelos de empresas, usuarios y membresías migrados, con
 consulta interna de membresía activa probada en PostgreSQL. Sesiones internas
 revocables con hash de token y expiración probadas. Autenticación interna con
-límites compartidos por cuenta/IP; sin login HTTP
+límites compartidos por cuenta/IP. La API ya exige origen/CSRF firmado en
+peticiones con efectos y tiene política de cookies probada. Sin login HTTP
 ni operaciones comerciales todavía. Bootstrap CLI atómico y hashing Argon2id
 disponibles; no se creó una cuenta real automáticamente.
 La fundación tiene validación integral local y workflow CI preparado. Su primera
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 2.4](docs/deliveries/access-2.4.md).
+- [Aceptación](docs/acceptance.md) y [entrega 2.5](docs/deliveries/access-2.5.md).
 - Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
   en 8080, y el arranque requiere DB.
 
@@ -51,6 +52,18 @@ legibles por los UIDs de los contenedores en montajes de solo lectura; sus
 padres 0700 impiden acceder a otros usuarios del host. No copiar valores a Git,
 imágenes, comandos versionados o documentación. No regenerarlos con un volumen
 inicializado: cambiar archivos no cambia las contraseñas de PostgreSQL.
+
+Si el entorno existía antes de acceso 2.5, añadir la clave HTTP **sin regenerar
+credenciales DB** (comandos idempotentes para entornos ya creados):
+
+```bash
+python3 -m scripts.setup_http development
+python3 -m scripts.setup_http test
+```
+
+El segundo requiere que exista el entorno test; si aún no existe, créalo con
+setup_local.py test como se indica abajo. Se añade solo la nueva clave aleatoria
+csrf_signing_key y PUBLIC_ORIGIN si falta. No sobrescribe ninguna credencial.
 
 Construir imagen, iniciar DB, aplicar migración y arrancar API, en este orden:
 
@@ -118,8 +131,9 @@ docker compose --project-name carrillo-dev --env-file .local/development/compose
 ```
 
 Códigos de salida: 0 completado/ayuda, 1 fallo de operación y 2 entrada inválida
-o cancelación. El login web, cookies y CSRF siguen pendientes. Los límites de intentos
-ya se aplican en el servicio interno de autenticación.
+o cancelación. El login web y los handlers que emiten cookies/pruebas CSRF siguen
+pendientes. La política HTTP está probada; los límites ya se aplican en el servicio
+interno de autenticación.
 La cuenta creada no habilita por sí sola acceso desde la pantalla inicial.
 
 Detener conservando los datos de desarrollo:
@@ -183,10 +197,15 @@ sanean fallos para evitar imprimir parámetros del controlador. No usar
 | `DOCS_ENABLED` | `false` por defecto; `true` prohibido en producción. |
 | `DATABASE_URL` | URL completa `postgresql+psycopg`, tratada como secreto, sin reserva. |
 | `DATABASE_URL_FILE` | Archivo alternativo a `DATABASE_URL`; Compose usa este modo. |
+| `PUBLIC_ORIGIN` | Origen canónico exacto del navegador, sin barra final/ruta/query. Obligatorio para arrancar API; HTTPS en producción. |
+| `CSRF_SIGNING_KEY_FILE` | Archivo de clave externa de 32 bytes aleatorios, hex minúsculo (64 caracteres). Compose usa este modo. |
+| `CSRF_SIGNING_KEY` | Alternativa al archivo, tratada como SecretStr; nunca definir ambas fuentes ni usar una reserva. |
 
 Definir exactamente una fuente de URL mediante entorno o `.env` local.
 El esquema actual exige host, base, usuario y contraseña; rechaza otros drivers
 y parámetros query. TLS remoto necesitará diseño explícito antes de habilitarse.
+La clave HTTP se monta en backend/tests, no en DB, frontend ni migraciones.
+Los comandos CLI/migraciones no requieren origen ni clave HTTP; create_app sí.
 Las claves desconocidas de `.env` se rechazan. En Compose no hace falta `.env`:
 se usan el archivo generado de interpolación y montajes de secretos.
 
@@ -254,9 +273,50 @@ promete tiempo constante de extremo a extremo. Rehash de perfiles Argon2id
 anteriores y sesión nueva se confirman en la misma transacción.
 
 El servicio no está conectado al servidor HTTP ni a la pantalla inicial. Consultar
-[contrato HTTP de seguridad](docs/auth-http-contract.md), previo a implementación.
+[contrato HTTP de seguridad](docs/auth-http-contract.md), con partes implementadas
+y pendientes explícitos.
 La selección de empresa es una candidatura interna sujeta a membresía; el contrato
 de Credentials rechaza tenant, rol e identidad elegidos por cliente.
+
+## Protección HTTP (acceso 2.5)
+
+La API rechaza peticiones con efectos si Origin no coincide exactamente con
+PUBLIC_ORIGIN, falta prueba CSRF o el nonce/sesión ligado a la firma no coincide.
+GET/HEAD/OPTIONS conservan su semántica y no emiten cookies automáticamente.
+La política de cookies se prueba con rutas exclusivas de tests; no se agregaron
+rutas de login ni de emisión de CSRF en el servidor público de esta entrega.
+
+Para desarrollo se generó PUBLIC_ORIGIN=http://localhost:8080. Abrir esa dirección:
+http://127.0.0.1:8080 representa otro origen. Cambiar PUBLIC_ORIGIN exige actualizar
+la configuración y recrear API. Producción requiere HTTPS y usa cookies __Host-,
+Secure, HttpOnly para sesión/preauth, Path=/, SameSite=Lax y sin Domain. El cookie
+CSRF es legible por JS y contiene solo la prueba firmada, nunca el token de sesión.
+
+HMAC-SHA-256 separa propósitos y liga la prueba a una cookie HttpOnly de sesión o
+nonce preauth. Nonce y prueba caducan en 15 minutos; al emitir sesión se cambia la
+prueba y se retira el nonce preauth. Renovar CSRF no extiende expires_at de sesión.
+La clave debe ser común a todos los workers y reiniciar coordinadamente al rotarla.
+El nonce preauth protege intención del navegador: **no acredita identidad**.
+
+El middleware no sustituye autenticación ni autorización: cada futuro handler
+protegido deberá comprobar sesión viva en DB y permisos, aunque el CSRF sea válido.
+La emisión de cookies de sesión solo podrá ejecutarse tras commit de autenticación.
+
+Por ahora, las escrituras de API requieren JSON UTF-8 de hasta 8 KiB, verificado
+también en cuerpos fragmentados. Nginx impone el mismo límite en /api/. Formularios,
+cuerpos inválidos/grandes y pruebas CSRF ambiguas se rechazan antes del handler.
+Los futuros adjuntos necesitarán parser/límite explícitos y las mismas protecciones
+de origen/CSRF; no quedan habilitados por esta política JSON.
+
+Los errores de validación no repiten inputs de Pydantic. Rechazos de transporte y
+escrituras llevan Cache-Control: no-store. Detalle en el contrato actualizado.
+Después de cambiar el proxy, aplicar su config y la imagen conservando los datos:
+
+```bash
+docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml build backend
+docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml up -d --wait --force-recreate proxy
+python3 scripts/smoke_web.py --base-url http://localhost:8080
+```
 
 ## Frontend y proxy
 
@@ -267,7 +327,8 @@ el cliente utiliza `/api/` relativo al navegador y el proxy retira ese prefijo.
 
 El cliente HTTP actual es solo GET, con credenciales del mismo origen,
 decodificador de respuesta y errores sin cuerpos internos. Las mutaciones se
-añadirán junto con sesiones y CSRF en el hito 2, antes de habilitar negocio.
+añadirán al cliente junto con los handlers de acceso y su prueba CSRF, antes de
+habilitar negocio.
 La pantalla inicial no inventa ventas, saldos ni datos de demostración.
 
 Verificar frontend dentro del contenedor sin red:
@@ -301,8 +362,9 @@ No hay fuentes ni imágenes remotas para esta pantalla.
 
 Nginx y Next.js ejecutan sin root y con filesystem de solo lectura. Los archivos
 temporales usan tmpfs. Nginx añade cabeceras básicas y su log de acceso omite query
-strings, cuerpos y cookies. El acceso actual es HTTP local: HTTPS, CSRF y las
-políticas completas de producción aún no están habilitados.
+strings, cuerpos y cookies. El acceso actual es HTTP local: HTTPS y las políticas completas de producción
+aún no están habilitados. El middleware CSRF ya está conectado a la API; falta
+conectar los handlers de acceso y el cliente que obtiene/envía las pruebas.
 
 ## Actualizar dependencias
 
@@ -339,12 +401,13 @@ No usa ni reinicia el proyecto `carrillo-dev` ni modifica sus contraseñas.
 
 Valida, en orden:
 
-1. Configuración de aislamiento, seis pruebas de seguridad del ejecutor y shell.
+1. Configuración de aislamiento, once pruebas de ejecutor/configuración y shell.
 2. Builds de las cuatro imágenes de aplicación/pruebas.
 3. Sintaxis de GitHub Actions con actionlint fijado por digest.
 4. Ruff, formato Python y coherencia de dependencias; ESLint, Prettier y TypeScript.
 5. Pruebas frontend, migración explícita y pruebas backend con PostgreSQL aislado.
-6. Arranque del conjunto y smoke HTTP contra el proxy de ese proyecto.
+6. Arranque, origen ajustado al puerto CI real y recarga Nginx sin reiniciarlo.
+7. Smoke de lecturas, rechazo 403 sin origen/CSRF válidos y 413 por tamaño.
 
 El ejecutor retira contenedores, redes, volúmenes y credenciales temporales al
 terminar. También intenta limpiar al propagarse un fallo; los tags de imágenes
@@ -370,7 +433,7 @@ Referencias: [sintaxis de GitHub Actions](https://docs.github.com/en/actions/ref
 
 ## Siguiente tarea
 
-Acceso 2.5: adaptador HTTP con cookies, origen y CSRF firmado según el contrato
-previo, cerrando el flujo de selección de empresa antes de habilitar login.
-Después conectar el formulario y probar el recorrido a través del proxy.
-CI remota sigue pendiente hasta conectar un repositorio autorizado.
+Acceso 2.6: cerrar e implementar login/logout HTTP, IP de proxy confiable y
+selección de empresa desde estado verificado, reutilizando la protección probada.
+Después conectar el formulario y probar el flujo completo. CI remota sigue
+pendiente hasta conectar un repositorio autorizado.

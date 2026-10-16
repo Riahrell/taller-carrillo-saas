@@ -60,11 +60,38 @@ class PipelineTests(unittest.TestCase):
                 "DB_NAME": "operational",
                 "COMPOSE_PROJECT_NAME": "carrillo-dev",
                 "DATABASE_URL": "do-not-use",
+                "PUBLIC_ORIGIN": "https://untrusted.example",
+                "CSRF_SIGNING_KEY": "do-not-use",
             },
         ):
             environment = isolated_environment()
-        for key in ("APP_ENV", "DB_NAME", "COMPOSE_PROJECT_NAME", "DATABASE_URL"):
+        for key in (
+            "APP_ENV",
+            "DB_NAME",
+            "COMPOSE_PROJECT_NAME",
+            "DATABASE_URL",
+            "PUBLIC_ORIGIN",
+            "CSRF_SIGNING_KEY",
+        ):
             self.assertNotIn(key, environment)
+
+    def test_origin_binding_keeps_proxy_port_and_reloads_without_restart(self):
+        pipeline = self.pipeline()
+        address = "127.0.0.1:49123"
+        with patch.object(pipeline, "compose") as compose:
+            compose.return_value.stdout = address + "\n"
+            pipeline.bind_origin(address)
+        self.assertEqual(pipeline.env["PUBLIC_ORIGIN"], f"http://{address}")
+        calls = [call.args for call in compose.call_args_list]
+        self.assertIn(("exec", "-T", "proxy", "nginx", "-s", "reload"), calls)
+        self.assertFalse(any(call[0] == "restart" for call in calls))
+
+    def test_origin_binding_rejects_a_changed_published_port(self):
+        pipeline = self.pipeline()
+        with patch.object(pipeline, "compose") as compose:
+            compose.return_value.stdout = "127.0.0.1:49124\n"
+            with self.assertRaisesRegex(RuntimeError, "port changed"):
+                pipeline.bind_origin("127.0.0.1:49123")
 
     def test_credentials_are_not_overwritten(self) -> None:
         path = generate("test", base=self.workspace)

@@ -23,8 +23,20 @@ class Page(HTMLParser):
             self.assets.add(asset)
 
 
-def read(base: str, path: str, expected: int = 200, method: str = "GET"):
-    request = Request(base + path, method=method)
+def read(
+    base: str,
+    path: str,
+    expected: int = 200,
+    method: str = "GET",
+    headers: dict[str, str] | None = None,
+    data: bytes | None = None,
+):
+    request = Request(
+        base + path,
+        method=method,
+        headers=headers or {},
+        data=data if data is not None else (b"{}" if method == "POST" else None),
+    )
     try:
         response = urlopen(request, timeout=10)
     except HTTPError as error:
@@ -68,9 +80,31 @@ def main() -> None:
     assert "No encontramos esta página" in missing.decode()
     read(base, "/health/live", expected=404)
     read(base, "/api/docs", expected=404)
+    rejected, rejected_headers = read(
+        base,
+        "/api/health/live",
+        expected=403,
+        method="POST",
+        headers={
+            "Origin": "https://untrusted.example",
+            "Content-Type": "application/json",
+        },
+    )
+    assert json.loads(rejected) == {"detail": "Request rejected"}
+    assert rejected_headers.get("Cache-Control") == "no-store"
+    oversized, oversized_headers = read(
+        base,
+        "/api/health/live",
+        expected=413,
+        method="POST",
+        data=b" " * 8193,
+        headers={"Origin": base, "Content-Type": "application/json"},
+    )
+    assert json.loads(oversized) == {"detail": "Request rejected"}
+    assert oversized_headers.get("Cache-Control") == "no-store"
     print(
         f"Smoke OK: HTML español, {len(page.assets)} assets, API del mismo origen, "
-        "404 de interfaz/API y cabeceras del proxy."
+        "404 de interfaz/API, cabeceras y rechazo de escritura sin origen/CSRF válidos."
     )
 
 

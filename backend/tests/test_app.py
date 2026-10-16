@@ -43,7 +43,7 @@ def test_local_documentation_requires_explicit_opt_in() -> None:
 
 def test_liveness_does_not_accept_writes() -> None:
     with TestClient(create_app(Settings(app_env="test"))) as client:
-        assert client.post("/health/live").status_code == 405
+        assert client.post("/health/live").status_code == 403
 
 
 def test_no_permissive_cors_is_enabled() -> None:

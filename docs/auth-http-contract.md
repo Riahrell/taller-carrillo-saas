@@ -1,9 +1,10 @@
 # Contrato de seguridad del adaptador HTTP de acceso
 
-Estado: diseño previo a implementación. Acceso 2.4 implementa autenticación interna
-y contadores; **este contrato todavía no está conectado a HTTP**. No se añaden ni
-se anuncian rutas nuevas en esta entrega. Las URLs y los contratos del selector
-de empresa se cerrarán junto con sus handlers y pruebas antes de habilitarlos.
+Estado: acceso 2.5 implementa la política de cookies, firma CSRF, guard de origen
+conectado globalmente a la API y saneamiento de validación. Las rutas que emiten
+cookies son exclusivas de tests; **no hay login/logout ni emisión de CSRF públicos**.
+Las URLs y el selector de empresa se cerrarán junto con sus handlers antes de
+habilitarlos. No confundir el middleware de intención con autorización de sesión.
 
 ## Entradas y autoridad
 
@@ -67,10 +68,31 @@ no se confunden con los contadores de fallos por cuenta del servicio.
   rechazar contenido de formularios simples que pueda eludir la protección prevista.
   GET/HEAD no realizan operaciones de negocio ni alta/baja de usuarios.
 
-Estos son requisitos de la siguiente implementación, no garantías del entorno
-actual. Aún no hay clave CSRF, nonces, cookies de autenticación ni estos handlers.
+La política de firma/cookies y el guard de origen/CSRF ya están implementados y
+probados. El arranque HTTP exige PUBLIC_ORIGIN y clave externa, sin reserva. El
+middleware exige JSON UTF-8 hasta 8192 bytes y también cuenta fragmentos; Nginx
+limita /api/ al mismo tamaño. Se rechazan Origin/CSRF/cookies relevantes duplicados
+para evitar interpretaciones ambiguas. La prueba ligada a sesión tiene precedencia:
+una cookie de sesión inválida no puede eludir el control usando un nonce preauth.
 
-## Pruebas antes de habilitar acceso web
+La clave se añade con setup_http a entornos existentes sin regenerar DB. Los
+helpers de cookies solo deben usarse tras los controles/commit del handler; no
+consultan DB y por tanto no comprueban revocación. El nonce de preauth solo prueba
+intención y no significa que ya se verificó una contraseña. La selección de
+empresa necesita además un estado provisional autenticado separado.
+
+Las pruebas/nonce son reutilizables hasta vencer: no proporcionan idempotencia
+ni impiden por sí solos duplicar una operación de negocio. El perfil de prueba
+dura 15 minutos. Validar firma usa reloj UTC del proceso con
+resolución de segundos: los hosts deben estar sincronizados. Rotar la clave exige
+reinicio coordinado y deja inválidas pruebas anteriores. La vigencia de sesión
+sigue siendo autoridad de PostgreSQL, con 30 minutos de inactividad y máximo 8h.
+
+Pendientes antes de exposición: login/logout y emisor/renovador de prueba HTTP,
+validación de sesión/roles en handlers, prueba de IP a través del proxy, límites
+de volumen/espera y flujo multiempresa. El formulario tampoco está conectado.
+
+## Pruebas antes de habilitar acceso web (parcialmente cubiertas)
 
 - Login correcto, error genérico, límites en varias instancias y cambios de estado.
 - Cookie y CSRF: producción/development, prelogin, token ausente/ajeno/modificado,
@@ -83,3 +105,7 @@ actual. Aún no hay clave CSRF, nonces, cookies de autenticación ni estos handl
 - Frontend con estados de carga/error, teclado/foco y sin credenciales persistentes.
 
 Referencia: [prevención CSRF OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html).
+
+Las pruebas de cookies/origen/CSRF y de saneamiento se ejecutan con ASGI real y
+rutas solo de test. El smoke del proxy verifica rechazos 403 y tamaño 413; no es
+todavía una prueba de login, de IP confiable ni de revocación HTTP.

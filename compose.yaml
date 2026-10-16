@@ -9,8 +9,11 @@ x-backend: &backend
     APP_ENV: ${APP_ENV:?Generate the local environment first}
     DATABASE_URL_FILE: /run/secrets/database_url
     DOCS_ENABLED: "false"
+    PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Configure the exact browser origin}
+    CSRF_SIGNING_KEY_FILE: /run/secrets/csrf_signing_key
   secrets:
     - database_url
+    - csrf_signing_key
   depends_on:
     db:
       condition: service_healthy
@@ -138,9 +141,12 @@ services:
       DATABASE_URL_FILE: /run/secrets/database_url
       MIGRATION_DATABASE_URL_FILE: /run/secrets/migration_database_url
       RUN_DB_INTEGRATION: "1"
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Configure the exact browser origin}
+      CSRF_SIGNING_KEY_FILE: /run/secrets/csrf_signing_key
     secrets:
       - database_url
       - migration_database_url
+      - csrf_signing_key
 
 networks:
   private:
@@ -167,3 +173,6 @@ secrets:
     file: ${DB_SECRETS_DIR:?Generate the local environment first}/database_url
   migration_database_url:
     file: ${DB_SECRETS_DIR:?Generate the local environment first}/migration_database_url
+
+  csrf_signing_key:
+    file: ${DB_SECRETS_DIR:?Generate the local environment first}/csrf_signing_key

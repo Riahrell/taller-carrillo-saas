@@ -4,12 +4,16 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings, load_settings
 from app.core.database import build_engine, create_session_factory, verify_connection
+from app.modules.access.http_middleware import HttpSecurityMiddleware
+from app.modules.access.http_security import HttpSecurity
 
 
 class LivenessResponse(BaseModel):
@@ -18,6 +22,7 @@ class LivenessResponse(BaseModel):
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     configuration = settings if settings is not None else load_settings()
+    http_security = HttpSecurity(configuration)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -39,6 +44,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/openapi.json" if configuration.docs_enabled else None,
     )
     application.state.settings = configuration
+    application.state.http_security = http_security
+    application.add_middleware(HttpSecurityMiddleware, policy=http_security)
+
+    @application.exception_handler(RequestValidationError)
+    async def invalid_request(
+        _request: Request, _error: RequestValidationError
+    ) -> JSONResponse:
+        return JSONResponse(
+            {"detail": "Invalid request"},
+            status_code=422,
+            headers={"Cache-Control": "no-store"},
+        )
 
     @application.get(
         "/health/live",

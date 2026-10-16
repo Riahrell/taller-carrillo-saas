@@ -1,5 +1,6 @@
 """Validated configuration for the features that are actually enabled."""
 
+import re
 from pathlib import Path
 from typing import Any, Literal, Self
 
@@ -26,6 +27,10 @@ class Settings(BaseSettings):
     docs_enabled: bool = False
     database_url: SecretStr
     database_url_file: Path | None = None
+    # CLI/migrations need no HTTP key; create_app requires both HTTP fields.
+    public_origin: str | None = None
+    csrf_signing_key: SecretStr | None = None
+    csrf_signing_key_file: Path | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -41,6 +46,32 @@ class Settings(BaseSettings):
                 "Cannot read database configuration file"
             ) from None
         return {**values, "database_url": SecretStr(secret)}
+
+    @model_validator(mode="before")
+    @classmethod
+    def load_csrf_secret(cls, values: Any) -> Any:
+        if not isinstance(values, dict) or not values.get("csrf_signing_key_file"):
+            return values
+        if values.get("csrf_signing_key"):
+            raise ConfigurationError("Choose CSRF_SIGNING_KEY or CSRF_SIGNING_KEY_FILE")
+        try:
+            secret = Path(values["csrf_signing_key_file"]).read_text().strip()
+        except (OSError, UnicodeError):
+            raise ConfigurationError(
+                "Cannot read HTTP security configuration file"
+            ) from None
+        return {**values, "csrf_signing_key": SecretStr(secret)}
+
+    @field_validator("csrf_signing_key")
+    @classmethod
+    def validate_csrf_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and not re.fullmatch(
+            r"[0-9a-f]{64}", value.get_secret_value()
+        ):
+            raise ValueError(
+                "CSRF key requires 32 random bytes encoded as lowercase hex"
+            )
+        return value
 
     @field_validator("database_url")
     @classmethod

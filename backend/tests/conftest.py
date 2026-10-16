@@ -18,6 +18,12 @@ def isolate_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path, request) ->
         "DATABASE_URL",
         "DATABASE_URL_FILE",
         "database_url",
+        "PUBLIC_ORIGIN",
+        "CSRF_SIGNING_KEY",
+        "CSRF_SIGNING_KEY_FILE",
+        "public_origin",
+        "csrf_signing_key",
+        "csrf_signing_key_file",
     ):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv(
@@ -30,3 +36,6 @@ def isolate_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path, request) ->
             database="unit_test",
         ).render_as_string(hide_password=False),
     )
+
+    monkeypatch.setenv("PUBLIC_ORIGIN", "https://testserver")
+    monkeypatch.setenv("CSRF_SIGNING_KEY", secrets.token_hex(32))
