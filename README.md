@@ -3,16 +3,18 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: fundación 1.4
+## Estado: acceso 2.1
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial indica que el acceso
-aún no está habilitado. Sin autenticación ni operaciones comerciales todavía.
+aún no está habilitado. Modelos de empresas, usuarios y membresías migrados, con
+consulta interna de membresía activa probada en PostgreSQL. Sin autenticación
+ni operaciones comerciales todavía.
 La fundación tiene validación integral local y workflow CI preparado. Su primera
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 1.4](docs/deliveries/foundation-1.4.md).
+- [Aceptación](docs/acceptance.md) y [entrega 2.1](docs/deliveries/access-2.1.md).
 - Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
   en 8080, y el arranque requiere DB.
 
@@ -65,8 +67,13 @@ La API comprueba la conexión al arrancar y dispone su engine al detenerse.
 Liveness indica vida del proceso, no disponibilidad continua de DB o versión de
 esquema. Las migraciones no se ejecutan desde la API.
 
-La revisión `0001_foundation` establece la cadena con `alembic_version`, sin
-crear tablas comerciales. Consultar revisión:
+La revisión actual `0002_access` añade `tenants`, `users` y
+`tenant_memberships` sobre `0001_foundation`. No inserta cuentas. Los roles
+son `admin`, `cashier`, `mechanic` y `read_only`, sin rol predeterminado.
+La consulta interna de membresía comprueba los tres estados activos en DB;
+requiere IDs obtenidos por el servidor y no concede permisos de módulo.
+No hay endpoints de acceso, hashing de contraseñas ni sesiones todavía.
+Consultar revisión:
 
 ```bash
 docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml run --rm migrate python -m alembic -c alembic.ini current
@@ -148,7 +155,10 @@ capacidades retiradas.
 
 El inicializador de roles solo se ejecuta al crear una DB vacía. Las futuras
 tablas creadas por el owner conceden DML a la app. Esto no equivale a aislamiento
-por tenant; ese control pertenece al hito 2.
+por tenant: el SQL directo con la credencial app no se limita a una empresa.
+La consulta interna de acceso filtra por identidad y empresa; los futuros
+endpoints deberán obtenerlos de una sesión verificada y aplicar los permisos.
+El hito 2 sigue incompleto y no se debe exponer el sistema públicamente.
 
 ## Frontend y proxy
 
@@ -262,6 +272,7 @@ Referencias: [sintaxis de GitHub Actions](https://docs.github.com/en/actions/ref
 
 ## Siguiente tarea
 
-Acceso 2.1: modelo y migración de empresas, usuarios y membresías, con restricciones
-y primeras pruebas de aislamiento. La primera ejecución remota de CI permanece
+Acceso 2.2: hashing Argon2id y bootstrap transaccional de la primera empresa,
+usuario y membresía administradora mediante CLI controlado, sin alta pública
+ni credenciales de reserva. La primera ejecución remota de CI permanece
 pendiente hasta conectar un repositorio; sin negocio antes de autorización probada.

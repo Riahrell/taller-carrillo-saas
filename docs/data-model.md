@@ -1,6 +1,7 @@
 # Modelo inicial y límites transaccionales
 
-Este es el modelo objetivo, no una migración ejecutada. Los atributos comerciales
+Este es el modelo objetivo. En acceso 2.1 están implementadas únicamente
+`tenants`, `users` y `tenant_memberships`, mediante `0002_access`. Los atributos comerciales
 se limitan a los requeridos por el plan y a las decisiones de `decisions.md`.
 La especificación de cada tarea cerrará contratos antes de generar código.
 
@@ -71,3 +72,29 @@ entre cobro, consumo, cierre y anulación, no solo entre dos ventas idénticas.
 - Compras: adquisición y pagos consultables separadamente.
 - Cualquier indicador de utilidad requiere política explícita de reconocimiento,
   costos e impuestos antes de etiquetarlo como tal.
+
+## Contrato implementado: acceso 2.1
+
+- Los tres modelos tienen `id` UUID generado en servidor, `created_at` con zona
+  horaria y valor UTC de DB, e `is_active` obligatorio con valor inicial true.
+- `tenants`: `name` obligatorio (hasta 200 caracteres), no vacío.
+- `users`: `email` global único (hasta 254), normalizado con strip/lower por el ORM
+  y comprobado con lower/trim por DB; `password_hash` obligatorio (hasta 512), no
+  vacío y sin valor de reserva. La validación completa del correo y la generación
+  y verificación Argon2id se incorporarán antes de aceptar identidades reales.
+- `tenant_memberships`: FK restrictivas a tenant y usuario, `role` obligatorio
+  sin valor por defecto, CHECK con admin/cashier/mechanic/read_only y pares únicos
+  `(tenant_id, user_id)` y `(tenant_id, id)`. El segundo permite futuras FK
+  compuestas hacia membresías. Se reutiliza la membresía al reactivarla.
+- La pertenencia a otra empresa no concede acceso a la seleccionada. El resolvedor
+  interno consulta los tres estados activos y vuelve a leer el rol almacenado.
+  Su resultado no concede permisos y no debe reutilizarse entre peticiones.
+- Esta fase no crea sesiones, configuración monetaria/zona del tenant, auditoría,
+  permisos de módulos ni APIs. Las decisiones USD y America/El_Salvador siguen
+  vigentes para cuando se implementen sus casos de uso.
+- No hay RLS. El rol DB de aplicación tiene DML sobre estas tablas; el aislamiento
+  probado corresponde al resolvedor interno, no a consultas SQL arbitrarias.
+  La futura capa HTTP necesitará identidad y tenant desde sesión verificada.
+- No se permiten borrados de empresas/usuarios referenciados por membresías.
+  La protección del último administrador y la revocación de sesiones requieren
+  servicios transaccionales posteriores; no están resueltas por estas FK.

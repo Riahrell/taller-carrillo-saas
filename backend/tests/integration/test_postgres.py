@@ -1,6 +1,5 @@
 """Only runs against the explicitly enabled, fresh Compose test database."""
 
-import os
 import secrets
 import traceback
 from pathlib import Path
@@ -13,8 +12,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import make_url
 
-from app.core.config import Settings, load_settings
+from app.core.config import Settings
 from app.core.database import (
+    Base,
     DatabaseUnavailable,
     build_engine,
     connect_safely,
@@ -26,50 +26,6 @@ pytestmark = pytest.mark.integration
 BACKEND = Path(__file__).resolve().parents[2]
 
 
-@pytest.fixture(scope="module")
-def databases():
-    if os.environ.get("RUN_DB_INTEGRATION") != "1":
-        pytest.skip("Enable integration tests only through the isolated Compose runner")
-    settings = load_settings()
-    if settings.app_env != "test":
-        pytest.fail("Integration tests require APP_ENV=test")
-    owner_file = os.environ.get("MIGRATION_DATABASE_URL_FILE")
-    if not owner_file:
-        pytest.fail("An isolated migration credential file is required")
-    owner_secret = Path(owner_file).read_text().strip()
-    owner_settings = Settings(
-        app_env="test",
-        database_url=owner_secret,
-        database_url_file=None,
-        _env_file=None,
-    )
-    runtime_url = make_url(settings.database_url.get_secret_value())
-    owner_url = make_url(owner_secret)
-    if (
-        runtime_url.database != "carrillo_test"
-        or runtime_url.host != "db"
-        or owner_url.database != runtime_url.database
-        or owner_url.host != runtime_url.host
-        or owner_url.port != runtime_url.port
-        or runtime_url.username != "carrillo_app"
-        or owner_url.username != "carrillo_owner"
-    ):
-        pytest.fail("Refusing integration tests outside the isolated test database")
-    runtime = build_engine(settings)
-    owner = build_engine(owner_settings)
-    try:
-        with connect_safely(owner) as connection:
-            tables = inspect(connection).get_table_names(schema="public")
-            if set(tables) - {"alembic_version"}:
-                pytest.fail(
-                    "Test database contains unexpected tables; refusing changes"
-                )
-        yield runtime, owner, settings
-    finally:
-        runtime.dispose()
-        owner.dispose()
-
-
 def test_migrations_upgrade_check_downgrade_upgrade(databases) -> None:
     _, owner, _ = databases
     config = Config(str(BACKEND / "alembic.ini"))
@@ -77,15 +33,15 @@ def test_migrations_upgrade_check_downgrade_upgrade(databases) -> None:
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
         assert MigrationContext.configure(connection).get_current_revision() == (
-            "0001_foundation"
+            "0002_access"
         )
         command.check(config)
         command.downgrade(config, "base")
         assert MigrationContext.configure(connection).get_current_revision() is None
         command.upgrade(config, "head")
-        assert inspect(connection).get_table_names(schema="public") == [
-            "alembic_version"
-        ]
+        assert set(inspect(connection).get_table_names(schema="public")) == (
+            set(Base.metadata.tables) | {"alembic_version"}
+        )
 
 
 def test_runtime_and_migration_roles_are_separate_and_not_superusers(databases) -> None:
