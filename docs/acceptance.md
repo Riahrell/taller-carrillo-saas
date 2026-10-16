@@ -1,9 +1,9 @@
 # Plan incremental y aceptación
 
-Estado: hito 0 documentado y fundación 1.2 ejecutada. Existen backend mínimo,
-PostgreSQL privado, migraciones, Compose y pruebas unitarias/de integración.
-Frontend y CI siguen pendientes. Resultados actuales en
-`deliveries/foundation-1.2.md`; la entrega 1.1 queda como registro histórico.
+Estado: hito 0 documentado y fundación 1.3 ejecutada. Backend, PostgreSQL,
+migraciones, frontend inicial y proxy del mismo origen con pruebas locales.
+CI sigue pendiente. Resultados actuales en `deliveries/foundation-1.3.md`;
+las entregas anteriores quedan como registros históricos.
 No confundir criterios futuros de esta lista con verificaciones realizadas.
 
 ## Hitos

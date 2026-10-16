@@ -62,6 +62,60 @@ services:
       retries: 12
       start_period: 5s
 
+  frontend:
+    image: taller-carrillo-frontend:dev
+    build:
+      context: ./frontend
+      target: runtime
+    networks:
+      - edge
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  frontend-tests:
+    image: taller-carrillo-frontend:tests
+    build:
+      context: ./frontend
+      target: tools
+    profiles: [test]
+    network_mode: none
+
+  proxy:
+    image: nginx:stable-alpine@sha256:970364228b1e4f932abc22d321932816782cca8a20b85a77552a7cfe9acfb3b5
+    user: "101:101"
+    entrypoint: ["nginx", "-g", "daemon off;"]
+    configs:
+      - source: proxy_config
+        target: /etc/nginx/nginx.conf
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    networks:
+      - edge
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
   migrate:
     <<: *backend
     profiles: [tools]
@@ -99,6 +153,8 @@ volumes:
 configs:
   postgres_init:
     file: ./ops/postgres/init.sh
+  proxy_config:
+    file: ./ops/proxy/nginx.conf
 
 secrets:
   bootstrap_password:

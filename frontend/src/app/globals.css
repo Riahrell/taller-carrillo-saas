@@ -1,0 +1,244 @@
+:root {
+  color-scheme: light;
+  --paper: #f6f5ef;
+  --ink: #202922;
+  --muted: #62695e;
+  --line: #d8dbd0;
+  --accent: #d9f36a;
+  font-family: Arial, Helvetica, sans-serif;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+a {
+  color: inherit;
+}
+button {
+  font: inherit;
+}
+:focus-visible {
+  outline: 3px solid #526823;
+  outline-offset: 5px;
+}
+.skip-link {
+  position: fixed;
+  z-index: 2;
+  top: -100px;
+  left: 1rem;
+  padding: 1rem;
+  background: var(--accent);
+}
+.skip-link:focus {
+  top: 1rem;
+}
+.site-header,
+.site-footer {
+  max-width: 1400px;
+  margin: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 30px 6%;
+}
+.site-header {
+  border-bottom: 1px solid var(--line);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  text-decoration: none;
+}
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--ink);
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -1px;
+}
+.brand strong {
+  display: block;
+  font-size: 18px;
+  letter-spacing: -0.6px;
+}
+.brand-caption {
+  display: block;
+  color: var(--muted);
+  margin-top: 4px;
+  font-size: 11px;
+}
+.header-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+.welcome {
+  max-width: 1400px;
+  margin: auto;
+  padding: 90px 6% 100px;
+  min-height: calc(100svh - 200px);
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 70px;
+  align-items: center;
+}
+.eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--muted);
+  margin: 0 0 26px;
+}
+h1 {
+  font-size: clamp(42px, 5.3vw, 76px);
+  letter-spacing: -3px;
+  line-height: 1.04;
+  margin: 0;
+  font-weight: 600;
+}
+h1 span {
+  color: #63704f;
+}
+.intro {
+  max-width: 420px;
+  font-size: 16px;
+  line-height: 1.8;
+  color: var(--muted);
+  margin: 26px 0 40px;
+}
+.access-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 24px;
+  max-width: 420px;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #65763e;
+}
+.access-note h2 {
+  font-size: 13px;
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+.access-note p {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+  line-height: 1.6;
+}
+.workshop-art {
+  position: relative;
+  background: var(--accent);
+  aspect-ratio: 1;
+  border-radius: 28px;
+  overflow: hidden;
+  color: var(--ink);
+}
+.art-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(#2029220c 1px, transparent 1px),
+    linear-gradient(90deg, #2029220c 1px, transparent 1px);
+  background-size: 42px 42px;
+}
+.workshop-symbol {
+  position: absolute;
+  width: 85%;
+  height: 85%;
+  top: 7%;
+  left: 8%;
+  transform: rotate(-8deg);
+}
+.art-label {
+  position: absolute;
+  top: 28px;
+  left: 28px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+.art-caption {
+  position: absolute;
+  bottom: 28px;
+  left: 28px;
+  font-size: 13px;
+}
+.site-footer {
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--muted);
+  padding-top: 24px;
+  padding-bottom: 24px;
+}
+.message-page {
+  max-width: 900px;
+  margin: auto;
+  min-height: 70svh;
+  padding: 90px 6%;
+}
+.message-page h1 {
+  font-size: clamp(36px, 5vw, 55px);
+  letter-spacing: -2px;
+}
+.message-page > p:not(.eyebrow) {
+  line-height: 1.7;
+  color: var(--muted);
+  margin: 24px 0;
+}
+.action {
+  display: inline-flex;
+  padding: 13px 20px;
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--paper);
+  background: var(--ink);
+  cursor: pointer;
+  font-size: 14px;
+}
+@media (max-width: 760px) {
+  .site-header {
+    padding: 22px 6%;
+  }
+  .header-label {
+    display: none;
+  }
+  .welcome {
+    grid-template-columns: 1fr;
+    padding: 54px 6%;
+    gap: 42px;
+  }
+  h1 {
+    letter-spacing: -2px;
+  }
+  .intro {
+    margin: 22px 0 30px;
+  }
+  .workshop-art {
+    max-width: 420px;
+    width: 100%;
+  }
+  .site-footer {
+    gap: 20px;
+    align-items: flex-start;
+    line-height: 1.6;
+  }
+}

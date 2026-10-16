@@ -212,6 +212,7 @@ documenta por separado en `deliveries/` y en el README del repositorio.
 Fundación 1.1: dependencias backend, configuración validada, app mínima sin
 módulos comerciales y pruebas de configuración/arranque. Su ejecución consta
 en `deliveries/foundation-1.1.md`.
-Fundación 1.2 incorpora PostgreSQL/Alembic/Compose; su ejecución consta en
-`deliveries/foundation-1.2.md`. Continuar con frontend/proxy y CI en tareas
-independientes; el hito 1 solo termina al validar el conjunto.
+Fundación 1.2 incorpora PostgreSQL/Alembic/Compose; fundación 1.3 añade
+Next.js/TypeScript y proxy del mismo origen. Los resultados constan en
+`deliveries/foundation-1.2.md` y `deliveries/foundation-1.3.md`.
+Continuar con CI; el hito 1 solo termina al validar el conjunto.

@@ -3,15 +3,17 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: fundación 1.2
+## Estado: fundación 1.3
 
-API mínima, configuración Pydantic v2, SQLAlchemy 2.x síncrono, PostgreSQL privado,
-Alembic, Dockerfile y entorno de pruebas aislado. Sin autenticación, frontend ni
-operaciones comerciales. El hito 1 sigue en progreso. No usar en producción.
+API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
+del mismo origen, con pruebas aisladas. La pantalla inicial indica que el acceso
+aún no está habilitado. Sin autenticación ni operaciones comerciales todavía.
+El hito 1 sigue en progreso: falta CI. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 1.2](docs/deliveries/foundation-1.2.md).
-- La entrega 1.1 es un registro histórico; el arranque actual requiere DB.
+- [Aceptación](docs/acceptance.md) y [entrega 1.3](docs/deliveries/foundation-1.3.md).
+- Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
+  en 8080, y el arranque requiere DB.
 
 ## Requisitos
 
@@ -19,6 +21,8 @@ Docker Engine y Docker Compose con soporte para `!reset` (validado con 5.6.0),
 Python 3.13 para herramientas locales y acceso al daemon Docker. La primera
 instalación necesita acceso a los índices de imágenes y paquetes.
 Ejecutar desde la raíz del repositorio. No hacen falta cuentas externas.
+Las herramientas npm locales requieren Node.js 24. Docker ya lo incluye, aunque
+el Node instalado en el host tenga otra versión.
 
 Imágenes oficiales fijadas por digest y dependencias Python por versión/hash.
 Actualizarlas requiere revisión y pruebas, no se actualizan en cada arranque.
@@ -45,15 +49,17 @@ inicializado: cambiar archivos no cambia las contraseñas de PostgreSQL.
 Construir imagen, iniciar DB, aplicar migración y arrancar API, en este orden:
 
 ```bash
-docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml build backend
+docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml build backend frontend frontend-tests
 docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml up -d --wait db
 docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml run --rm migrate
-docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml up -d --wait backend
-curl --fail --silent --show-error http://127.0.0.1:8000/health/live
+docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml up -d --wait proxy
+python3 scripts/smoke_web.py --base-url http://127.0.0.1:8080
 ```
 
-Respuesta: `{"status":"ok"}`. Solo API en loopback:8000. PostgreSQL no publica
-puertos al host. El Compose base tampoco publica la API; lo hace el override dev.
+Abrir [Taller Carrillo local](http://localhost:8080). La API está bajo `/api`:
+`/api/health/live` devuelve `{"status":"ok"}`. Solo el proxy publica loopback:8080.
+API, frontend y PostgreSQL no publican puertos propios al host. El Compose base
+no publica ninguno; el override dev habilita el único puerto de entrada.
 La API comprueba la conexión al arrancar y dispone su engine al detenerse.
 Liveness indica vida del proceso, no disponibilidad continua de DB o versión de
 esquema. Las migraciones no se ejecutan desde la API.
@@ -143,6 +149,52 @@ El inicializador de roles solo se ejecuta al crear una DB vacía. Las futuras
 tablas creadas por el owner conceden DML a la app. Esto no equivale a aislamiento
 por tenant; ese control pertenece al hito 2.
 
+## Frontend y proxy
+
+Next.js App Router con TypeScript estricto y salida standalone. La imagen Node
+24 está fijada por digest y `npm ci` usa `package-lock.json` con integridades.
+No se necesitan variables `NEXT_PUBLIC_*` ni recompilar una URL de API por entorno:
+el cliente utiliza `/api/` relativo al navegador y el proxy retira ese prefijo.
+
+El cliente HTTP actual es solo GET, con credenciales del mismo origen,
+decodificador de respuesta y errores sin cuerpos internos. Las mutaciones se
+añadirán junto con sesiones y CSRF en el hito 2, antes de habilitar negocio.
+La pantalla inicial no inventa ventas, saldos ni datos de demostración.
+
+Verificar frontend dentro del contenedor sin red:
+
+```bash
+docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml run --rm frontend-tests
+python3 scripts/smoke_web.py --base-url http://127.0.0.1:8080
+```
+
+El primer comando ejecuta ESLint, Prettier, generación de tipos Next.js,
+TypeScript y Vitest/React Testing Library. El segundo comprueba HTML, assets,
+API, cabeceras y 404 a través del proxy. Antes, construir imágenes y arrancar
+el entorno según el bloque de primer arranque.
+
+Si se dispone de Node.js 24, los comandos locales equivalentes son:
+
+```bash
+cd frontend
+npm ci
+npm run lint
+npm run format:check
+npm run typecheck
+npm test
+npm run build
+```
+
+Compose ejecuta el build optimizado, sin hot reload. Después de editar frontend,
+reconstruir `frontend`/`frontend-tests` y ejecutar `up -d --wait proxy` para aplicar
+la imagen. Los tipos generados y cachés se excluyen de Git y del contexto Docker.
+No hay fuentes ni imágenes remotas para esta pantalla.
+
+Nginx y Next.js ejecutan sin root y con filesystem de solo lectura. Los archivos
+temporales usan tmpfs. Nginx añade cabeceras básicas y su log de acceso omite query
+strings, cuerpos y cookies. El acceso actual es HTTP local: HTTPS, CSRF y las
+políticas completas de producción aún no están habilitados.
+
 ## Actualizar dependencias
 
 ```bash
@@ -154,8 +206,12 @@ Revisar los locks y repetir validaciones. No versionar URLs de índices privados
 con credenciales. Referencias: [SQLAlchemy PostgreSQL](https://docs.sqlalchemy.org/en/20/dialects/postgresql.html),
 [Alembic](https://alembic.sqlalchemy.org/en/latest/tutorial.html),
 [imagen PostgreSQL](https://hub.docker.com/_/postgres).
+Para el frontend: [salida standalone de Next.js](https://nextjs.org/docs/app/api-reference/config/next-config-js/output),
+[Vitest con Next.js](https://nextjs.org/docs/app/guides/testing/vitest) y
+[proxy Nginx](https://nginx.org/en/docs/http/ngx_http_proxy_module.html).
 
 ## Siguiente tarea
 
-Fundación 1.3: Next.js/TypeScript mínimos, contenedor frontend y proxy de mismo
-origen. Después CI del conjunto. Sin pantallas comerciales antes de acceso.
+Fundación 1.4: CI de backend/frontend, builds y pruebas de integración para
+cerrar el hito 1. Después comienza acceso multiempresa; sin negocio antes de
+autorización y aislamiento comprobados.

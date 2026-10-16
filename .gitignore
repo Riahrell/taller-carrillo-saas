@@ -22,6 +22,8 @@ node_modules/
 dist/
 build/
 coverage/
+*.tsbuildinfo
+frontend/next-env.d.ts
 
 # Local data and temporary artifacts
 uploads/
