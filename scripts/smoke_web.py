@@ -68,7 +68,8 @@ def main() -> None:
     page = Page()
     page.feed(body.decode())
     assert page.language == "es"
-    assert "Acceso aún no disponible" in body.decode()
+    assert "Iniciar sesión" in body.decode()
+    assert "Comprobando acceso" in body.decode()
     assert page.assets, "No frontend static assets found"
     for asset in sorted(page.assets):
         read(base, asset, method="HEAD")

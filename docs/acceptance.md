@@ -3,13 +3,14 @@
 Estado: hito 0 documentado y fundación 1.4 implementada y validada integralmente
 en local. Workflow CI comprobado con actionlint; primera ejecución en GitHub
 pendiente porque no hay remoto configurado. Ese resultado remoto no se presume.
-Acceso 2.7 conecta login/logout HTTP, sesión, selección multiempresa y emisor de
+Acceso 2.8 conecta el formulario Next.js con login/logout HTTP, sesión,
+selección multiempresa y emisor de
 CSRF con cookies privadas. La IP se verifica desde el socket de Nginx en una red
 api interna separada. El CI comprueba falsificación de cabeceras, conexión directa,
 selección y logout/replay con Nginx/Uvicorn y PostgreSQL reales.
-Resultados actuales en `deliveries/access-2.7.md`; entregas anteriores como
+Resultados actuales en `deliveries/access-2.8.md`; entregas anteriores como
 registros históricos.
-El hito 2 sigue abierto: faltan formulario, permisos por operación, administración,
+El hito 2 sigue abierto: faltan permisos por operación, administración,
 último administrador, auditoría, recuperación y limpieza de registros de acceso.
 Contrato actualizado en `auth-http-contract.md`, con límites y pendientes explícitos.
 No confundir criterios futuros de esta lista con verificaciones realizadas.
@@ -17,8 +18,10 @@ No confundir criterios futuros de esta lista con verificaciones realizadas.
 La selección interna ya verifica pertenencia actual y rol desde DB. Se probaron
 IDs ajenos, otro navegador, expiración exacta, contraseña cambiada/rehash,
 revocación, consumo y emisión atómicos, rollback y dos conexiones concurrentes
-esperando realmente locks en PostgreSQL. Esto no demuestra todavía un recorrido
-de interfaz. Login/logout y selección por proxy tienen ahora pruebas separadas;
+esperando realmente locks en PostgreSQL. Se verificó además el recorrido de
+interfaz en navegador: rechazo genérico, login, selección con teclado, sesión
+recuperada al recargar, logout, cancelación y retorno anónimo. Login/logout y
+selección por proxy tienen pruebas separadas;
 no se cambia tenant en una sesión existente. Para otro acceso se exige logout.
 
 ## Hitos

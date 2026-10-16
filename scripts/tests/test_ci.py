@@ -64,6 +64,7 @@ class PipelineTests(unittest.TestCase):
                 "CSRF_SIGNING_KEY": "do-not-use",
                 "TRUSTED_PROXY_HOST": "untrusted.example",
                 "RUN_PROXY_INTEGRATION": "1",
+                "RUN_BROWSER_INTEGRATION": "1",
             },
         ):
             environment = isolated_environment()
@@ -76,6 +77,7 @@ class PipelineTests(unittest.TestCase):
             "CSRF_SIGNING_KEY",
             "TRUSTED_PROXY_HOST",
             "RUN_PROXY_INTEGRATION",
+            "RUN_BROWSER_INTEGRATION",
         ):
             self.assertNotIn(key, environment)
 

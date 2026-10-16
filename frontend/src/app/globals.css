@@ -19,7 +19,8 @@ body {
 a {
   color: inherit;
 }
-button {
+button,
+input {
   font: inherit;
 }
 :focus-visible {
@@ -88,9 +89,217 @@ button {
   padding: 90px 6% 100px;
   min-height: calc(100svh - 200px);
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
+  grid-template-columns: 1.15fr 1fr;
   gap: 70px;
   align-items: center;
+}
+.welcome-detail {
+  border-top: 1px solid var(--line);
+  padding-top: 24px;
+  max-width: 420px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+.welcome-detail span {
+  margin: 0 10px;
+  color: #9ca58c;
+}
+.access-panel {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: #fffef9;
+  padding: clamp(26px, 3.5vw, 46px);
+  box-shadow: 0 12px 36px #20292206;
+  width: 100%;
+  min-height: 270px;
+}
+.panel-step {
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 1.8px;
+  font-weight: 700;
+}
+.access-panel h2 {
+  font-size: clamp(24px, 2.5vw, 32px);
+  letter-spacing: -1px;
+  font-weight: 600;
+  margin: 16px 0 10px;
+}
+.panel-description {
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 14px;
+  margin: 0 0 28px;
+}
+.login-fields,
+.company-choices {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.login-fields {
+  display: grid;
+}
+.login-fields > label {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0 0 9px;
+}
+.login-fields > input {
+  margin-bottom: 23px;
+}
+.login-fields input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #bfc5b5;
+  border-radius: 8px;
+  padding: 13px 14px;
+  font-size: 16px;
+  background: #fff;
+  color: var(--ink);
+}
+.password-field {
+  position: relative;
+}
+.password-field input {
+  padding-right: 85px;
+}
+.password-toggle {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  bottom: 5px;
+  border: 0;
+  padding: 0 10px;
+  border-radius: 4px;
+  background: transparent;
+  color: #465235;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+.field-help {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  margin-top: 9px;
+}
+.access-panel .primary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-top: 28px;
+  padding: 15px 18px;
+  min-height: 49px;
+  font-weight: 600;
+}
+.primary span {
+  font-size: 18px;
+  color: var(--accent);
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.access-message {
+  background: #f0f1e6;
+  border-left: 3px solid #768e3d;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 18px 0;
+}
+.access-message[role="alert"] {
+  background: #fff3e8;
+  border-color: #ac5a29;
+}
+.access-footnote {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  margin: 26px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.access-footnote .status-dot {
+  margin: 0;
+  width: 6px;
+  height: 6px;
+  flex-basis: 6px;
+}
+.company-choices {
+  display: grid;
+  gap: 12px;
+}
+.company-choice {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 17px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.company-choice:has(input:checked) {
+  border-color: #5a6c33;
+  background: #f1f6e3;
+}
+.company-choice input {
+  accent-color: #465a25;
+  flex-shrink: 0;
+}
+.text-action {
+  display: inline-block;
+  margin-top: 18px;
+  padding: 8px 0;
+  border: 0;
+  color: #465235;
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.session-details {
+  margin: 20px 0 8px;
+}
+.session-details div {
+  border-top: 1px solid var(--line);
+  padding: 17px 0;
+}
+.session-details dt {
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+.session-details dd {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.session-help {
+  margin-top: 16px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .eyebrow {
   font-size: 10px;
@@ -116,14 +325,6 @@ h1 span {
   color: var(--muted);
   margin: 26px 0 40px;
 }
-.access-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  border-top: 1px solid var(--line);
-  padding-top: 24px;
-  max-width: 420px;
-}
 .status-dot {
   width: 8px;
   height: 8px;
@@ -131,55 +332,6 @@ h1 span {
   margin-top: 4px;
   border-radius: 50%;
   background: #65763e;
-}
-.access-note h2 {
-  font-size: 13px;
-  margin: 0 0 8px;
-  font-weight: 600;
-}
-.access-note p {
-  color: var(--muted);
-  font-size: 12px;
-  margin: 0;
-  line-height: 1.6;
-}
-.workshop-art {
-  position: relative;
-  background: var(--accent);
-  aspect-ratio: 1;
-  border-radius: 28px;
-  overflow: hidden;
-  color: var(--ink);
-}
-.art-grid {
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(#2029220c 1px, transparent 1px),
-    linear-gradient(90deg, #2029220c 1px, transparent 1px);
-  background-size: 42px 42px;
-}
-.workshop-symbol {
-  position: absolute;
-  width: 85%;
-  height: 85%;
-  top: 7%;
-  left: 8%;
-  transform: rotate(-8deg);
-}
-.art-label {
-  position: absolute;
-  top: 28px;
-  left: 28px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 2px;
-}
-.art-caption {
-  position: absolute;
-  bottom: 28px;
-  left: 28px;
-  font-size: 13px;
 }
 .site-footer {
   border-top: 1px solid var(--line);
@@ -231,10 +383,6 @@ h1 span {
   }
   .intro {
     margin: 22px 0 30px;
-  }
-  .workshop-art {
-    max-width: 420px;
-    width: 100%;
   }
   .site-footer {
     gap: 20px;

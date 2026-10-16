@@ -3,11 +3,12 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.7
+## Estado: acceso 2.8
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
-del mismo origen, con pruebas aisladas. La pantalla inicial indica que el acceso
-aún no está habilitado. Modelos de empresas, usuarios y membresías migrados, con
+del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
+selección de empresa y logout con cookies privadas. Modelos de empresas,
+usuarios y membresías migrados, con
 consulta interna de membresía activa probada en PostgreSQL. Sesiones internas
 revocables con hash de token y expiración probadas. Autenticación interna con
 límites compartidos por cuenta/IP. La API ya exige origen/CSRF firmado en
@@ -16,14 +17,15 @@ multiempresa exige contraseña verificada y un estado temporal ligado al navegad
 con caducidad y uso único probados. Login/logout, selección, consulta de sesión
 y emisión/renovación CSRF ya funcionan por HTTP con cookies privadas. La IP se
 obtiene de Nginx verificado en una red interna separada, con pruebas reales de
-cabeceras falsificadas. El formulario y las operaciones comerciales siguen pendientes.
+cabeceras falsificadas. Formulario probado en navegador con identidades sintéticas
+y PostgreSQL aislado. Las operaciones comerciales siguen pendientes.
 Bootstrap CLI atómico y hashing Argon2id
 disponibles; no se creó una cuenta real automáticamente.
 La fundación tiene validación integral local y workflow CI preparado. Su primera
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 2.7](docs/deliveries/access-2.7.md).
+- [Aceptación](docs/acceptance.md) y [entrega 2.8](docs/deliveries/access-2.8.md).
 - Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
   en 8080, y el arranque requiere DB.
 
@@ -104,7 +106,7 @@ Consultar revisión:
 docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml run --rm migrate python -m alembic -c alembic.ini current
 ```
 
-## Crear el primer administrador (opcional hasta habilitar el login)
+## Crear el primer administrador
 
 Con DB migrada y la imagen backend actualizada, ejecutar **en tu terminal**:
 
@@ -139,9 +141,10 @@ docker compose --project-name carrillo-dev --env-file .local/development/compose
 
 Códigos de salida: 0 completado/ayuda, 1 fallo de operación y 2 entrada inválida
 o cancelación. Los handlers de acceso ya emiten cookies y pruebas CSRF; el
-formulario web sigue pendiente. Límites compartidos, cookies y revocación se
+formulario web ya los utiliza. Límites compartidos, cookies y revocación se
 validan también por proxy real en el CI aislado.
-La cuenta creada no habilita por sí sola acceso desde la pantalla inicial.
+Después del bootstrap, ingresar en http://localhost:8080 con esos datos. No se
+crearon usuarios reales automáticamente ni existe una contraseña de reserva.
 
 Detener conservando los datos de desarrollo:
 
@@ -281,7 +284,7 @@ hash de descarte aleatorio para cuentas inexistentes/hashes inválidos. No se
 promete tiempo constante de extremo a extremo. Rehash de perfiles Argon2id
 anteriores y sesión nueva se confirman en la misma transacción.
 
-El servicio está conectado al servidor HTTP; falta la pantalla de acceso. Consultar
+El servicio está conectado al servidor HTTP y a la pantalla de acceso. Consultar
 [contrato HTTP de seguridad](docs/auth-http-contract.md), con partes implementadas
 y pendientes explícitos.
 La selección de empresa es una candidatura interna sujeta a membresía; el contrato
@@ -373,10 +376,26 @@ Next.js App Router con TypeScript estricto y salida standalone. La imagen Node
 No se necesitan variables `NEXT_PUBLIC_*` ni recompilar una URL de API por entorno:
 el cliente utiliza `/api/` relativo al navegador y el proxy retira ese prefijo.
 
-El cliente HTTP actual es solo GET, con credenciales del mismo origen,
-decodificador de respuesta y errores sin cuerpos internos. Las mutaciones se
-añadirán al cliente junto con los handlers de acceso y su prueba CSRF, antes de
-habilitar negocio.
+El cliente HTTP usa GET/POST con credenciales del mismo origen, respuestas
+decodificadas y errores sin cuerpos internos. Antes de cada escritura de acceso
+renueva CSRF y lee únicamente la prueba legible del perfil HTTP/HTTPS. No fija
+Origin ni Cookie desde JS, no acepta redirects y no reintenta escrituras.
+Cada request tiene espera máxima de 15s en cliente; abortar no deshace un commit.
+Un resultado incierto ofrece comprobar sesión mediante lectura antes de reintentar.
+
+El panel comprueba sesión antes de habilitar el formulario. Contraseña fuera de
+estado React y borrada del campo al enviar; email/password solo en JSON, nunca
+URL, localStorage o sessionStorage. El formulario usa POST también como método
+HTML. La política de login conserva contraseña sin recortes y admite 1–128
+caracteres Unicode; no impone el mínimo de alta a cuentas existentes.
+
+Varias empresas requieren selección explícita, sin primera opción automática.
+El contexto activo solo aparece tras GET de sesión verificada. Logout/cancelación
+retiran contexto y opciones, y solo anuncian cierre al confirmar el servidor.
+Se revalida al recuperar foco/visibilidad o recibir una señal entre pestañas,
+sin compartir datos de identidad por el canal ni hacer polling. Tras cinco minutos
+se retira un selector visible y tras treinta, el contexto visible; estos timers
+no autentican, renuevan ni revocan una sesión de servidor.
 La pantalla inicial no inventa ventas, saldos ni datos de demostración.
 
 Verificar frontend dentro del contenedor sin red:
@@ -412,7 +431,7 @@ Nginx y Next.js ejecutan sin root y con filesystem de solo lectura. Los archivos
 temporales usan tmpfs. Nginx añade cabeceras básicas y su log de acceso omite query
 strings, cuerpos y cookies. El acceso actual es HTTP local: HTTPS y las políticas completas de producción
 aún no están habilitados. El middleware y los handlers de acceso están conectados;
-falta el cliente de formulario que obtiene/envía las pruebas. Uvicorn no registra
+el formulario obtiene/envía las pruebas. Uvicorn no registra
 access logs; CI verifica ausencia de un canario sintético en logs de proxy/API.
 
 ## Actualizar dependencias
@@ -482,6 +501,6 @@ Referencias: [sintaxis de GitHub Actions](https://docs.github.com/en/actions/ref
 
 ## Siguiente tarea
 
-Acceso 2.8: conectar formulario Next.js, selección de empresa y logout; tratar
-errores/expiración y verificar teclado/foco y el recorrido en navegador. CI remota sigue
+Acceso 2.9: permisos en backend y administración segura de membresías, con
+revocación y protección del último administrador. CI remota sigue
 pendiente hasta conectar un repositorio autorizado.

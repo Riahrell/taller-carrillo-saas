@@ -418,3 +418,35 @@ Referencias: [autenticación OWASP](https://cheatsheetseries.owasp.org/cheatshee
 Referencias: [CSRF OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html),
 [redes Docker Compose](https://docs.docker.com/compose/how-tos/networking/).
 Flags Uvicorn contrastados con el CLI instalado de la dependencia fijada.
+
+## Acceso 2.8: formulario y estado de navegador
+
+- Componente cliente acotado a acceso: comprobar sesión, formulario, selector,
+  contexto confirmado y estado incierto. No simular módulos comerciales ni saldos.
+- Contraseña no controlada por React y borrada al submit; preservar espacios y
+  contar Unicode como servidor. Sin credenciales/contexto en Storage, cookies
+  legibles de identidad, URLs ni mensajes entre pestañas. HTML method=post.
+- Antes de cada POST, renovar CSRF y leer solo la cookie de prueba del protocolo
+  actual. Sin Origin/Cookie manuales, rutas externas ni redirects. Decodificar
+  respuestas antes de usarlas y mostrar únicamente errores seguros.
+- Sin opción de empresa preseleccionada; confirmar sesión con lectura después
+  de autenticar/seleccionar. Logout/cancelación usan revocación HTTP y descartan
+  contexto anterior. Fallo de cierre no se anuncia como sesión cerrada.
+- Un envío simultáneo por componente; sin retry automático de escritura. Timeout
+  cliente de 15s por request, con resultado potencialmente incierto: abortar no
+  revierte servidor. Recuperar mediante lectura, o reintento explícito de logout.
+- Relectura al volver a foco/visibilidad o recibir changed por BroadcastChannel,
+  sin identidad en el mensaje. Descartar lecturas abortadas/tardías. No polling.
+  Los timers de 5/30 min solo ocultan selector/contexto: no renuevan ni revocan DB.
+- Una recarga/foco que reinicia selector pierde opciones efímeras y requiere
+  credenciales de nuevo. No guardar el pendiente en JS ni añadir un endpoint de
+  recuperación de opciones en esta tarea. La cookie provisional sigue siendo HttpOnly.
+- Prueba de navegador con cuenta/empresas sintéticas en base efímera protegida por
+  los guards de test y variable explícita. Fixture fuera de colección automática
+  y de imagen runtime, credenciales en archivo privado tmpfs y limpieza al salir.
+  No crear una cuenta real ni revelar contraseñas de operador para validar UI.
+- Sin cambios de endpoints, esquema, dependencias ni reglas comerciales. Hito 2
+  continúa con autorización y administración; producción sigue pendiente.
+
+Referencias: [efectos React](https://react.dev/reference/react/useEffect),
+[componentes cliente Next.js](https://nextjs.org/docs/app/api-reference/directives/use-client).

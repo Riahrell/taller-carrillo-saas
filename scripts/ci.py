@@ -25,6 +25,7 @@ def isolated_environment() -> dict[str, str]:
         "PUBLIC_ORIGIN",
         "TRUSTED_PROXY_HOST",
         "RUN_PROXY_INTEGRATION",
+        "RUN_BROWSER_INTEGRATION",
     }
     return {
         key: value

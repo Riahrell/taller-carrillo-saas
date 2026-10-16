@@ -1,6 +1,6 @@
 export class ApiError extends Error {
   constructor(
-    public readonly kind: "network" | "http" | "invalid-response",
+    public readonly kind: "network" | "http" | "invalid-response" | "csrf",
     message: string,
     public readonly status: number | null = null,
   ) {
@@ -25,40 +25,83 @@ function apiPath(path: string): string {
   return url.pathname + url.search;
 }
 
-// Read-only foundation client. Mutations need the session/CSRF design of hito 2.
-export async function getJson<T>(
+export type RequestOptions = { signal?: AbortSignal };
+
+async function request<T>(
   path: string,
-  decode: (value: unknown) => T,
-  options: { signal?: AbortSignal } = {},
+  decode: (value: unknown, status: number) => T,
+  options: RequestOptions,
+  mutation?: { body: unknown; csrf: string },
 ): Promise<T> {
   const url = apiPath(path);
-  let response: Response;
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  if (options.signal?.aborted) controller.abort();
+  options.signal?.addEventListener("abort", cancel, { once: true });
+  const timeout = setTimeout(cancel, 15_000);
   try {
-    response = await fetch(url, {
-      method: "GET",
+    const response = await fetch(url, {
+      method: mutation ? "POST" : "GET",
       credentials: "same-origin",
       cache: "no-store",
-      headers: { Accept: "application/json" },
-      signal: options.signal,
+      redirect: "error",
+      headers: {
+        Accept: "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        ...(mutation
+          ? {
+              "Content-Type": "application/json",
+              "X-CSRF-Token": mutation.csrf,
+            }
+          : {}),
+      },
+      body: mutation ? JSON.stringify(mutation.body) : undefined,
+      signal: controller.signal,
     });
+    if (!response.ok) {
+      throw new ApiError(
+        "http",
+        "No se pudo completar la solicitud.",
+        response.status,
+      );
+    }
+    try {
+      return decode(
+        response.status === 204 ? undefined : await response.json(),
+        response.status,
+      );
+    } catch (error) {
+      if (controller.signal.aborted) throw error;
+      throw new ApiError(
+        "invalid-response",
+        "La respuesta del servidor no es válida.",
+        response.status,
+      );
+    }
   } catch (error) {
     if (options.signal?.aborted) throw error;
+    if (error instanceof ApiError) throw error;
     throw new ApiError("network", "No se pudo conectar con el servidor.");
+  } finally {
+    clearTimeout(timeout);
+    options.signal?.removeEventListener("abort", cancel);
   }
-  if (!response.ok) {
-    throw new ApiError(
-      "http",
-      "No se pudo completar la solicitud.",
-      response.status,
-    );
-  }
-  try {
-    return decode(await response.json());
-  } catch {
-    throw new ApiError(
-      "invalid-response",
-      "La respuesta del servidor no es válida.",
-      response.status,
-    );
-  }
+}
+
+export function getJson<T>(
+  path: string,
+  decode: (value: unknown, status: number) => T,
+  options: RequestOptions = {},
+): Promise<T> {
+  return request(path, decode, options);
+}
+
+export function sendJson<T>(
+  path: string,
+  body: unknown,
+  csrf: string,
+  decode: (value: unknown, status: number) => T,
+  options: RequestOptions = {},
+): Promise<T> {
+  return request(path, decode, options, { body, csrf });
 }

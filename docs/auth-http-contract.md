@@ -1,8 +1,9 @@
 # Contrato HTTP de acceso
 
-Estado: acceso 2.7 conecta login, selección, sesión, logout y emisión/renovación
-CSRF. Probados con PostgreSQL y, en CI aislado, Nginx/Uvicorn reales. El formulario
-sigue pendiente. No hay rutas comerciales ni administración pública de usuarios.
+Estado: acceso 2.8 conecta formulario, selección y logout al contrato HTTP de
+acceso 2.7. Probados con PostgreSQL, Nginx/Uvicorn y recorrido real de navegador
+con identidades sintéticas en una base efímera. No hay rutas comerciales ni
+administración pública de usuarios.
 
 ## Rutas y contratos
 
@@ -153,10 +154,46 @@ Nginx/Uvicorn y PostgreSQL reales: IP falsificada no cambia bucket, conexión di
 rechazada, sesión/logout/replay y selección multiempresa. No es aún una prueba de
 interfaz ni HTTPS real; flags Secure se verifican con el perfil HTTPS de tests.
 
-Siguiente: formulario Next.js, errores/expiración, navegación por teclado y recorrido
-de navegador. Después administración/permisos, último administrador, auditoría,
+Siguiente: administración/permisos, último administrador, auditoría,
 recuperación y limpieza. Hito 2 abierto; producción e inventario/comercio pendientes.
 
 Referencias: [CSRF OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html),
 [redes Docker Compose](https://docs.docker.com/compose/how-tos/networking/).
 Opciones Uvicorn contrastadas con el CLI instalado de la dependencia fijada.
+
+## Cliente Next.js (acceso 2.8)
+
+Primero GET session con X-Requested-With. Solo ante 401 prepara CSRF y muestra
+credenciales. POST renueva CSRF, lee carrillo_csrf o __Host-carrillo_csrf según
+protocolo y lo envía en X-CSRF-Token; no lee cookies privadas ni elige Origin/Cookie.
+Requests relativos /api, same-origin, no-store y redirects rechazados. Solo campos
+del caso de uso: email/password, membership_id o {}. Respuestas JSON decodificadas
+y roles/UUID comprobados; no conservar propiedades arbitrarias.
+
+Contraseña en campo no controlado, borrada al enviar y sin estado React/Storage.
+Preservar espacios y Unicode; contar caracteres, no unidades UTF-16. El HTML usa
+POST y el formulario solo aparece tras comprobación de sesión y preparación CSRF.
+Validación nativa de email/requeridos; errores sin cuerpos internos y foco en avisos.
+
+Un mutex en el componente y controles deshabilitados impiden doble envío desde
+esa pantalla. No promete idempotencia entre pestañas. Cada request se cancela
+tras 15s; abortar cliente no deshace servidor. No reintentar automáticamente POST.
+Ante fallo de red/respuesta/403/429/503, ocultar contexto y ofrecer comprobar sesión
+mediante GET. Cierre incierto permite reintento explícito de logout idempotente.
+
+No elegir primera empresa, ni crear sesión visible solo por recibir status de
+login: confirmar contexto con GET session. Un selector rechazado/caducado vuelve
+a credenciales. Renovación CSRF preserva el nonce vivo según contrato servidor.
+Cancelar selector usa logout, revocando el pendiente antes de volver al formulario.
+
+Foco/visibilidad/pageshow y señales de BroadcastChannel motivan nueva lectura;
+se aborta/descarta una lectura anterior. El canal solo transmite changed, sin
+datos ni autoridad. No hay polling que mantenga viva una sesión inactiva. Timers
+locales retiran selector a 5 min y contexto visible a 30 min, sin llamadas de
+fondo ni sustituir los plazos/controles DB. Recargar o volver a una selección
+pendiente exige volver a iniciar acceso; no se guardan opciones en Storage.
+
+Teclado: labels, autocomplete username/current-password, grupos de radio sin
+selección inicial, botones nativos, foco en título de selector/sesión y avisos,
+busy/disabled y avisos alert/status. El perfil mostrado es informativo; los
+permisos de negocio se implementarán y verificarán en backend.
