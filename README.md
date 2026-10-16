@@ -3,18 +3,19 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.1
+## Estado: acceso 2.2
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial indica que el acceso
 aún no está habilitado. Modelos de empresas, usuarios y membresías migrados, con
 consulta interna de membresía activa probada en PostgreSQL. Sin autenticación
-ni operaciones comerciales todavía.
+ni operaciones comerciales todavía. Bootstrap CLI atómico y hashing Argon2id
+disponibles; no se creó una cuenta real automáticamente.
 La fundación tiene validación integral local y workflow CI preparado. Su primera
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 2.1](docs/deliveries/access-2.1.md).
+- [Aceptación](docs/acceptance.md) y [entrega 2.2](docs/deliveries/access-2.2.md).
 - Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
   en 8080, y el arranque requiere DB.
 
@@ -72,12 +73,50 @@ La revisión actual `0002_access` añade `tenants`, `users` y
 son `admin`, `cashier`, `mechanic` y `read_only`, sin rol predeterminado.
 La consulta interna de membresía comprueba los tres estados activos en DB;
 requiere IDs obtenidos por el servidor y no concede permisos de módulo.
-No hay endpoints de acceso, hashing de contraseñas ni sesiones todavía.
+No hay endpoints de acceso ni sesiones todavía. Argon2id se usa en el
+bootstrap CLI; la creación inicial se ejecuta únicamente por el operador.
 Consultar revisión:
 
 ```bash
 docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml run --rm migrate python -m alembic -c alembic.ini current
 ```
+
+## Crear el primer administrador (opcional hasta habilitar el login)
+
+Con DB migrada y la imagen backend actualizada, ejecutar **en tu terminal**:
+
+```bash
+docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml run --rm --interactive --no-tty=false backend python -m app.modules.access.bootstrap
+```
+
+Solicita nombre de empresa y correo; después contraseña y confirmación ocultas.
+No escribas contraseñas en este chat, argumentos, variables de entorno ni archivos
+versionados. Exige TTY y aborta si no puede ocultar la entrada. No hay alta pública
+ni contraseña de reserva. No se creó un usuario de demostración en desarrollo.
+
+Correo validado sin comprobar entrega por DNS y normalizado a minúsculas.
+Contraseña de 15–128 caracteres Unicode, sin recorte ni reglas de composición;
+los espacios forman parte de la contraseña. Hash Argon2id: 64 MiB, tres pasadas,
+cuatro vías, sal aleatoria de 16 bytes y resultado de 32 bytes. No se imprime
+la contraseña, el hash ni el correo en el resultado del comando.
+
+El comando usa el rol DB de aplicación, requiere la revisión Alembic actual y
+rechaza cualquier registro de acceso existente, incluso inactivo. Crea empresa,
+usuario y membresía administradora en un commit; un fallo revierte los tres.
+Un bloqueo transaccional coordina otros bootstraps, con espera máxima de 5s.
+Una repetición falla sin modificar datos ni restablecer contraseñas. No borres
+registros para repetirlo; recuperación y administración se implementarán después.
+No ejecutar junto con migraciones o escrituras SQL manuales.
+
+Ayuda, sin crear registros:
+
+```bash
+docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml run --rm backend python -m app.modules.access.bootstrap --help
+```
+
+Códigos de salida: 0 completado/ayuda, 1 fallo de operación y 2 entrada inválida
+o cancelación. El login web, sesiones, CSRF y límites de intentos siguen pendientes.
+La cuenta creada no habilita por sí sola acceso desde la pantalla inicial.
 
 Detener conservando los datos de desarrollo:
 
@@ -272,7 +311,7 @@ Referencias: [sintaxis de GitHub Actions](https://docs.github.com/en/actions/ref
 
 ## Siguiente tarea
 
-Acceso 2.2: hashing Argon2id y bootstrap transaccional de la primera empresa,
-usuario y membresía administradora mediante CLI controlado, sin alta pública
-ni credenciales de reserva. La primera ejecución remota de CI permanece
-pendiente hasta conectar un repositorio; sin negocio antes de autorización probada.
+Acceso 2.3: persistencia y servicio interno de sesiones opacas revocables,
+con expiración absoluta/inactiva y aislamiento por membresía. Los contratos HTTP,
+CSRF y login se añadirán después de probar esta base de sesiones. La primera
+ejecución remota de CI permanece pendiente hasta conectar un repositorio; sin negocio antes de autorización probada.

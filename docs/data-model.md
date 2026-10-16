@@ -80,8 +80,10 @@ entre cobro, consumo, cierre y anulación, no solo entre dos ventas idénticas.
 - `tenants`: `name` obligatorio (hasta 200 caracteres), no vacío.
 - `users`: `email` global único (hasta 254), normalizado con strip/lower por el ORM
   y comprobado con lower/trim por DB; `password_hash` obligatorio (hasta 512), no
-  vacío y sin valor de reserva. La validación completa del correo y la generación
-  y verificación Argon2id se incorporarán antes de aceptar identidades reales.
+  vacío y sin valor de reserva. Acceso 2.2 incorpora validación del correo
+  y generación/verificación Argon2id
+  desde el bootstrap CLI. El CHECK de DB no verifica el formato criptográfico;
+  los futuros casos de uso deben utilizar estas utilidades.
 - `tenant_memberships`: FK restrictivas a tenant y usuario, `role` obligatorio
   sin valor por defecto, CHECK con admin/cashier/mechanic/read_only y pares únicos
   `(tenant_id, user_id)` y `(tenant_id, id)`. El segundo permite futuras FK

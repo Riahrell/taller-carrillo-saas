@@ -3,9 +3,10 @@
 Estado: hito 0 documentado y fundación 1.4 implementada y validada integralmente
 en local. Workflow CI comprobado con actionlint; primera ejecución en GitHub
 pendiente porque no hay remoto configurado. Ese resultado remoto no se presume.
-Acceso 2.1 implementa modelos, migración y consulta interna de membresías.
-Resultados actuales en `deliveries/access-2.1.md`; entregas anteriores como
-registros históricos. Siguiente trabajo de producto: acceso 2.2, hashing y bootstrap.
+Acceso 2.2 añade hashing Argon2id y bootstrap CLI atómico con pruebas de
+concurrencia PostgreSQL. Resultados actuales en `deliveries/access-2.2.md`;
+entregas anteriores como registros históricos. Siguiente trabajo: acceso 2.3,
+persistencia y servicio de sesiones opacas revocables.
 El hito 2 sigue abierto: faltan sesiones, CSRF y autorización por operación.
 No confundir criterios futuros de esta lista con verificaciones realizadas.
 

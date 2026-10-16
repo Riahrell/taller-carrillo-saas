@@ -218,3 +218,29 @@ Next.js/TypeScript y proxy del mismo origen. Los resultados constan en
 Fundación 1.4 automatiza y valida localmente el conjunto mediante `scripts.ci`.
 El workflow pasó actionlint; ejecución remota pendiente hasta conectar GitHub.
 La evidencia y ese límite constan en `deliveries/foundation-1.4.md`.
+
+## Acceso 2.2: bootstrap y contraseñas
+
+- Bootstrap exclusivamente CLI interactivo, sin argumentos de credenciales,
+  entrada por tubería ni fallback de contraseña visible. Sin endpoint público.
+- Exige esquema en head y tablas de acceso vacías, incluso registros inactivos.
+  Un advisory lock transaccional `(1128354386, 1)` serializa este comando bajo
+  READ COMMITTED. Espera máxima 5s; commit único después de los tres inserts.
+  La repetición no actualiza ni recupera usuarios. No coordina SQL arbitrario.
+- Contraseña: mínimo 15 y máximo 128 caracteres Unicode, sin normalizar/recortar
+  ni imponer composición. Se valida UTF-8. Política técnica previa al login;
+  listas de contraseñas comprometidas y límites de intentos siguen pendientes.
+- Argon2id mediante argon2-cffi, perfil explícito RFC_9106_LOW_MEMORY: m=65536 KiB,
+  t=3, p=4, sal=16 bytes, hash=32 bytes. Cada hash genera una sal aleatoria.
+  La utilidad de rehash se aplicará tras autenticar al implementar login.
+  Habrá que medir coste y limitar concurrencia de hashing antes de exposición.
+- EmailStr/email-validator comprueba sintaxis sin consultar entregabilidad DNS.
+  El correo se almacena normalizado a minúsculas conforme a la decisión existente.
+- El CLI muestra errores saneados sin tracebacks ni identidades. El operador debe
+  controlar la terminal y el entorno; no se promete borrado seguro de strings de
+  memoria Python. No crear credenciales reales automáticamente durante validación.
+
+Referencias: [argon2-cffi](https://argon2-cffi.readthedocs.io/en/stable/api.html),
+[RFC 9106](https://www.rfc-editor.org/rfc/rfc9106.html),
+[OWASP autenticación](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html),
+[bloqueos PostgreSQL](https://www.postgresql.org/docs/current/functions-admin.html).
