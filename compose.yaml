@@ -10,6 +10,7 @@ x-backend: &backend
     DATABASE_URL_FILE: /run/secrets/database_url
     DOCS_ENABLED: "false"
     PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Configure the exact browser origin}
+    TRUSTED_PROXY_HOST: proxy
     CSRF_SIGNING_KEY_FILE: /run/secrets/csrf_signing_key
   secrets:
     - database_url
@@ -57,7 +58,7 @@ services:
     <<: *backend
     networks:
       - private
-      - edge
+      - api
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3).close()"]
       interval: 5s
@@ -107,6 +108,7 @@ services:
         condition: service_healthy
     networks:
       - edge
+      - api
     read_only: true
     tmpfs:
       - /tmp
@@ -143,12 +145,15 @@ services:
       RUN_DB_INTEGRATION: "1"
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Configure the exact browser origin}
       CSRF_SIGNING_KEY_FILE: /run/secrets/csrf_signing_key
+      TRUSTED_PROXY_HOST: proxy
     secrets:
       - database_url
       - migration_database_url
       - csrf_signing_key
 
 networks:
+  api:
+    internal: true
   private:
     internal: true
   edge:

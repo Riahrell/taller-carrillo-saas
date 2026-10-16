@@ -62,6 +62,8 @@ class PipelineTests(unittest.TestCase):
                 "DATABASE_URL": "do-not-use",
                 "PUBLIC_ORIGIN": "https://untrusted.example",
                 "CSRF_SIGNING_KEY": "do-not-use",
+                "TRUSTED_PROXY_HOST": "untrusted.example",
+                "RUN_PROXY_INTEGRATION": "1",
             },
         ):
             environment = isolated_environment()
@@ -72,6 +74,8 @@ class PipelineTests(unittest.TestCase):
             "DATABASE_URL",
             "PUBLIC_ORIGIN",
             "CSRF_SIGNING_KEY",
+            "TRUSTED_PROXY_HOST",
+            "RUN_PROXY_INTEGRATION",
         ):
             self.assertNotIn(key, environment)
 
@@ -100,6 +104,22 @@ class PipelineTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             generate("test", base=self.workspace)
         self.assertTrue(secret.read_bytes() == original, "Credential file changed")
+
+    def test_log_canary_is_rejected_without_echoing_logs(self):
+        pipeline = self.pipeline()
+        with patch.object(pipeline, "compose") as compose:
+            compose.return_value.stdout = "sensitive-data carrillo-http-log-canary"
+            with self.assertRaisesRegex(
+                RuntimeError, "synthetic request canary"
+            ) as caught:
+                pipeline.check_access_logs()
+            self.assertNotIn("sensitive-data", str(caught.exception))
+
+    def test_logs_without_request_canary_are_accepted(self):
+        pipeline = self.pipeline()
+        with patch.object(pipeline, "compose") as compose:
+            compose.return_value.stdout = "proxy GET /auth/login 401"
+            pipeline.check_access_logs()
 
 
 if __name__ == "__main__":

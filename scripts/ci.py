@@ -23,6 +23,8 @@ def isolated_environment() -> dict[str, str]:
         "DB_SECRETS_DIR",
         "CI_PROJECT_NAME",
         "PUBLIC_ORIGIN",
+        "TRUSTED_PROXY_HOST",
+        "RUN_PROXY_INTEGRATION",
     }
     return {
         key: value
@@ -94,6 +96,10 @@ class Pipeline:
             or db["environment"]["POSTGRES_DB"] != "carrillo_test"
             or services["backend"]["environment"]["APP_ENV"] != "test"
             or not config["networks"]["private"]["internal"]
+            or not config["networks"]["api"]["internal"]
+            or set(services["backend"]["networks"]) != {"private", "api"}
+            or set(services["frontend"]["networks"]) != {"edge"}
+            or set(services["proxy"]["networks"]) != {"edge", "api"}
         ):
             raise RuntimeError("Refusing a non-isolated CI configuration")
         for name in ("db", "backend", "frontend"):
@@ -128,6 +134,20 @@ class Pipeline:
         if not re.fullmatch(r"127\.0\.0\.1:[0-9]+", address):
             raise RuntimeError("Unexpected CI proxy address")
         self.bind_origin(address)
+        self.compose(
+            "run",
+            "--rm",
+            "-e",
+            "RUN_PROXY_INTEGRATION=1",
+            "tests",
+            "python",
+            "-m",
+            "pytest",
+            "-p",
+            "no:cacheprovider",
+            "tests/integration/proxy_access.py",
+        )
+        self.check_access_logs()
         self.run(
             [
                 sys.executable,
@@ -148,6 +168,13 @@ class Pipeline:
         actual = self.compose("port", "proxy", "8080", capture=True).stdout.strip()
         if actual != address:
             raise RuntimeError("CI proxy port changed while binding its origin")
+
+    def check_access_logs(self) -> None:
+        logs = self.compose(
+            "logs", "--no-color", "backend", "proxy", capture=True
+        ).stdout
+        if "carrillo-http-log-canary" in logs:
+            raise RuntimeError("Access logs exposed the synthetic request canary")
 
     def cleanup(self) -> None:
         # The name is generated and validated before any operation. Never dev/test.

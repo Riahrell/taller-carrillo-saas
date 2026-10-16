@@ -162,3 +162,13 @@ mantiene desde verificación hasta commit y serializa nuevas selecciones, consum
 revocación y cambios coordinados de contraseña. Consumo y emisión son una única
 transacción; resultado/token no sale si falla commit. No hay RLS ni protección
 contra SQL arbitrario del rol de aplicación.
+
+## Transporte de acceso 2.7
+
+Sin migración nueva: sesiones, contadores y pendientes usan el esquema existente.
+El adaptador HTTP confirma transacciones antes de emitir/retirar cookies o devolver
+contexto. Logout coordina revocación de sesión y pendiente en una transacción,
+prebloqueando usuarios por UUID si las cookies remiten a identidades distintas.
+Los tokens de navegador no se guardan en claro ni se serializan en las respuestas.
+El contexto HTTP relee nombre de empresa, membresía y rol después de comprobar
+la sesión; no añade autoridad del cliente ni snapshots de permisos.

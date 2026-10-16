@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.6
+## Estado: acceso 2.7
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial indica que el acceso
@@ -13,14 +13,17 @@ revocables con hash de token y expiración probadas. Autenticación interna con
 límites compartidos por cuenta/IP. La API ya exige origen/CSRF firmado en
 peticiones con efectos y tiene política de cookies probada. La selección interna
 multiempresa exige contraseña verificada y un estado temporal ligado al navegador,
-con caducidad y uso único probados. Sin login HTTP
-ni operaciones comerciales todavía. Bootstrap CLI atómico y hashing Argon2id
+con caducidad y uso único probados. Login/logout, selección, consulta de sesión
+y emisión/renovación CSRF ya funcionan por HTTP con cookies privadas. La IP se
+obtiene de Nginx verificado en una red interna separada, con pruebas reales de
+cabeceras falsificadas. El formulario y las operaciones comerciales siguen pendientes.
+Bootstrap CLI atómico y hashing Argon2id
 disponibles; no se creó una cuenta real automáticamente.
 La fundación tiene validación integral local y workflow CI preparado. Su primera
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 2.6](docs/deliveries/access-2.6.md).
+- [Aceptación](docs/acceptance.md) y [entrega 2.7](docs/deliveries/access-2.7.md).
 - Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
   en 8080, y el arranque requiere DB.
 
@@ -91,9 +94,9 @@ sobre `0004_login_throttles` (contadores), `0003_sessions` (sesiones) y
 son `admin`, `cashier`, `mechanic` y `read_only`, sin rol predeterminado.
 La consulta interna de membresía comprueba los tres estados activos en DB;
 requiere IDs obtenidos por el servidor y no concede permisos de módulo.
-No hay endpoints de acceso ni cookies de autenticación todavía. Argon2id se usa
+El contrato de acceso HTTP está en docs/auth-http-contract.md. Argon2id se usa
 en el bootstrap CLI; la creación inicial se ejecuta únicamente por el operador.
-Los servicios internos de sesión y selección aún no se conectan a la capa HTTP.
+Los servicios de sesión y selección ya se conectan a la capa HTTP.
 Una selección pendiente no autoriza módulos ni sustituye una sesión activa.
 Consultar revisión:
 
@@ -135,9 +138,9 @@ docker compose --project-name carrillo-dev --env-file .local/development/compose
 ```
 
 Códigos de salida: 0 completado/ayuda, 1 fallo de operación y 2 entrada inválida
-o cancelación. El login web y los handlers que emiten cookies/pruebas CSRF siguen
-pendientes. La política HTTP está probada; los límites ya se aplican en el servicio
-interno de autenticación.
+o cancelación. Los handlers de acceso ya emiten cookies y pruebas CSRF; el
+formulario web sigue pendiente. Límites compartidos, cookies y revocación se
+validan también por proxy real en el CI aislado.
 La cuenta creada no habilita por sí sola acceso desde la pantalla inicial.
 
 Detener conservando los datos de desarrollo:
@@ -204,6 +207,7 @@ sanean fallos para evitar imprimir parámetros del controlador. No usar
 | `PUBLIC_ORIGIN` | Origen canónico exacto del navegador, sin barra final/ruta/query. Obligatorio para arrancar API; HTTPS en producción. |
 | `CSRF_SIGNING_KEY_FILE` | Archivo de clave externa de 32 bytes aleatorios, hex minúsculo (64 caracteres). Compose usa este modo. |
 | `CSRF_SIGNING_KEY` | Alternativa al archivo, tratada como SecretStr; nunca definir ambas fuentes ni usar una reserva. |
+| `TRUSTED_PROXY_HOST` | Identidad DNS del proxy en red api interna. Obligatoria al arrancar HTTP; Compose define proxy. No usar una cabecera o IP aportada por el cliente. |
 
 Definir exactamente una fuente de URL mediante entorno o `.env` local.
 El esquema actual exige host, base, usuario y contraseña; rechaza otros drivers
@@ -272,12 +276,12 @@ no anonimiza los valores, que pueden ser deducibles. IPv4 y su representación
 IPv6 mapeada comparten contador. La IP debe venir de un adaptador confiable.
 Un origen bloqueado no genera filas para nuevos correos ni ejecuta Argon2.
 
-Se inicializará una instancia por worker antes de admitir credenciales, con un
+Se inicializa una instancia por worker antes de admitir credenciales, con un
 hash de descarte aleatorio para cuentas inexistentes/hashes inválidos. No se
 promete tiempo constante de extremo a extremo. Rehash de perfiles Argon2id
 anteriores y sesión nueva se confirman en la misma transacción.
 
-El servicio no está conectado al servidor HTTP ni a la pantalla inicial. Consultar
+El servicio está conectado al servidor HTTP; falta la pantalla de acceso. Consultar
 [contrato HTTP de seguridad](docs/auth-http-contract.md), con partes implementadas
 y pendientes explícitos.
 La selección de empresa es una candidatura interna sujeta a membresía; el contrato
@@ -287,7 +291,7 @@ de Credentials rechaza tenant, rol e identidad elegidos por cliente.
 
 begin_login verifica credenciales antes de obtener empresas. Una membresía activa
 permite emitir sesión; varias devuelven opciones y PendingLogin, ligado a una
-cookie de navegador que el adaptador futuro deberá verificar. Cero rechaza de
+cookie de navegador que el adaptador HTTP verifica. Cero rechaza de
 forma genérica. No hay lookup público de empresas por correo.
 
 El pendiente dura cinco minutos y guarda solo hashes de token, binding y hash
@@ -298,21 +302,42 @@ navegador no puede usarlo ni consumirlo. Consumo y sesión confirman juntos.
 
 Un nuevo login correcto cancela pendientes previos; una contraseña incorrecta
 no los cancela. Cambio de hash de contraseña o revocación invalida el pendiente.
-Los servicios están probados con concurrencia PostgreSQL y todavía no se exponen
-en HTTP. Detalles y comandos en la [entrega 2.6](docs/deliveries/access-2.6.md).
+Los servicios están probados con concurrencia PostgreSQL y selección mediante
+Nginx real. Detalles internos en la [entrega 2.6](docs/deliveries/access-2.6.md)
+y transporte en la [entrega 2.7](docs/deliveries/access-2.7.md).
 
-## Protección HTTP (acceso 2.5)
+## Acceso HTTP (acceso 2.7)
 
 La API rechaza peticiones con efectos si Origin no coincide exactamente con
 PUBLIC_ORIGIN, falta prueba CSRF o el nonce/sesión ligado a la firma no coincide.
-GET/HEAD/OPTIONS conservan su semántica y no emiten cookies automáticamente.
-La política de cookies se prueba con rutas exclusivas de tests; no se agregaron
-rutas de login ni de emisión de CSRF en el servidor público de esta entrega.
+La ruta GET /api/auth/csrf emite/renueva pruebas y exige X-Requested-With:
+XMLHttpRequest. La misma cabecera protege GET /api/auth/session. CORS permanece
+cerrado; si Origin/Sec-Fetch-Site existen, deben corresponder al mismo origen.
+
+POST /api/auth/login acepta solo email/password; POST /api/auth/select-membership,
+solo membership_id; POST /api/auth/logout requiere {}. Las tres escrituras
+exigen Origin y X-CSRF-Token válidos. Login devuelve 200 o 202 con opciones de
+empresa; los tokens van solo en cookies HttpOnly. Logout revoca en DB antes de
+borrar cookies. Debe cerrarse sesión antes de iniciar otro acceso. Ver
+[contrato completo](docs/auth-http-contract.md) para respuestas, límites y errores.
+
+La IP de login se acepta solo si el socket peer coincide con TRUSTED_PROXY_HOST
+resuelto en DNS Docker. Backend/proxy comparten api interna; frontend usa edge y
+no comparte red con backend. Nginx sobrescribe X-Real-IP y elimina cabeceras
+Forwarded/X-Forwarded-For/X-Forwarded-Host aportadas por el cliente. Uvicorn conserva
+el socket real con --no-proxy-headers. No sustituirlo por confianza en toda IP privada.
+
+Perfil inicial: Nginx 10 peticiones/s por IP en /api/auth/, burst 20 y diez
+conexiones activas por IP; dos verificaciones de contraseña por worker y 64
+conexiones/tareas Uvicorn. Exceso general: 429 del proxy o 503 por capacidad.
+DB limita espera de lock a 3s y sentencia a 10s por transacción de acceso.
+Los límites de fallos por cuenta/IP conservan 401 genérico. Falta medir capacidad
+para producción; no se promete un timeout total de HTTP/DNS.
 
 Para desarrollo se generó PUBLIC_ORIGIN=http://localhost:8080. Abrir esa dirección:
 http://127.0.0.1:8080 representa otro origen. Cambiar PUBLIC_ORIGIN exige actualizar
 la configuración y recrear API. Producción requiere HTTPS y usa cookies __Host-,
-Secure, HttpOnly para sesión/preauth, Path=/, SameSite=Lax y sin Domain. El cookie
+Secure, HttpOnly para sesión/preauth/pendiente, Path=/, SameSite=Lax y sin Domain. El cookie
 CSRF es legible por JS y contiene solo la prueba firmada, nunca el token de sesión.
 
 HMAC-SHA-256 separa propósitos y liga la prueba a una cookie HttpOnly de sesión o
@@ -386,8 +411,9 @@ No hay fuentes ni imágenes remotas para esta pantalla.
 Nginx y Next.js ejecutan sin root y con filesystem de solo lectura. Los archivos
 temporales usan tmpfs. Nginx añade cabeceras básicas y su log de acceso omite query
 strings, cuerpos y cookies. El acceso actual es HTTP local: HTTPS y las políticas completas de producción
-aún no están habilitados. El middleware CSRF ya está conectado a la API; falta
-conectar los handlers de acceso y el cliente que obtiene/envía las pruebas.
+aún no están habilitados. El middleware y los handlers de acceso están conectados;
+falta el cliente de formulario que obtiene/envía las pruebas. Uvicorn no registra
+access logs; CI verifica ausencia de un canario sintético en logs de proxy/API.
 
 ## Actualizar dependencias
 
@@ -456,7 +482,6 @@ Referencias: [sintaxis de GitHub Actions](https://docs.github.com/en/actions/ref
 
 ## Siguiente tarea
 
-Acceso 2.7: cerrar e implementar login/logout HTTP, emisor de CSRF, IP de proxy
-confiable y transporte de selección usando el servicio verificado.
-Después conectar el formulario y probar el flujo completo. CI remota sigue
+Acceso 2.8: conectar formulario Next.js, selección de empresa y logout; tratar
+errores/expiración y verificar teclado/foco y el recorrido en navegador. CI remota sigue
 pendiente hasta conectar un repositorio autorizado.

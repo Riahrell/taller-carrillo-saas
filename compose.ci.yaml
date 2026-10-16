@@ -4,6 +4,9 @@ services:
     image: ${CI_PROJECT_NAME:?Use python3 -m scripts.ci}-backend:ci
   tests:
     image: ${CI_PROJECT_NAME:?Use python3 -m scripts.ci}-backend-tests:ci
+    networks:
+      - private
+      - api
   migrate:
     image: ${CI_PROJECT_NAME:?Use python3 -m scripts.ci}-backend:ci
   frontend:

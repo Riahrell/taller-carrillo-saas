@@ -31,6 +31,21 @@ class Settings(BaseSettings):
     public_origin: str | None = None
     csrf_signing_key: SecretStr | None = None
     csrf_signing_key_file: Path | None = None
+    trusted_proxy_host: str | None = None
+
+    @field_validator("trusted_proxy_host")
+    @classmethod
+    def validate_proxy_host(cls, value: str | None) -> str | None:
+        if value is not None and (
+            len(value) > 253
+            or not re.fullmatch(r"[a-z][a-z0-9.-]*", value)
+            or any(
+                not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", part)
+                for part in value.split(".")
+            )
+        ):
+            raise ValueError("A canonical trusted proxy DNS hostname is required")
+        return value
 
     @model_validator(mode="before")
     @classmethod

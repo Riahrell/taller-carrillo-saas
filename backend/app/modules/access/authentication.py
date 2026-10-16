@@ -9,7 +9,7 @@ from uuid import UUID
 from argon2 import Type, extract_parameters
 from argon2.exceptions import HashingError, InvalidHashError
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr, field_validator
-from sqlalchemy import Engine, func, select
+from sqlalchemy import Engine, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -67,6 +67,12 @@ class Credentials(BaseModel):
 
 class AuthenticationUnavailable(RuntimeError):
     """Infrastructure failure distinct from a generic credential rejection."""
+
+
+def _limit_transaction(session: Session) -> None:
+    # Constants, never interpolated request values; local to this transaction.
+    session.execute(text("SET LOCAL lock_timeout = '3s'"))
+    session.execute(text("SET LOCAL statement_timeout = '10s'"))
 
 
 def _digest(value: str) -> str:
@@ -142,6 +148,7 @@ class Authenticator:
         ip_key = _ip_digest(client_ip)
         try:
             with self._factory.begin() as session:
+                _limit_transaction(session)
                 result = self._authenticate(
                     session, credentials, ip_key=ip_key, tenant_id=selected_tenant_id
                 )
@@ -247,6 +254,7 @@ class Authenticator:
             return None
         try:
             with self._factory.begin() as session:
+                _limit_transaction(session)
                 result = self._authenticate(
                     session,
                     credentials,
@@ -279,6 +287,7 @@ class Authenticator:
             return None
         try:
             with self._factory.begin() as session:
+                _limit_transaction(session)
                 result = _select_membership(
                     session,
                     token_hash=token_hash,

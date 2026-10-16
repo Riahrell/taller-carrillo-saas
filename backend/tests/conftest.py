@@ -24,6 +24,8 @@ def isolate_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path, request) ->
         "public_origin",
         "csrf_signing_key",
         "csrf_signing_key_file",
+        "TRUSTED_PROXY_HOST",
+        "trusted_proxy_host",
     ):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv(
@@ -39,3 +41,4 @@ def isolate_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path, request) ->
 
     monkeypatch.setenv("PUBLIC_ORIGIN", "https://testserver")
     monkeypatch.setenv("CSRF_SIGNING_KEY", secrets.token_hex(32))
+    monkeypatch.setenv("TRUSTED_PROXY_HOST", "proxy")

@@ -12,8 +12,12 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings, load_settings
 from app.core.database import build_engine, create_session_factory, verify_connection
+from app.modules.access.authentication import AuthenticationUnavailable
 from app.modules.access.http_middleware import HttpSecurityMiddleware
-from app.modules.access.http_security import HttpSecurity
+from app.modules.access.http_security import HttpSecurity, RequestRejected
+from app.modules.access.http_service import HttpAccess
+from app.modules.access.routes import router as access_router
+from app.modules.access.trusted_proxy import TrustedProxy
 
 
 class LivenessResponse(BaseModel):
@@ -23,6 +27,7 @@ class LivenessResponse(BaseModel):
 def create_app(settings: Settings | None = None) -> FastAPI:
     configuration = settings if settings is not None else load_settings()
     http_security = HttpSecurity(configuration)
+    trusted_proxy = TrustedProxy(configuration)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -30,6 +35,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             await run_in_threadpool(verify_connection, engine)
             app.state.session_factory = create_session_factory(engine)
+            app.state.access = await run_in_threadpool(HttpAccess, engine)
             yield
         finally:
             await run_in_threadpool(engine.dispose)
@@ -45,7 +51,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     application.state.settings = configuration
     application.state.http_security = http_security
+    application.state.trusted_proxy = trusted_proxy
+    application.include_router(access_router)
     application.add_middleware(HttpSecurityMiddleware, policy=http_security)
+
+    @application.exception_handler(RequestRejected)
+    async def rejected(_request: Request, _error: RequestRejected) -> JSONResponse:
+        return JSONResponse(
+            {"detail": "Request rejected"},
+            status_code=403,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @application.exception_handler(AuthenticationUnavailable)
+    async def unavailable(
+        _request: Request, _error: AuthenticationUnavailable
+    ) -> JSONResponse:
+        return JSONResponse(
+            {"detail": "Authentication unavailable"},
+            status_code=503,
+            headers={"Cache-Control": "no-store"},
+        )
 
     @application.exception_handler(RequestValidationError)
     async def invalid_request(

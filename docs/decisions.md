@@ -366,3 +366,55 @@ La vigencia y el intento único son decisiones técnicas de este proyecto; no se
 presentan como valores impuestos por las referencias.
 Referencias: [autenticación OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html),
 [bloqueos PostgreSQL 18](https://www.postgresql.org/docs/18/explicit-locking.html).
+
+## Acceso 2.7: transporte HTTP y proxy confiable
+
+- Rutas de acceso documentadas en auth-http-contract.md: emisor/renovador CSRF,
+  login, selector, consulta de sesión y logout. Los cuerpos solo contienen los
+  campos técnicos del caso de uso; identidad/tenant/rol se resuelven en servidor.
+  Todas las respuestas de acceso son no-store; tokens solo en cookies HttpOnly.
+- Lecturas de sesión/CSRF exigen X-Requested-With: XMLHttpRequest, CORS cerrado,
+  Origin exacto cuando existe y Sec-Fetch-Site same-origin cuando existe.
+  El GET mismo origen puede no incluir Origin. Una página de otro origen no
+  puede enviar esa cabecera sin preflight, que no recibe permiso CORS.
+- Escrituras mantienen Origin obligatorio, JSON acotado y prueba CSRF firmada.
+  No hay excepciones del guard para login/logout. Cookie preauth firmada verificada
+  como binding; cookie de identidad pendiente independiente y privada, cinco minutos.
+  Renovar CSRF conserva un nonce vivo durante selección para mantener su binding.
+- Login/selección requieren ausencia de cookie de sesión. Otro acceso exige
+  logout, sin cambiar el tenant de una sesión existente. El emisor CSRF comprueba
+  una sesión presente y recupera cookies caducadas/revocadas con preauth nueva.
+- Consulta de sesión confirma actividad antes de responder contexto actual.
+  Logout revoca sesión y pendiente con nonce válido juntos, también con cookies
+  mixtas; ordena locks de usuarios por UUID antes de pendientes/sesiones. Un fallo
+  de commit conserva las cookies y revierte las mutaciones; no autentica a medias.
+- Redes Compose: edge para frontend/proxy; api interna para proxy/backend;
+  private interna para backend/DB/herramientas. Solo proxy publica loopback.
+  Los tests CI se conectan también a api, únicamente en el override aislado.
+- Nginx establece X-Real-IP desde su socket observado y elimina Forwarded,
+  X-Forwarded-For y X-Forwarded-Host. Uvicorn usa --no-proxy-headers. La API acepta
+  X-Real-IP solo si su socket peer coincide con TRUSTED_PROXY_HOST resuelto en
+  DNS Docker, sin caché de IP fija ni reserva si falla DNS. El daemon/red/DNS son
+  autoridad del operador. No extender confianza a todas las IP privadas o a
+  proxies añadidos sin rediseñar y probar la cadena de confianza.
+- Dos verificaciones de contraseña simultáneas por worker; exceso 503 sin cola.
+  Uvicorn limita 64 conexiones/tareas. Nginx aplica 10 peticiones/s por IP a acceso,
+  burst 20 sin espera y diez conexiones activas por IP; exceso 429 genérico.
+  Cuerpo máximo 8 KiB, espera de cuerpo 10s y buffering antes del backend.
+  Nginx normaliza fallos upstream 502/503/504 de acceso a 503 JSON/no-store.
+  Son parámetros iniciales técnicos; falta medir capacidad para producción.
+- Transacciones de acceso fijan localmente lock_timeout 3s y statement_timeout
+  10s; no cambian el resto de conexiones ni prometen un timeout total HTTP/DNS.
+  Los límites de fallos por cuenta/IP conservan los valores y el 401 genérico.
+- Uvicorn sin access log; Nginx registra método/URI sin query/status e IP, sin
+  cuerpos ni cookies. Se descartan errores de request de /api/auth/ que pueden
+  incluir query; se conserva el status en access log. CI examina un canario
+  sintético de cuerpo/query/cabeceras, incluidos rechazos 429,
+  en logs capturados sin imprimirlos. Secretos en trazas/payloads siguen prohibidos.
+- No hay cambios de esquema, dependencias ni frontend. La revisión sigue
+  0005_login_challenges. Formulario, permisos, administración, mantenimiento,
+  HTTPS real y hardening de producción siguen pendientes en sus hitos.
+
+Referencias: [CSRF OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html),
+[redes Docker Compose](https://docs.docker.com/compose/how-tos/networking/).
+Flags Uvicorn contrastados con el CLI instalado de la dependencia fijada.

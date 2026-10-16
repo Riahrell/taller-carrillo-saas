@@ -1,4 +1,4 @@
-"""Actual ASGI guard with test-only routes; no access endpoints in the app."""
+"""ASGI guard and cookie policy, using isolated test-only effect handlers."""
 
 import secrets
 from datetime import UTC, datetime, timedelta
@@ -15,7 +15,49 @@ from app.core.config import ConfigurationError, Settings
 from app.main import create_app
 from app.modules.access import http_security as http
 from app.modules.access.authentication import Credentials
+from app.modules.access.login_challenges import PendingLogin
 from app.modules.access.sessions import IssuedSession
+
+
+@pytest.mark.parametrize(
+    "origin,environment,secure",
+    [
+        ("https://taller.example", "production", True),
+        ("http://localhost:8080", "development", False),
+    ],
+)
+def test_pending_cookie_is_private_bounded_and_deleted_with_same_scope(
+    origin, environment, secure
+):
+    policy = http.HttpSecurity(Settings(app_env=environment, public_origin=origin))
+    response = Response()
+    policy.set_challenge(
+        response,
+        PendingLogin(
+            SecretStr(secrets.token_urlsafe(32)), http._now() + timedelta(minutes=5), ()
+        ),
+    )
+    parsed = SimpleCookie()
+    for value in response.headers.getlist("set-cookie"):
+        parsed.load(value)
+    cookie = parsed[policy.challenge_cookie]
+    assert bool(cookie["secure"]) is secure and cookie["httponly"]
+    assert (
+        cookie["path"] == "/" and not cookie["domain"] and cookie["samesite"] == "lax"
+    )
+    assert 0 < int(cookie["max-age"]) <= 300
+    assert policy.challenge_cookie.startswith("__Host-") is secure
+    deleted = Response()
+    policy.clear_cookies(deleted)
+    parsed = SimpleCookie()
+    for value in deleted.headers.getlist("set-cookie"):
+        parsed.load(value)
+    assert parsed[policy.challenge_cookie]["max-age"] == "0"
+    assert bool(parsed[policy.challenge_cookie]["secure"]) is secure
+    assert (
+        parsed[policy.challenge_cookie]["httponly"]
+        and parsed[policy.challenge_cookie]["path"] == "/"
+    )
 
 
 @pytest.fixture

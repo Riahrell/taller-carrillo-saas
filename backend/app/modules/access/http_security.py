@@ -14,6 +14,7 @@ from starlette.datastructures import Headers
 from starlette.responses import Response
 
 from app.core.config import ConfigurationError, Settings
+from app.modules.access.login_challenges import PendingLogin
 from app.modules.access.sessions import IssuedSession
 
 PROOF_LIFETIME = timedelta(minutes=15)
@@ -95,6 +96,7 @@ class HttpSecurity:
         self.session_cookie = prefix + "carrillo_session"
         self.preauth_cookie = prefix + "carrillo_preauth"
         self.csrf_cookie = prefix + "carrillo_csrf"
+        self.challenge_cookie = prefix + "carrillo_login"
 
     def _mac(self, purpose: str, binding: str, expiry: str, nonce: str) -> str:
         # Structured encoding avoids ambiguous concatenation; binding is never returned.
@@ -171,6 +173,85 @@ class HttpSecurity:
             samesite="lax",
         )
         self.refresh_csrf(response, issued)
+        self.clear_challenge(response)
+
+    def clear_challenge(self, response: Response) -> None:
+        response.delete_cookie(
+            self.challenge_cookie,
+            path="/",
+            secure=self.secure,
+            httponly=True,
+            samesite="lax",
+        )
+        response.headers["Cache-Control"] = "no-store"
+
+    def set_challenge(self, response: Response, pending: PendingLogin) -> None:
+        if (
+            not _OPAQUE.fullmatch(pending.token.get_secret_value())
+            or pending.expires_at <= _now()
+        ):
+            raise RequestRejected("Request rejected")
+        self._set(
+            response,
+            self.challenge_cookie,
+            pending.token,
+            pending.expires_at,
+            http_only=True,
+        )
+
+    def verify_browser_read(self, headers: Headers) -> None:
+        # Cross-origin JS requires a preflight for this header; CORS stays closed.
+        if headers.getlist("x-requested-with") != ["XMLHttpRequest"]:
+            raise RequestRejected("Request rejected")
+        origins, sites = headers.getlist("origin"), headers.getlist("sec-fetch-site")
+        if origins and origins != [self.origin] or sites and sites != ["same-origin"]:
+            raise RequestRejected("Request rejected")
+
+    def read_cookies(self, headers: Headers) -> dict[str, str]:
+        cookies: dict[str, str] = {}
+        relevant = {
+            self.session_cookie,
+            self.preauth_cookie,
+            self.csrf_cookie,
+            self.challenge_cookie,
+        }
+        raw = headers.getlist("cookie")
+        if len(raw) > 1 or raw and len(raw[0]) > 8192:
+            raise RequestRejected("Request rejected")
+        for part in raw[0].split(";") if raw else []:
+            name, separator, value = part.strip().partition("=")
+            if name in relevant:
+                if not separator or name in cookies:
+                    raise RequestRejected("Request rejected")
+                cookies[name] = value
+        return cookies
+
+    def login_binding(self, headers: Headers) -> SecretStr:
+        if self.session_cookie in self.read_cookies(headers):
+            raise RequestRejected("Request rejected")
+        return self.preauth_binding(headers)
+
+    def preauth_binding(self, headers: Headers) -> SecretStr:
+        nonce = self.read_cookies(headers).get(self.preauth_cookie, "")
+        if not self._verify(nonce, "preauth-cookie", ""):
+            raise RequestRejected("Request rejected")
+        return SecretStr(nonce)
+
+    def bootstrap_preauth(self, response: Response, headers: Headers) -> None:
+        """Preserve a live binding so refreshing CSRF does not cancel selection."""
+        nonce = self.read_cookies(headers).get(self.preauth_cookie, "")
+        if self._verify(nonce, "preauth-cookie", ""):
+            expires = datetime.fromtimestamp(int(_PROOF.fullmatch(nonce).group(1)), UTC)
+            self._set(
+                response,
+                self.csrf_cookie,
+                self._sign("csrf-preauth", nonce, expires),
+                expires,
+                http_only=False,
+            )
+        else:
+            self.clear_challenge(response)
+            self.start_preauth(response)
 
     def refresh_csrf(self, response: Response, issued: IssuedSession) -> None:
         """Requires a live DB session checked by the caller; does not extend it."""
@@ -183,7 +264,12 @@ class HttpSecurity:
         self._set(response, self.csrf_cookie, proof, expires, http_only=False)
 
     def clear_cookies(self, response: Response) -> None:
-        for name in (self.session_cookie, self.preauth_cookie, self.csrf_cookie):
+        for name in (
+            self.session_cookie,
+            self.preauth_cookie,
+            self.csrf_cookie,
+            self.challenge_cookie,
+        ):
             response.delete_cookie(
                 name,
                 path="/",
@@ -200,17 +286,7 @@ class HttpSecurity:
         sites = headers.getlist("sec-fetch-site")
         if sites and sites != ["same-origin"]:
             raise RequestRejected("Request rejected")
-        cookies: dict[str, str] = {}
-        relevant = {self.session_cookie, self.preauth_cookie, self.csrf_cookie}
-        raw_cookies = headers.getlist("cookie")
-        if len(raw_cookies) != 1 or len(raw_cookies[0]) > 8192:
-            raise RequestRejected("Request rejected")
-        for part in raw_cookies[0].split(";"):
-            name, separator, value = part.strip().partition("=")
-            if name in relevant:
-                if not separator or name in cookies:
-                    raise RequestRejected("Request rejected")
-                cookies[name] = value
+        cookies = self.read_cookies(headers)
         proofs = headers.getlist("x-csrf-token")
         cookie_proof = cookies.get(self.csrf_cookie, "")
         if (

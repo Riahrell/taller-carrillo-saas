@@ -1,158 +1,162 @@
-# Contrato de seguridad del adaptador HTTP de acceso
+# Contrato HTTP de acceso
 
-Estado: acceso 2.6 añade el servicio interno de selección multiempresa desde
-identidad verificada. Acceso 2.5 implementó cookies, firma CSRF, guard de origen
-global y saneamiento de validación. Las rutas que emiten cookies son exclusivas
-de tests; **no hay login/logout ni emisión de CSRF públicos**. Las URLs y el
-transporte de selección se cerrarán junto con sus handlers antes de habilitarlos.
-No confundir el middleware de intención con autorización de sesión.
+Estado: acceso 2.7 conecta login, selección, sesión, logout y emisión/renovación
+CSRF. Probados con PostgreSQL y, en CI aislado, Nginx/Uvicorn reales. El formulario
+sigue pendiente. No hay rutas comerciales ni administración pública de usuarios.
 
-## Entradas y autoridad
+## Rutas y contratos
 
-- Credenciales: objeto estricto con email y password; sin user_id, role, precio,
-  stock ni tenant. Normalizar correo, preservar contraseña, rechazar campos extra.
-  No aceptar hashes de contraseña desde el cliente ni contraseñas en query strings.
-- La IP procede de la conexión observada por el proxy confiable. Nginx debe retirar
-  cualquier cabecera de IP suministrada por el cliente y establecer el valor de
-  conexión real. La API solo confiará en ese dato desde el salto de red autorizado;
-  no aceptar cadenas X-Forwarded-For arbitrarias ni IP en JSON. No activar el login
-  sin una prueba de falsificación de cabeceras a través del proxy real.
-- selected_tenant_id es un parámetro **interno** del servicio actual, no forma
-  parte de Credentials. Solo propone una membresía: nunca sustituye comprobar
-  contraseña, usuario, empresa y membresía activos en servidor.
-- La interfaz no consultará la lista de empresas de un correo sin autenticarlo.
-  Si hay una sola membresía activa se seleccionará desde DB. Para varias, el
-  selector usa un estado provisional verificado por el servidor y vuelve a
-  comprobar pertenencia al confirmar. El servicio interno ya está implementado;
-  falta su transporte antes de permitir login multiempresa desde HTTP. No elegir
-  silenciosamente el primer UUID ni aceptar un tenant arbitrario como contexto
-  autenticado.
-- La autenticación posee su transacción: None equivale a rechazo **ya confirmado**
-  con contadores persistidos. No envolver el servicio en una unidad de trabajo que
-  revierta por devolver error HTTP. Un token solo sale después del commit exitoso.
+El navegador usa el prefijo `/api`; Nginx lo retira antes de FastAPI. Todas las
+respuestas de estas rutas llevan `Cache-Control: no-store`. No hay token en JSON,
+URL o localStorage. CORS permanece cerrado.
 
-## Respuestas y errores
+| Navegador | Entrada | Respuesta |
+| --- | --- | --- |
+| GET /api/auth/csrf | Cabecera X-Requested-With: XMLHttpRequest | 204 sin cuerpo. Emite o renueva CSRF y, si hace falta, nonce previo al login. |
+| POST /api/auth/login | JSON estricto: email, password | 200 con status authenticated, o 202 con status select_membership y choices de membership_id/tenant_name. |
+| POST /api/auth/select-membership | JSON estricto: membership_id UUID | 200 con status authenticated tras consumir identidad pendiente y emitir sesión. |
+| GET /api/auth/session | Cabecera X-Requested-With: XMLHttpRequest y cookie de sesión | 200 con user_id, membership_id, tenant_id, tenant_name y role actuales del servidor. |
+| POST /api/auth/logout | JSON estricto vacío: {} | 204 sin cuerpo; revoca sesión y pendiente ligado al navegador antes de borrar cookies. |
 
-| Caso | Semántica HTTP requerida |
+Las escrituras exigen Origin exactamente igual a PUBLIC_ORIGIN y X-CSRF-Token
+igual a la cookie CSRF firmada. Sec-Fetch-Site, si existe, debe ser same-origin.
+Solo application/json UTF-8 hasta 8192 bytes, también para cuerpos fragmentados.
+Campos extra se rechazan: ningún tenant, rol, IP, precio o stock se toma del JSON.
+Credenciales únicamente en el cuerpo del login, nunca query strings.
+
+Las lecturas de acceso exigen la cabecera personalizada X-Requested-With con valor
+exacto XMLHttpRequest. Origin puede faltar en un GET del mismo origen; si existe,
+debe coincidir exactamente. Sec-Fetch-Site, si existe, debe ser same-origin.
+Una web de otro origen necesita preflight para esa cabecera y no obtiene permiso
+CORS. No emitir cookies con imágenes/enlaces/formularios simples de otro sitio.
+Estas cabeceras protegen al navegador; clientes HTTP externos pueden fabricarlas,
+pero no obtienen por ello cookies privadas ni identidad de otro usuario.
+
+| Rechazo | Código y cuerpo |
 | --- | --- |
-| Credenciales rechazadas, identidad inactiva, membresía no autorizada o límite alcanzado | 401 y mismo mensaje genérico, sin distinguir causa ni confirmar existencia. Sin Retry-After específico de cuenta. |
-| Error de formato/JSON/campos extra | Error de contrato saneado; nunca serializar input de validación de Pydantic ni repetir contraseñas. |
-| DB/hashing indisponible | 503 genérico; sin detalles de conexión, argumentos SQL ni tracebacks al cliente. |
-| Origen o CSRF inválidos | 403 antes de ejecutar cualquier efecto de negocio. |
-| Inicio de sesión correcto | Cookie emitida después de commit; token de sesión nunca en JSON ni localStorage. |
-| Cierre de sesión | Revocación idempotente y borrado de cookie con el mismo path/atributos; respuesta sin confirmar existencia de un token. |
+| Credenciales, cuenta/empresa/membresía inactivos, selección no autorizada o límite de fallos | 401, detalle Access denied, sin distinguir causa ni Retry-After de cuenta. |
+| Origen/CSRF/cabeceras ambiguas/salto de proxy inválidos | 403, detalle Request rejected. |
+| Validación Pydantic | 422, detalle Invalid request, sin inputs ni contraseñas. |
+| JSON inválido/tipo incorrecto/tamaño excesivo | 400/415/413, detalle Request rejected. |
+| DB, hashing/capacidad o resolución del proxy indisponibles | 503, detalle Authentication unavailable, sin SQL, credenciales ni traceback. |
+| Límite general de volumen/conexiones en Nginx | 429, detalle Request rejected; independiente de identidad. |
 
-Todas las respuestas de acceso deben usar Cache-Control: no-store. No registrar
-credenciales, cuerpos, cookies, encabezados CSRF ni tokens en logs de API/proxy.
-Los límites generales del proxy, independientes de identidad, podrán usar 429;
-no se confunden con los contadores de fallos por cuenta del servicio.
+Login/selección requieren preautenticación y ausencia de cookie de sesión. Para
+cambiar de cuenta/empresa se debe cerrar la sesión primero. Una cookie de sesión
+caducada o revocada se recupera solicitando CSRF: se comprueba DB, se retiran las
+cookies antiguas y se inicia preautenticación nueva. No cambiar tenant en una
+sesión existente ni seleccionar silenciosamente la primera empresa de varias.
 
-## Cookies, origen y CSRF
+## Cookies y ciclo de navegador
 
-- Cookie de sesión de producción con prefijo __Host-, Secure, HttpOnly,
-  SameSite=Lax, Path=/ y sin Domain. HTTPS obligatorio. Caducidad absoluta del
-  servidor de ocho horas y comprobación de inactividad de 30 minutos por petición.
-- Desarrollo HTTP solo en loopback: nombre sin prefijo __Host- y Secure desactivado
-  únicamente por configuración development. No extender esa excepción a producción.
-- Origen público exacto configurado por entorno y validado al arrancar. No derivar
-  el origen permitido de Host/X-Forwarded-Host sin validar. En operaciones con
-  efectos exigir Origin igual al configurado; rechazar null, ausente y distinto.
-  Revisar Sec-Fetch-Site como defensa adicional. CORS cerrado al mismo origen.
-- CSRF mediante double-submit firmado, ligado criptográficamente a la cookie de
-  sesión. Antes del login se liga a un nonce de preautenticación generado por el
-  servidor; así el propio inicio de sesión también queda protegido. Requiere clave
-  externa aleatoria compartida entre workers; sin reserva, sin incluirla en Git ni
-  variables NEXT_PUBLIC. Comparaciones de MAC en tiempo constante y plazos finitos.
-- El navegador enviará la prueba CSRF en cabecera independiente; SameSite no la
-  sustituye. Ninguna credencial de sesión se vuelve legible por JavaScript. Generar
-  la prueba CSRF no renueva por sí solo el plazo absoluto de la sesión.
-- Solo JSON para contratos de escritura de acceso, tamaño acotado por proxy y API;
-  rechazar contenido de formularios simples que pueda eludir la protección prevista.
-  GET/HEAD no realizan operaciones de negocio ni alta/baja de usuarios.
+En producción HTTPS, los nombres llevan prefijo __Host-, Secure, Path=/,
+SameSite=Lax y ausencia de Domain. HTTP solo loopback development/test, con nombres
+sin prefijo y Secure desactivado. No extender la excepción a producción.
 
-La política de firma/cookies y el guard de origen/CSRF ya están implementados y
-probados. El arranque HTTP exige PUBLIC_ORIGIN y clave externa, sin reserva. El
-middleware exige JSON UTF-8 hasta 8192 bytes y también cuenta fragmentos; Nginx
-limita /api/ al mismo tamaño. Se rechazan Origin/CSRF/cookies relevantes duplicados
-para evitar interpretaciones ambiguas. La prueba ligada a sesión tiene precedencia:
-una cookie de sesión inválida no puede eludir el control usando un nonce preauth.
+| Nombre base | Lectura por JS | Función |
+| --- | --- | --- |
+| carrillo_session | No, HttpOnly | Token opaco de sesión; solo su SHA-256 en DB. |
+| carrillo_preauth | No, HttpOnly | Nonce firmado del servidor; protege intención antes de login, no acredita identidad. |
+| carrillo_login | No, HttpOnly | Token opaco de identidad verificada pendiente de empresa, máximo cinco minutos. |
+| carrillo_csrf | Sí | Prueba firmada HMAC-SHA-256 que se copia a X-CSRF-Token. No contiene token de sesión. |
 
-La clave se añade con setup_http a entornos existentes sin regenerar DB. Los
-helpers de cookies solo deben usarse tras los controles/commit del handler; no
-consultan DB y por tanto no comprueban revocación. El nonce de preauth solo prueba
-intención y no significa que ya se verificó una contraseña. La selección de
-empresa necesita además un estado provisional autenticado separado.
+Solicitar CSRF antes del login. El adaptador verifica la firma del nonce HttpOnly
+y lo pasa como browser_binding al servicio; nunca usa un campo del cuerpo ni el
+CSRF legible como binding. Con varias empresas, conserva ese nonce y emite la
+cookie privada de selección. Renovar CSRF durante el selector conserva un nonce
+vivo para mantener el binding. Si caduca, se descarta la cookie pendiente y se
+reinicia preautenticación; el token anterior también caduca en DB a los cinco minutos.
 
-Las pruebas/nonce son reutilizables hasta vencer: no proporcionan idempotencia
-ni impiden por sí solos duplicar una operación de negocio. El perfil de prueba
-dura 15 minutos. Validar firma usa reloj UTC del proceso con
-resolución de segundos: los hosts deben estar sincronizados. Rotar la clave exige
-reinicio coordinado y deja inválidas pruebas anteriores. La vigencia de sesión
-sigue siendo autoridad de PostgreSQL, con 30 minutos de inactividad y máximo 8h.
+Con una empresa o selección válida: sesión y consumo confirman antes de emitir
+cookie; se retiran preauth/pendiente y se reemplaza CSRF ligado a la nueva sesión.
+La sesión dura como máximo ocho horas y vence con 30 minutos de inactividad;
+la consulta de sesión comprueba estados actuales y actualiza actividad en DB.
+Renovar CSRF de una sesión requiere comprobarla y confirmar su actividad antes
+pero no extiende su expires_at. CSRF/nonce duran como máximo 15 minutos.
 
-Pendientes antes de exposición: login/logout y emisor/renovador de prueba HTTP,
-validación de sesión/roles en handlers, prueba de IP a través del proxy, límites
-de volumen/espera y transporte multiempresa. El formulario tampoco está conectado.
+Logout es idempotente para tokens conocidos, desconocidos o ya revocados, bajo
+origen/CSRF válidos. Si están presentes sesión y pendiente con nonce válido,
+revoca ambos en una transacción, bloqueando usuarios por UUID. Solo cancela un
+pendiente con binding correcto. Después borra las cuatro cookies con el mismo
+scope/atributos. Fallo de commit devuelve 503 y conserva cookies para reintentar.
+La idempotencia de revocación no elimina la comprobación de origen/CSRF.
 
-## Servicio interno de selección (acceso 2.6)
+Tokens y pruebas no proporcionan idempotencia para operaciones comerciales. CSRF
+no sustituye sesión/autorización ni protege contra XSS. Clave externa aleatoria de
+32 bytes compartida por workers, sin reserva ni NEXT_PUBLIC. Rotación coordinada
+y relojes sincronizados: firmas usan reloj UTC del proceso y sesiones/reto, DB.
 
-`Authenticator.begin_login` recibe Credentials, IP confiable y `browser_binding`
-SecretStr del adaptador. El binding será una cookie HttpOnly emitida y verificada
-por servidor; jamás el CSRF legible, un campo del JSON o una prueba de identidad.
-Comprobar su formato no verifica la firma ni la procedencia: el adaptador HTTP
-deberá hacerlo además de comprobar origen/CSRF. Esta fase no expone ese argumento
-ni emite cookies nuevas.
+## Identidad provisional y autoridad
 
-Tras contraseña válida y los tres estados activos: cero empresas rechaza de forma
-genérica; una emite sesión de esa membresía; varias crean PendingLogin y devuelven
-solo membership_id/nombre de las empresas autorizadas como opciones. Nunca se
-consulta esa lista antes de verificar contraseña. Límites cuenta/IP y rehash se
-mantienen. El contador de cuenta se reinicia al verificar credenciales y membresías;
-el historial de IP no se borra. Resultados y tokens solo salen después del commit.
+begin_login verifica contraseña bajo bloqueo del usuario, límites compartidos y
+estados activos antes de consultar las opciones. Cero empresas rechaza; una emite
+sesión; varias devuelven opciones de membresía tras commit. El cliente propone
+membership_id; usuario se deriva del pendiente, tenant/rol de la membresía actual
+que le pertenece. No se consulta la lista por un correo sin autenticar.
 
-PendingLogin dura cinco minutos desde reloj DB, lleva token aleatorio de 256 bits
-y binding al navegador mediante hashes; no es una sesión y no autoriza módulos.
-El futuro transporte guardará el token en cookie HttpOnly con scope/flags de
-seguridad; nunca serializar el dataclass completo a JSON ni persistirlo en JS.
-Si se reemplaza la cookie usada como binding, la selección anterior deja de ser
-utilizable desde ese navegador y habrá que reiniciar el acceso.
+Pendiente: token aleatorio de 256 bits, hashes de token/binding/hash Argon2 en DB,
+vida de cinco minutos y un intento con binding correcto, incluso si la opción es
+inválida. Otro navegador no puede usarlo ni consumirlo. Un nuevo login correcto
+cancela pendientes anteriores del usuario; una contraseña incorrecta no los
+cancela. Sesiones ya emitidas mantienen su ciclo de revocación independiente.
+Cambiar hash de contraseña, incluso por rehash posterior, invalida un pendiente;
+el propio rehash de begin_login se aplica antes de guardar la huella.
 
-`select_membership` acepta únicamente el UUID candidato de membresía, token
-provisional y binding verificados por el adaptador. Usuario se deriva del registro;
-tenant/rol, de la membresía actual que le pertenece. Revisa vigencia, consumo,
-binding, usuario, huella del hash de contraseña y empresa/membresía activos.
-Otra cookie de navegador no consume ni utiliza el pendiente. Una selección con
-binding correcto consume el único intento, incluso si propone una membresía
-inválida: rechaza genéricamente y exige reiniciar login. No incrementa contadores
-de contraseña porque no está verificando una contraseña en este paso.
+Consumo y emisión de sesión son atómicos. Bloqueos: IP -> cuenta -> usuario ->
+pendientes por UUID -> sesiones. Releer tras esperar y usar reloj DB posterior al
+lock. Los futuros cambios de cuenta/contraseña/privilegios deben coordinarse con
+revocación de sesiones y pendientes en la transacción del cambio. Sin triggers
+sobre SQL manual y sin RLS. Cada operación comercial tendrá sus propios permisos
+y protocolo de bloqueo, aún no implementados.
 
-Consumo y sesión confirman juntos; ante fallo de insert/commit se revierten ambos.
-Un nuevo login correcto cierra pendientes anteriores del usuario, también desde
-otro navegador; no revoca sesiones ya emitidas. Un rechazo de contraseña no
-invalida una selección pendiente. No se cambia de tenant en una sesión existente.
-El rol se relee y no queda congelado en las opciones mostradas.
+## IP confiable, red y límites técnicos
 
-Cambiar el hash de contraseña, incluso rehash de la misma contraseña, invalida
-un pendiente previo. El propio rehash de begin_login sucede antes de guardar la
-huella. Los futuros cambios de cuenta/contraseña deben revocar tanto sesiones
-como pendientes en la transacción del cambio; `revoke_user_challenges` ya permite
-lo segundo. No hay aún handlers de administración ni triggers sobre SQL manual.
-Limpieza de registros y límites generales de volumen/espera siguen pendientes.
+Compose separa edge (frontend/proxy), api interna (proxy/backend) y private interna
+(backend/DB/herramientas). Backend no comparte edge con frontend ni publica puerto.
+Nginx sobrescribe X-Real-IP con su conexión observada y elimina Forwarded,
+X-Forwarded-For y X-Forwarded-Host del cliente. No hay real_ip_header que adopte
+cabeceras externas. La API no usa X-Forwarded-For para identificar al cliente.
 
-## Pruebas antes de habilitar acceso web (parcialmente cubiertas)
+Uvicorn arranca con --no-proxy-headers para conservar el socket peer real, con
+--no-access-log para no registrar queries, y límite de 64 conexiones/tareas.
+TRUSTED_PROXY_HOST obligatorio para HTTP identifica al servicio proxy mediante
+DNS Docker en la red api. La API resuelve en cada login y comprueba que el socket
+peer coincide antes de aceptar un único X-Real-IP válido. DNS fallido rechaza sin
+reserva. IPv4 y IPv6 mapeada comparten clave de límite.
 
-- Login correcto, error genérico, límites en varias instancias y cambios de estado.
-- Cookie y CSRF: producción/development, prelogin, token ausente/ajeno/modificado,
-  sesión revocada, origen falso/ausente/null, cliente de otro sitio y JSON inválido.
-- IP real a través del proxy: cabeceras falsas no cambian el bucket de origen.
-- Ningún cuerpo de respuesta, error de validación ni log incluye contraseña/token.
-- Sesión y cookie solo se publican tras commit; fallo al confirmar no autentica.
-- Selección multiempresa exclusivamente tras identidad verificada, sin acceso
-  cruzado y sin caché/carrito de la empresa previa al cambiarla.
-- Frontend con estados de carga/error, teclado/foco y sin credenciales persistentes.
+La pertenencia a redes/DNS/daemon Docker es autoridad del operador. Esto no prueba
+identidad de hosts arbitrarios que controlen el daemon. No habilitar confianza
+para todas las IP privadas ni adaptar este diseño a una cadena de proxies sin
+un nuevo contrato y pruebas del salto real. HTTPS público sigue pendiente.
 
-Referencia: [prevención CSRF OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html).
+Perfil inicial: cinco fallos por cuenta y treinta por IP en 15 minutos, compartidos
+en PostgreSQL. Un éxito reinicia cuenta, conserva fallos de IP. Nginx limita acceso
+a 10 peticiones/s por IP, burst 20 sin espera y diez conexiones activas
+por IP. Dos verificaciones de contraseña simultáneas por worker; exceso devuelve
+503 sin cola de hashing. Cada transacción de acceso tiene lock_timeout 3s y
+statement_timeout 10s. No son un timeout total de HTTP/DNS ni un benchmark de
+capacidad. Medir y ajustar para producción; mantenimiento de contadores pendiente.
 
-Las pruebas de cookies/origen/CSRF y de saneamiento se ejecutan con ASGI real y
-rutas solo de test. El smoke del proxy verifica rechazos 403 y tamaño 413; no es
-todavía una prueba de login, de IP confiable ni de revocación HTTP.
+Logs Nginx: IP, método, URI sin query y status; sin cuerpos ni cookies. Uvicorn sin
+access log. Los errores de request en /api/auth/ se descartan porque Nginx puede
+incluir queries en ese log; se conserva el access log de status con URI saneada.
+CI envía un canario sintético en cuerpo/query/cabeceras, también al provocar 429,
+y examina los
+logs capturados sin imprimirlos; falla si lo encuentra. No registrar dataclasses
+con secretos ni volcar errores/headers de requests.
+
+## Validación y pendientes
+
+TestClient con PostgreSQL cubre cookies, refresh, pertenencia, estados DB,
+repetición, fallos de commit y cierre atómico con cookies mixtas. CI separado usa
+Nginx/Uvicorn y PostgreSQL reales: IP falsificada no cambia bucket, conexión directa
+rechazada, sesión/logout/replay y selección multiempresa. No es aún una prueba de
+interfaz ni HTTPS real; flags Secure se verifican con el perfil HTTPS de tests.
+
+Siguiente: formulario Next.js, errores/expiración, navegación por teclado y recorrido
+de navegador. Después administración/permisos, último administrador, auditoría,
+recuperación y limpieza. Hito 2 abierto; producción e inventario/comercio pendientes.
+
+Referencias: [CSRF OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html),
+[redes Docker Compose](https://docs.docker.com/compose/how-tos/networking/).
+Opciones Uvicorn contrastadas con el CLI instalado de la dependencia fijada.

@@ -76,3 +76,86 @@ def db_session(databases):
                 yield session
         finally:
             transaction.rollback()
+
+
+@pytest.fixture
+def http_identity(db_session, databases):
+    """Committed synthetic identities, exclusively in the guarded ephemeral DB."""
+    import secrets
+    from uuid import uuid4
+
+    from pydantic import SecretStr
+    from sqlalchemy import delete, select
+    from sqlalchemy.orm import Session
+
+    from app.modules.access.models import (
+        LoginChallenge,
+        LoginThrottle,
+        SessionRecord,
+        Tenant,
+        TenantMembership,
+        User,
+    )
+    from app.modules.access.passwords import hash_password
+
+    runtime, owner, settings = databases
+    password, email = (
+        SecretStr(secrets.token_urlsafe(32)),
+        f"http-{uuid4().hex}@example.com",
+    )
+    with Session(runtime) as session, session.begin():
+        tenant, other = Tenant(name="HTTP company"), Tenant(name="HTTP foreign company")
+        user, foreign = (
+            User(email=email, password_hash=hash_password(password)),
+            User(email=f"foreign-{uuid4().hex}@example.com", password_hash="synthetic"),
+        )
+        session.add_all([tenant, other, user, foreign])
+        session.flush()
+        member = TenantMembership(tenant_id=tenant.id, user_id=user.id, role="admin")
+        foreign_member = TenantMembership(
+            tenant_id=other.id, user_id=foreign.id, role="read_only"
+        )
+        session.add_all([member, foreign_member])
+        session.flush()
+        state = dict(
+            runtime=runtime,
+            owner=owner,
+            settings=settings,
+            password=password,
+            email=email,
+            user=user.id,
+            foreign=foreign.id,
+            tenant=tenant.id,
+            other=other.id,
+            membership=member.id,
+            foreign_membership=foreign_member.id,
+        )
+    try:
+        yield state
+    finally:
+        with owner.begin() as connection:
+            memberships = select(TenantMembership.id).where(
+                TenantMembership.tenant_id.in_([state["tenant"], state["other"]])
+            )
+            connection.execute(
+                delete(SessionRecord).where(
+                    SessionRecord.membership_id.in_(memberships)
+                )
+            )
+            connection.execute(
+                delete(LoginChallenge).where(
+                    LoginChallenge.user_id.in_([state["user"], state["foreign"]])
+                )
+            )
+            connection.execute(
+                delete(TenantMembership).where(
+                    TenantMembership.tenant_id.in_([state["tenant"], state["other"]])
+                )
+            )
+            connection.execute(
+                delete(User).where(User.id.in_([state["user"], state["foreign"]]))
+            )
+            connection.execute(
+                delete(Tenant).where(Tenant.id.in_([state["tenant"], state["other"]]))
+            )
+            connection.execute(delete(LoginThrottle))
