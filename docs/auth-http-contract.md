@@ -3,7 +3,8 @@
 Estado: acceso 2.8 conecta formulario, selección y logout al contrato HTTP de
 acceso 2.7. Probados con PostgreSQL, Nginx/Uvicorn y recorrido real de navegador
 con identidades sintéticas en una base efímera. No hay rutas comerciales ni
-administración pública de usuarios.
+registro público de usuarios. Acceso 2.10 añade consulta/cambio de membresías
+existentes solo para administradores: [contrato específico](membership-http-contract.md).
 
 ## Rutas y contratos
 
@@ -22,7 +23,9 @@ URL o localStorage. CORS permanece cerrado.
 Las escrituras exigen Origin exactamente igual a PUBLIC_ORIGIN y X-CSRF-Token
 igual a la cookie CSRF firmada. Sec-Fetch-Site, si existe, debe ser same-origin.
 Solo application/json UTF-8 hasta 8192 bytes, también para cuerpos fragmentados.
-Campos extra se rechazan: ningún tenant, rol, IP, precio o stock se toma del JSON.
+En las rutas de la tabla, campos extra se rechazan: ningún tenant, rol, IP, precio
+o stock se toma del JSON. El cambio de rol autorizado de administración tiene su
+contrato específico, sin aceptar el rol solicitado como autoridad del actor.
 Credenciales únicamente en el cuerpo del login, nunca query strings.
 
 Las lecturas de acceso exigen la cabecera personalizada X-Requested-With con valor
@@ -157,7 +160,7 @@ Nginx/Uvicorn y PostgreSQL reales: IP falsificada no cambia bucket, conexión di
 rechazada, sesión/logout/replay y selección multiempresa. No es aún una prueba de
 interfaz ni HTTPS real; flags Secure se verifican con el perfil HTTPS de tests.
 
-Siguiente: contrato HTTP de administración, altas/cuentas, permisos de módulos,
+Siguiente: listado/pantalla de administración, altas/cuentas, permisos de módulos,
 ampliación/consulta de auditoría, recuperación y limpieza. El servicio interno de
 membresías ya protege al último administrador; no cubre aún cambios globales de
 usuario. Hito 2 abierto; producción e inventario/comercio pendientes.

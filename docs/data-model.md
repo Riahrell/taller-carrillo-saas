@@ -2,7 +2,7 @@
 
 Este documento distingue el modelo objetivo y los contratos implementados por
 entrega. Acceso 2.1 incorporó `tenants`, `users` y `tenant_memberships` mediante
-`0002_access`; las ampliaciones hasta 2.9 se detallan al final. Los atributos comerciales
+`0002_access`; las ampliaciones hasta 2.10 se detallan al final. Los atributos comerciales
 se limitan a los requeridos por el plan y a las decisiones de `decisions.md`.
 La especificación de cada tarea cerrará contratos antes de generar código.
 
@@ -204,3 +204,15 @@ no cambia IDs, empresa, usuario global ni otras membresías. Reactivar reutiliza
 la membresía única y no restablece sesiones antiguas. Empresa -> usuarios por UUID
 -> hijos es la jerarquía del servicio; el lock de empresa serializa el conteo del
 último administrador. Las futuras altas/cambios globales deben coordinarse igual.
+
+## Transporte de administración 2.10
+
+Sin migración nueva ni columna de versión: el esquema sigue en
+`0006_membership_audit`. GET/PATCH exponen solo membership_id, role e is_active
+a administradores de la empresa actual. El ETag deriva de esa representación,
+no se almacena ni contiene secretos. Un If-Match diferente al estado releído bajo
+bloqueo rechaza la escritura antes de cambiar membresía/revocar/auditar.
+El mismo estado produce el mismo tag, incluso si hubo cambios intermedios que
+lo restituyeron: no representa una secuencia histórica ni idempotencia general.
+Lectura y resultado de cambio salen solo después de commit. La lectura comprueba
+sesión/permiso y actualiza actividad dentro de su propia transacción breve.

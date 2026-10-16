@@ -12,10 +12,19 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings, load_settings
 from app.core.database import build_engine, create_session_factory, verify_connection
+from app.modules.access.administration import (
+    AdministrationDenied,
+    AdministrationUnavailable,
+    LastAdministratorRequired,
+    MembershipAdministrator,
+    MembershipStateChanged,
+)
+from app.modules.access.administration_routes import router as administration_router
 from app.modules.access.authentication import AuthenticationUnavailable
 from app.modules.access.http_middleware import HttpSecurityMiddleware
 from app.modules.access.http_security import HttpSecurity, RequestRejected
 from app.modules.access.http_service import HttpAccess
+from app.modules.access.membership import AccessDenied
 from app.modules.access.routes import router as access_router
 from app.modules.access.trusted_proxy import TrustedProxy
 
@@ -36,6 +45,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await run_in_threadpool(verify_connection, engine)
             app.state.session_factory = create_session_factory(engine)
             app.state.access = await run_in_threadpool(HttpAccess, engine)
+            app.state.membership_administrator = MembershipAdministrator(engine)
             yield
         finally:
             await run_in_threadpool(engine.dispose)
@@ -53,7 +63,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.http_security = http_security
     application.state.trusted_proxy = trusted_proxy
     application.include_router(access_router)
+    application.include_router(administration_router)
     application.add_middleware(HttpSecurityMiddleware, policy=http_security)
+
+    def domain_error(status: int, detail: str) -> JSONResponse:
+        return JSONResponse(
+            {"detail": detail},
+            status_code=status,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @application.exception_handler(AdministrationDenied)
+    async def administration_denied(_request: Request, _error: AdministrationDenied):
+        return domain_error(403, "Access denied")
+
+    @application.exception_handler(AccessDenied)
+    async def unauthenticated(_request: Request, _error: AccessDenied):
+        return domain_error(401, "Access denied")
+
+    @application.exception_handler(LastAdministratorRequired)
+    async def last_administrator(_request: Request, _error: LastAdministratorRequired):
+        return domain_error(409, "An active administrator is required")
+
+    @application.exception_handler(MembershipStateChanged)
+    async def stale_membership(_request: Request, _error: MembershipStateChanged):
+        return domain_error(412, "Membership state changed")
+
+    @application.exception_handler(AdministrationUnavailable)
+    async def administration_unavailable(
+        _request: Request, _error: AdministrationUnavailable
+    ):
+        # Same access error as the existing Nginx /api/auth/ failure normalizer.
+        return domain_error(503, "Authentication unavailable")
 
     @application.exception_handler(RequestRejected)
     async def rejected(_request: Request, _error: RequestRejected) -> JSONResponse:

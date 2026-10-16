@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.modules.access.administration import MembershipChange
+from app.modules.access.administration import MembershipChange, MembershipView
 from app.modules.access.models import MembershipRole
 
 
@@ -30,3 +30,19 @@ def test_explicit_supported_role(role):
 def test_invalid_or_authority_fields_rejected(data):
     with pytest.raises(ValidationError):
         MembershipChange.model_validate(data)
+
+
+@pytest.mark.parametrize("field", ["membership_id", "role", "is_active"])
+def test_representation_etag_changes_with_each_public_attribute(field):
+    from uuid import uuid4
+
+    view = MembershipView(membership_id=uuid4(), role="cashier", is_active=True)
+    values = {
+        "membership_id": uuid4(),
+        "role": MembershipRole.MECHANIC,
+        "is_active": False,
+    }
+    changed = view.model_copy(update={field: values[field]})
+    assert view.etag == MembershipView.model_validate_json(view.model_dump_json()).etag
+    assert changed.etag != view.etag
+    assert "etag" not in view.model_dump() and "token" not in view.model_dump()

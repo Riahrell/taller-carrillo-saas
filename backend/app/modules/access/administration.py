@@ -1,5 +1,6 @@
-"""Internal, session-authorized membership changes. No public administration API."""
+"""Session-authorized membership reads and atomic, audited state changes."""
 
+import hashlib
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.database import create_session_factory
 from app.modules.access.authentication import _limit_transaction
 from app.modules.access.login_challenges import revoke_user_challenges
-from app.modules.access.membership import AccessDenied
+from app.modules.access.membership import AccessDenied, MembershipContext
 from app.modules.access.models import (
     AuditEvent,
     MembershipRole,
@@ -46,12 +47,35 @@ class AdministrationUnavailable(RuntimeError):
     """Safe infrastructure error, including a failed commit; do not auto-retry."""
 
 
+class AdministrationDenied(AccessDenied):
+    """Valid identity without permission, or absent/foreign target; same response."""
+
+
+class MembershipStateChanged(Exception):
+    """The authorized target no longer matches the reviewed representation."""
+
+
+class MembershipView(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    membership_id: UUID
+    role: MembershipRole
+    is_active: bool
+
+    @property
+    def etag(self) -> str:
+        # Representation validator, not authorization, history version or secret.
+        digest = hashlib.sha256(self.model_dump_json().encode()).hexdigest()
+        return f'"membership-v1-{digest}"'
+
+
 @dataclass(frozen=True)
 class MembershipChangeResult:
     membership_id: UUID
     role: MembershipRole
     is_active: bool
     changed: bool
+    session_revoked: bool = False
 
 
 class MembershipAdministrator:
@@ -66,7 +90,12 @@ class MembershipAdministrator:
         self._factory = create_session_factory(engine)
 
     def change_membership(
-        self, token: SecretStr, *, membership_id: UUID, change: MembershipChange
+        self,
+        token: SecretStr,
+        *,
+        membership_id: UUID,
+        change: MembershipChange,
+        expected_etag: str | None = None,
     ) -> MembershipChangeResult:
         if not isinstance(membership_id, UUID) or not isinstance(
             change, MembershipChange
@@ -76,19 +105,49 @@ class MembershipAdministrator:
         try:
             with self._factory.begin() as session:
                 _limit_transaction(session)
-                result = self._change(session, token, digest, membership_id, change)
+                actor, target = self._authorized_target(
+                    session, token, digest, membership_id
+                )
+                if (
+                    expected_etag is not None
+                    and expected_etag != self._view(target).etag
+                ):
+                    raise MembershipStateChanged("Membership state changed")
+                result = self._change(session, actor, target, change)
             return result
         except SQLAlchemyError:
             raise AdministrationUnavailable("Administration unavailable") from None
 
-    def _change(
-        self,
+    def current_membership(
+        self, token: SecretStr, *, membership_id: UUID
+    ) -> MembershipView:
+        if not isinstance(membership_id, UUID):
+            raise AccessDenied("Access denied")
+        digest = _token_hash(token)
+        try:
+            with self._factory.begin() as session:
+                _limit_transaction(session)
+                _, target = self._authorized_target(
+                    session, token, digest, membership_id
+                )
+                result = self._view(target)
+            return result
+        except SQLAlchemyError:
+            raise AdministrationUnavailable("Administration unavailable") from None
+
+    @staticmethod
+    def _view(target: TenantMembership) -> MembershipView:
+        return MembershipView(
+            membership_id=target.id, role=target.role, is_active=target.is_active
+        )
+
+    @staticmethod
+    def _authorized_target(
         session: Session,
         token: SecretStr,
         digest: str,
         membership_id: UUID,
-        change: MembershipChange,
-    ) -> MembershipChangeResult:
+    ) -> tuple[MembershipContext, TenantMembership]:
         # Unlocked hints locate the parents. They confer no authority and all
         # relevant state is re-read after the ordered parent locks below.
         hint = session.execute(
@@ -112,16 +171,16 @@ class MembershipAdministrator:
                 TenantMembership.tenant_id == tenant.id,
             )
         )
-        if target_user is None:
-            raise AccessDenied("Access denied")
         # Lock ALL involved users before any child row. This also prevents
         # crossed actor/target operations in different tenants from deadlocking.
-        for user_id in sorted({hint.user_id, target_user}):
+        for user_id in sorted({hint.user_id, target_user} - {None}):
             if _lock_user(session, user_id) is None:
                 raise AccessDenied("Access denied")
         actor = resolve_session(session, token)
         if actor.tenant_id != tenant.id or actor.role != MembershipRole.ADMIN:
-            raise AccessDenied("Access denied")
+            raise AdministrationDenied("Access denied")
+        if target_user is None:
+            raise AdministrationDenied("Access denied")
         target = session.scalar(
             select(TenantMembership)
             .where(
@@ -133,7 +192,16 @@ class MembershipAdministrator:
             .execution_options(populate_existing=True)
         )
         if target is None:
-            raise AccessDenied("Access denied")
+            raise AdministrationDenied("Access denied")
+        return actor, target
+
+    def _change(
+        self,
+        session: Session,
+        actor: MembershipContext,
+        target: TenantMembership,
+        change: MembershipChange,
+    ) -> MembershipChangeResult:
         changed = (target.role, target.is_active) != (change.role, change.is_active)
         if not changed:
             return MembershipChangeResult(
@@ -160,7 +228,13 @@ class MembershipAdministrator:
             )
         )
         session.flush()
-        return MembershipChangeResult(target.id, change.role, change.is_active, True)
+        return MembershipChangeResult(
+            target.id,
+            change.role,
+            change.is_active,
+            True,
+            session_revoked=actor.membership_id == target.id,
+        )
 
     @staticmethod
     def _retain_admin(

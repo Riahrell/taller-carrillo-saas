@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.9
+## Estado: acceso 2.10
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -20,15 +20,16 @@ obtiene de Nginx verificado en una red interna separada, con pruebas reales de
 cabeceras falsificadas. Formulario probado en navegador con identidades sintéticas
 y PostgreSQL aislado. El servicio interno de administración ya verifica sesión
 y rol actual, cambia rol/estado de una membresía, conserva un administrador activo
-y confirma auditoría/revocaciones en una transacción. Su API y pantalla siguen
-pendientes. Las operaciones comerciales siguen pendientes.
+y confirma auditoría/revocaciones en una transacción. Ya tiene consulta y cambio
+por HTTP con sesión/CSRF y precondición If-Match; la pantalla administrativa y el
+listado siguen pendientes. Las operaciones comerciales siguen pendientes.
 Bootstrap CLI atómico y hashing Argon2id
 disponibles; no se creó una cuenta real automáticamente.
 La fundación tiene validación integral local y workflow CI preparado. Su primera
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 2.9](docs/deliveries/access-2.9.md).
+- [Aceptación](docs/acceptance.md) y [entrega 2.10](docs/deliveries/access-2.10.md).
 - Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
   en 8080, y el arranque requiere DB.
 
@@ -503,12 +504,12 @@ el repositorio de destino y publicar los commits con autorización; no se hizo p
 Referencias: [sintaxis de GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax),
 [checkout](https://github.com/actions/checkout) y [actionlint](https://github.com/rhysd/actionlint).
 
-## Administración interna de membresías (2.9)
+## Administración de membresías (2.9–2.10)
 
 `MembershipAdministrator.change_membership` recibe el token privado de sesión,
 el UUID objetivo y un `MembershipChange` explícito de rol/estado. El servidor
-resuelve actor, empresa y permiso admin actual dentro de su transacción. No hay
-API, pantalla ni comando de operación para este servicio aún. No llamarlo desde
+resuelve actor, empresa y permiso admin actual dentro de su transacción. El
+adaptador HTTP usa ese servicio; aún no hay pantalla ni CLI operativo. No llamarlo desde
 otra transacción ni adaptar identidad/tenant desde campos del navegador.
 
 Bloquea empresa, todos los usuarios implicados por UUID y luego sus registros de
@@ -520,9 +521,23 @@ autoridad administrativa. Sin RLS ni defensa frente a SQL arbitrario privilegiad
 La auditoría inicial solo cubre estos cambios; su consulta HTTP y otras acciones
 se implementarán en tareas posteriores. Detalle y resultados en entrega 2.9.
 
+Contrato actual: [administración HTTP](docs/membership-http-contract.md).
+GET `/api/auth/memberships/{membership_id}` devuelve únicamente ID, rol y estado
+de la membresía de la empresa autorizada, con ETag y no-store. PATCH a esa ruta
+exige sesión, origen/CSRF, JSON role/is_active explícitos y un único If-Match con
+el tag revisado. La comparación se realiza bajo bloqueo antes de escribir;
+un estado diferente devuelve 412 sin sobrescribirlo. No hay concesión de permisos
+por enviar un rol. Si el actor modifica su propio acceso, se borran cookies solo
+tras el commit que revoca su sesión. Fallo de commit conserva cookies y devuelve
+503; no reintentar automáticamente. Las rutas no aceptan query params.
+
+Sin altas/listado, cambios de usuario global ni consulta HTTP de auditoría en esta
+fase. La pantalla inicial mantiene el acceso de 2.8, sin controles administrativos
+simulados. No se necesitan usuarios reales nuevos para ejecutar el pipeline.
+
 ## Siguiente tarea
 
-Acceso 2.10: definir e implementar el contrato HTTP de administración de
-membresías existentes sobre el servicio probado, con sesión/CSRF y pruebas de
-permisos mediante peticiones directas. CI remota sigue
+Acceso 2.11: consulta paginada de membresías de la empresa autorizada para preparar
+la pantalla administrativa, con permiso admin, límites y pruebas de aislamiento.
+CI remota sigue
 pendiente hasta conectar un repositorio autorizado.

@@ -498,3 +498,41 @@ Referencias: [efectos React](https://react.dev/reference/react/useEffect),
 Referencias: [bloqueos PostgreSQL](https://www.postgresql.org/docs/current/explicit-locking.html),
 [transacciones SQLAlchemy](https://docs.sqlalchemy.org/en/20/orm/session_basics.html#framing-out-a-begin-commit-rollback-block),
 [privilegios PostgreSQL](https://www.postgresql.org/docs/current/sql-revoke.html).
+
+## Acceso 2.10: consulta y cambio HTTP de membresías
+
+- Dos rutas acotadas bajo /api/auth/memberships/{membership_id}: GET del estado
+  y PATCH del estado deseado explícito. Sin listado, altas ni operaciones globales
+  de usuario. El prefijo reutiliza las protecciones/límites/logs del proxy de acceso;
+  no se añaden reglas de Nginx ni puertos. Contrato en membership-http-contract.md.
+- Router delgado y servicio transaccional compartido para lectura/escritura.
+  Extraer la autorización de 2.9 conserva empresa -> usuarios por UUID -> hijos.
+  Identidad inválida: 401; falta de permiso/objetivo desconocido o ajeno: 403 igual.
+  El permiso se relee incluso después de esperar. No aceptar contextos externos.
+- Vista mínima membership_id/role/is_active. Sin usuarios globales, correo,
+  tenant elegido, hash ni token. GET requiere intención de navegador del mismo
+  origen y PATCH exige origen/CSRF bajo el middleware global existente. Query
+  params prohibidos; cuerpo Pydantic explícito y estricto, sin campos extra.
+- GET/PATCH devuelven ETag entre comillas de SHA-256 de representación estable.
+  PATCH requiere If-Match de un solo tag fuerte en este formato; 428 si falta,
+  400 si es inválido, débil, lista, duplicado o wildcard. No es un secreto ni prueba
+  de lectura previa. Comparar después de autorización y bajo lock, antes de cambiar:
+  412 si el estado difiere, sin revocaciones/eventos. Sin retry automático.
+- No agregar columna de versión ni migración por ahora. El tag valida estado
+  actual, no historia monotónica: si vuelve el mismo estado, vuelve el tag. No
+  usarlo como idempotencia comercial ni como garantía contra cambios intermedios
+  restituidos. Cambiar eso requerirá un contrato posterior explícito.
+- Errores de dominio se traducen centralmente en la factory: 409 último admin,
+  412 estado cambiado, 401/403 acceso y 503 saneado. La indisponibilidad comparte
+  Authentication unavailable con Nginx /api/auth/. Validaciones no devuelven inputs.
+- Un resultado interno indica si el cambio revocó al actor. Solo tras commit
+  se eliminan sus cuatro cookies con el scope existente; ese flag no sale en JSON.
+  No-op propio conserva cookies. Fallo de commit preserva cookies y devuelve 503.
+  Si se pierde respuesta, comprobar sesión/estado o recurrir a otro administrador.
+- Sin cambios en esquema/dependencias/frontend. Cierre probado por peticiones
+  directas y proxy real con identidades efímeras, no con cuentas de desarrollo.
+  Todavía sin pantalla o prueba visual administrativa ni TLS real.
+
+Referencias: [If-Match RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html#name-if-match),
+[428 RFC 6585](https://www.rfc-editor.org/rfc/rfc6585.html#section-3),
+[manejo de errores FastAPI](https://fastapi.tiangolo.com/tutorial/handling-errors/).

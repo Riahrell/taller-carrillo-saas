@@ -89,6 +89,7 @@ def http_identity(db_session, databases):
     from sqlalchemy.orm import Session
 
     from app.modules.access.models import (
+        AuditEvent,
         LoginChallenge,
         LoginThrottle,
         SessionRecord,
@@ -134,6 +135,11 @@ def http_identity(db_session, databases):
         yield state
     finally:
         with owner.begin() as connection:
+            connection.execute(
+                delete(AuditEvent).where(
+                    AuditEvent.tenant_id.in_([state["tenant"], state["other"]])
+                )
+            )
             memberships = select(TenantMembership.id).where(
                 TenantMembership.tenant_id.in_([state["tenant"], state["other"]])
             )

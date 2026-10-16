@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.modules.access.models import LoginThrottle, TenantMembership
+from app.modules.access.models import AuditEvent, LoginThrottle, TenantMembership
 
 pytestmark = [
     pytest.mark.integration,
@@ -32,12 +32,12 @@ class Browser:
         self.opener = build_opener(ProxyHandler({}), HTTPCookieProcessor(self.cookies))
         self.origin, self.base = state["settings"].public_origin, base
 
-    def request(self, path, *, body=None, headers=None):
+    def request(self, path, *, body=None, headers=None, method=None):
         request = Request(
             self.base + path,
             data=json.dumps(body).encode() if body is not None else None,
             headers=headers or {},
-            method="POST" if body is not None else "GET",
+            method=method or ("POST" if body is not None else "GET"),
         )
         if body is not None:
             request.add_header("Content-Type", "application/json")
@@ -160,6 +160,70 @@ def test_multi_company_selection_through_real_proxy(http_identity):
         and data["role"] == "mechanic"
     )
     assert browser.request("/auth/logout", body={})[0] == 204
+
+
+def test_membership_read_patch_stale_and_foreign_rejection_through_real_proxy(
+    http_identity,
+):
+    state = http_identity
+    with Session(state["runtime"]) as session, session.begin():
+        target = TenantMembership(
+            tenant_id=state["tenant"], user_id=state["foreign"], role="cashier"
+        )
+        session.add(target)
+        session.flush()
+        membership_id = target.id
+    browser = Browser(state)
+    assert browser.request("/auth/csrf", headers=READ)[0] == 204
+    assert (
+        browser.request(
+            "/auth/login",
+            body={
+                "email": state["email"],
+                "password": state["password"].get_secret_value(),
+            },
+        )[0]
+        == 200
+    )
+    target_path = f"/auth/memberships/{membership_id}"
+    status, data, headers = browser.request(target_path, headers=READ)
+    assert status == 200 and data == {
+        "membership_id": str(membership_id),
+        "role": "cashier",
+        "is_active": True,
+    }
+    old_tag = headers["ETag"]
+    status, data, headers = browser.request(
+        target_path,
+        method="PATCH",
+        body={"role": "mechanic", "is_active": True},
+        headers={"If-Match": old_tag},
+    )
+    assert status == 200 and data["role"] == "mechanic"
+    assert headers["Cache-Control"] == "no-store" and headers["ETag"] != old_tag
+    assert (
+        browser.request(
+            target_path,
+            method="PATCH",
+            body={"role": "admin", "is_active": True},
+            headers={"If-Match": old_tag},
+        )[0]
+        == 412
+    )
+    assert (
+        browser.request(
+            f"/auth/memberships/{state['foreign_membership']}", headers=READ
+        )[0]
+        == 403
+    )
+    # Existing proxy log canary inspection also covers administration/query/header.
+    status, data, headers = browser.request(
+        target_path + "?probe=" + CANARY, headers=READ | {"X-Log-Probe": CANARY}
+    )
+    assert status == 422 and CANARY not in json.dumps(data)
+    assert headers["Cache-Control"] == "no-store"
+    with Session(state["runtime"]) as session:
+        assert len(list(session.scalars(select(AuditEvent)))) == 1
 
 
 def test_proxy_rejects_excess_body_uploads_without_reaching_authentication(

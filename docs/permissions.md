@@ -56,5 +56,25 @@ No se puede desactivar ni degradar al último administrador con usuario y membre
 activos. Si otro administrador tiene usuario o membresía inactivos, no cuenta.
 El propio administrador puede retirarse solo si queda otro; su sesión se revoca.
 Esta garantía corresponde al servicio coordinado, no a SQL arbitrario ni a futuras
-operaciones globales de usuario aún no implementadas. No existe API/pantalla para
-administrar estos cambios ni concesiones por módulo para solo lectura todavía.
+operaciones globales de usuario aún no implementadas. La entrega 2.9 dejó el
+servicio interno; su conexión HTTP se detalla abajo. No hay concesiones por
+módulo para solo lectura todavía.
+
+## Conexión HTTP en acceso 2.10
+
+GET/PATCH `/api/auth/memberships/{membership_id}` aplican ahora el permiso admin
+en el servicio transaccional, para la empresa de la sesión. El contrato está en
+`membership-http-contract.md`. No hay permisos de consulta de membresías para
+otros perfiles, ni siquiera del propio acceso desde esa ruta administrativa.
+La consulta de sesión existente sigue disponible para todos los perfiles activos.
+
+Un administrador tampoco puede consultar/modificar membresías ajenas: mismo 403
+que un objetivo inexistente, sin ETag ni datos. Sesión inválida devuelve 401.
+No se expone correo, cuenta global, hash ni token. Un selector provisional no
+autoriza administración. Origen/CSRF se comprueban para PATCH y la cabecera de
+intención de navegador para GET, con CORS cerrado y respuestas no-store.
+
+If-Match identifica el estado revisado, sin otorgar autoridad. Se comprueba tras
+sesión/permiso bajo los locks del cambio: un estado diferente devuelve 412 sin
+efectos. Si el cambio revoca la sesión del actor, las cookies se retiran después
+de commit. Siguen pendientes listado/UI y permisos de los módulos futuros.
