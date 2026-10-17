@@ -139,5 +139,6 @@ Antes de mostrar éxito se confirma la misma sesión admin y se relee el detalle
 creado. 409/422 retiran contraseña y exigen otra revisión; 401/403/428/429/503 o
 fallo incierto retiran formulario/contexto. Focus/visibilidad/timer y señales
 entre pestañas reutilizan el control de workspace. Abort no revierte un commit.
-La reautenticación reciente/MFA todavía no existe en servidor: es una brecha
-priorizada en `security-review.md`, no un control que este formulario sustituya.
+La confirmación reciente tiene servicio/API en 2.16–2.17, pero todavía no se exige
+en este formulario/transacción; MFA sigue pendiente. Brecha priorizada en
+`security-review.md`, no un control que este formulario sustituya.

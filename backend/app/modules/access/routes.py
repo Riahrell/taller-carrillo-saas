@@ -2,13 +2,15 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, SecretStr
 
 from app.modules.access.authentication import Credentials
+from app.modules.access.http_context import expected_membership
 from app.modules.access.http_security import RequestRejected
 from app.modules.access.login_challenges import PendingLogin
+from app.modules.access.reauthentication import PasswordConfirmation
 
 router = APIRouter(prefix="/auth", tags=["access"])
 
@@ -116,6 +118,41 @@ def select_membership(payload: MembershipInput, request: Request) -> Response:
         {"status": "authenticated"}, headers={"Cache-Control": "no-store"}
     )
     policy.set_session(response, result)
+    return response
+
+
+@router.post("/reauthenticate", status_code=204)
+def reauthenticate(payload: PasswordConfirmation, request: Request) -> Response:
+    # Middleware bounds JSON and verifies same-origin session-bound CSRF first.
+    if request.query_params:
+        raise HTTPException(
+            422, "Invalid request", headers={"Cache-Control": "no-store"}
+        )
+    policy, access = request.app.state.http_security, request.app.state.access
+    cookies = policy.read_cookies(request.headers)
+    token = cookies.get(policy.session_cookie)
+    if token is None:
+        return _denied()
+    if policy.preauth_cookie in cookies or policy.challenge_cookie in cookies:
+        raise RequestRejected("Request rejected")
+    expected = expected_membership(request)
+    if expected is None:
+        raise HTTPException(
+            428, "Precondition required", headers={"Cache-Control": "no-store"}
+        )
+    peer = request.app.state.trusted_proxy.client_ip(request.scope, request.headers)
+    with access.password_slot():
+        issued = access.authenticator.reauthenticate(
+            SecretStr(token), data=payload, expected_actor=expected, client_ip=peer
+        )
+    if issued is None:
+        return _denied()
+    response = Response(
+        status_code=204,
+        headers={"Cache-Control": "no-store", "X-Access-Membership": str(expected)},
+    )
+    # Cookie/token/CSRF are published only after the service commits rotation.
+    policy.set_session(response, issued)
     return response
 
 

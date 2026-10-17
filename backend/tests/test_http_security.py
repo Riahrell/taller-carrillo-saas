@@ -118,6 +118,27 @@ def test_valid_proof_allows_json_and_keeps_session_token_out_of_response(
 
 
 @pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"email":"a@example.com","password":"x","password":"y"}',
+        b'{"email":"a@example.com","password":"x","extra":{"x":1,"x":2}}',
+    ],
+)
+def test_ambiguous_json_is_rejected_by_shared_guard_without_effects(web, raw):
+    client, policy, effects = web
+    client.get("/_test/session")
+    response = client.post(
+        "/_test/write",
+        content=raw,
+        headers=valid_headers(client, policy) | {"Content-Type": "application/json"},
+    )
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Request rejected"}
+    assert response.headers["cache-control"] == "no-store"
+    assert "set-cookie" not in response.headers and effects == []
+
+
+@pytest.mark.parametrize(
     "origin",
     [
         None,

@@ -163,5 +163,14 @@ la contraseña no selecciona identidad o empresa. La guardia interna revalida
 sesión, perfil y prueba de cinco minutos ligada al token y hash de contraseña,
 dentro de la transacción sensible. Sin nueva autoridad desde el cliente.
 Ver `reauthentication-contract.md` para límites, rotación y revocación.
-Todavía no hay ruta HTTP ni llamadas a la guardia desde alta/cambio: la condición
-operativa del párrafo anterior sigue vigente hasta completar la integración.
+En 2.16 no había ruta HTTP ni llamadas a la guardia desde alta/cambio.
+
+## Confirmación HTTP 2.17
+
+POST `/api/auth/reauthenticate` verifica sesión admin y membresía esperada, con
+origen/CSRF, IP de proxy confiable y slots compartidos con login/alta. Contraseña
+único campo; no selecciona identidad. Cookies de sesión/CSRF solo tras commit,
+sin prolongar vida absoluta. Rechazo genérico sin borrar cookies ni publicar actor.
+No admite cookies mixtas de autenticación pendiente ni JSON ambiguo.
+Todavía no hay UI de confirmación ni llamadas a la guardia desde alta/cambio;
+una sesión válida sigue bastando para esas operaciones hasta completar 2.18.

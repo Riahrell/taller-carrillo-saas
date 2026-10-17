@@ -57,7 +57,9 @@ class HttpSecurityMiddleware:
             return
         try:
             json.loads(
-                bytes(body).decode("utf-8"), parse_constant=self._invalid_constant
+                bytes(body).decode("utf-8"),
+                parse_constant=self._invalid_constant,
+                object_pairs_hook=self._unique_object,
             )
         except (ValueError, UnicodeError, RecursionError):
             await self._reject(scope, receive, send, 400)
@@ -82,6 +84,15 @@ class HttpSecurityMiddleware:
             await send(message)
 
         await self.app(scope, replay, no_store)
+
+    @staticmethod
+    def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Ambiguous JSON")
+            result[key] = value
+        return result
 
     @staticmethod
     def _invalid_constant(_value: str) -> None:

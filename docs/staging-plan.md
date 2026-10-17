@@ -8,6 +8,13 @@ configuración del registrador ni servicio del dominio. No se inspeccionó el VP
 Desde aquí no se accedió por SSH, cambió DNS, compró servicios o publicó la app.
 No enviar credenciales del VPS/DB/DNS por chat ni incorporarlas al repositorio.
 
+Actualización posterior del usuario: puede retirar el proyecto existente y
+autoriza dejar limpia la VPS si es necesario para Carrillo. Esta instrucción
+sustituye la obligación inicial de conservar ese despliegue. No hubo limpieza
+desde aquí: primero identificar recursos y datos, preparar respaldo recuperable
+y concretar qué se retirará. No confundir disponibilidad para limpiar con un
+servidor ya inspeccionado o sin datos que respaldar.
+
 ## Preparación antes de cambiar el VPS
 
 1. Inventario de solo lectura de proxy/webserver, contenedores, puertos ocupados,
@@ -20,8 +27,9 @@ No enviar credenciales del VPS/DB/DNS por chat ni incorporarlas al repositorio.
    datos de prueba, cuentas individuales y acceso remoto restringido mientras
    las brechas de `security-review.md` sigan abiertas.
 4. Preparar archivos y comandos revisables antes de cambiar DNS o ejecutar el
-   despliegue. La autorización para preparar este entorno no autoriza borrar
-   contenedores/volúmenes ajenos o ejecutar prune/global cleanup en el VPS.
+   despliegue. La limpieza está autorizada si hace falta; identificar antes los
+   contenedores, imágenes y volúmenes a retirar y respaldar lo recuperable.
+   No ejecutar prune global sobre recursos que todavía no se han identificado.
 
 ## Dominio y HTTPS
 
@@ -41,7 +49,8 @@ de despliegue TLS. El HTTP de localhost actual es exclusivamente desarrollo.
 
 ## Aceptación del entorno remoto
 
-- El servicio de imágenes anterior sigue funcionando y sus datos permanecen.
+- Si se conserva el servicio anterior, sigue funcionando; si se retira según la
+  autorización actual, se documentan sus recursos y el respaldo de sus datos.
 - DB/secretos/redes/volúmenes de staging son independientes y los tests no apuntan
   a recursos operativos. No hay carga de datos reales en staging por defecto.
 - Backup privado y restauración aislada ensayados antes de cambios irreversibles.

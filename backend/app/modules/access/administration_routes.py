@@ -14,7 +14,7 @@ from app.modules.access.administration import (
     MembershipView,
     UserCreation,
 )
-from app.modules.access.http_security import RequestRejected
+from app.modules.access.http_context import expected_membership
 from app.modules.access.membership import AccessDenied
 
 router = APIRouter(prefix="/auth/memberships", tags=["membership administration"])
@@ -42,18 +42,6 @@ def _if_match(request: Request) -> str:
     return values[0]
 
 
-def _expected_actor(request: Request) -> UUID | None:
-    values = request.headers.getlist("x-expected-membership")
-    if not values:
-        return None
-    try:
-        if len(values) != 1 or str(UUID(values[0])) != values[0]:
-            raise ValueError
-        return UUID(values[0])
-    except ValueError:
-        raise RequestRejected("Request rejected") from None
-
-
 def _representation(view: MembershipView, *, status_code: int = 200) -> JSONResponse:
     return JSONResponse(
         view.model_dump(mode="json"),
@@ -69,7 +57,7 @@ def _representation(view: MembershipView, *, status_code: int = 200) -> JSONResp
 @router.post("", status_code=201)
 def create_user(payload: UserCreation, request: Request) -> JSONResponse:
     # Middleware validates origin/CSRF and bounds JSON before routing.
-    token, expected = _token(request), _expected_actor(request)
+    token, expected = _token(request), expected_membership(request)
     if expected is None:
         raise HTTPException(428, "Precondition required", headers=_NO_STORE)
     with request.app.state.access.password_slot():
@@ -116,7 +104,7 @@ def change_membership(
         membership_id=membership_id,
         change=payload,
         expected_etag=expected,
-        expected_actor=_expected_actor(request),
+        expected_actor=expected_membership(request),
     )
     response = _representation(
         MembershipView(

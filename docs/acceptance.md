@@ -26,10 +26,13 @@ formulario asistido, revisión/confirmación, retirada de contraseñas y validac
 de contexto posterior, con pruebas de componente y recorrido de navegador aislado.
 Acceso 2.16 añade contrato y servicio interno de confirmación, rotación atómica,
 guardia transaccional y migración 0008. No añade HTTP/UI ni activa la guardia
-en administración: esa brecha continúa abierta.
-Resultados actuales en `deliveries/access-2.16.md`; entregas anteriores como
+en administración. Acceso 2.17 conecta POST de confirmación con contexto/CSRF,
+slots compartidos y cookies rotadas tras commit. El middleware rechaza claves
+JSON duplicadas. Falta formulario y guardia activa en alta/cambio; esa brecha
+continúa abierta.
+Resultados actuales en `deliveries/access-2.17.md`; entregas anteriores como
 registros históricos.
-El hito 2 sigue abierto: falta reautenticación reciente,
+El hito 2 sigue abierto: falta integrar y exigir la reautenticación reciente,
 gestión global de cuentas, permisos de otros módulos, consulta/ampliación de
 auditoría, recuperación y limpieza de registros de acceso.
 Contrato actualizado en `auth-http-contract.md`, con límites y pendientes explícitos.

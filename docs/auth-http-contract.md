@@ -8,8 +8,9 @@ existentes solo para administradores: [contrato específico](membership-http-con
 Acceso 2.13–2.15 añade [alta administrativa](user-provisioning-contract.md), servicio,
 POST de colección con sesión/admin, CSRF y contexto obligatorio y formulario
 asistido. Sin registro público. Comparte slots Argon2 con login sin cambiar su contrato.
-Acceso 2.16 prepara [reautenticación interna](reauthentication-contract.md), sin
-ruta HTTP nueva ni requisito reciente activo en las rutas administrativas.
+Acceso 2.16–2.17 conecta [reautenticación](reauthentication-contract.md) con
+rotación de cookies tras commit; todavía sin formulario ni requisito reciente
+activo en las transacciones administrativas.
 
 ## Rutas y contratos
 
@@ -24,6 +25,7 @@ URL o localStorage. CORS permanece cerrado.
 | POST /api/auth/select-membership | JSON estricto: membership_id UUID | 200 con status authenticated tras consumir identidad pendiente y emitir sesión. |
 | GET /api/auth/session | Cabecera X-Requested-With: XMLHttpRequest y cookie de sesión | 200 con user_id, membership_id, tenant_id, tenant_name y role actuales del servidor. |
 | POST /api/auth/logout | JSON estricto vacío: {} | 204 sin cuerpo; revoca sesión y pendiente ligado al navegador antes de borrar cookies. |
+| POST /api/auth/reauthenticate | JSON estricto: password; sesión admin y X-Expected-Membership obligatorio | 204 sin cuerpo, X-Access-Membership y cookies sesión/CSRF rotadas tras commit; misma expiración absoluta. |
 
 Las escrituras exigen Origin exactamente igual a PUBLIC_ORIGIN y X-CSRF-Token
 igual a la cookie CSRF firmada. Sec-Fetch-Site, si existe, debe ser same-origin.
@@ -31,7 +33,16 @@ Solo application/json UTF-8 hasta 8192 bytes, también para cuerpos fragmentados
 En las rutas de la tabla, campos extra se rechazan: ningún tenant, rol, IP, precio
 o stock se toma del JSON. El cambio de rol autorizado de administración tiene su
 contrato específico, sin aceptar el rol solicitado como autoridad del actor.
-Credenciales únicamente en el cuerpo del login, nunca query strings.
+Credenciales únicamente en cuerpos JSON de login, alta o confirmación, nunca query strings.
+
+La reautenticación también recibe contraseña exclusivamente en JSON, sin query.
+No acepta email, tenant, rol o fecha; confirma la identidad de la sesión existente.
+Rechaza cookies mixtas con preauth/challenge. Comparte IP de proxy confiable,
+slots Argon2 y cuotas persistentes de login. Error 401 genérico o de validación/
+infraestructura sin modificar cookies o devolver actor. Falta la membresía esperada:
+428. Su contrato completo incluye replay y pérdida de respuesta.
+El middleware compartido rechaza claves JSON duplicadas en cualquier nivel con
+400 Request rejected, sin eco, antes de invocar un endpoint de escritura.
 
 Las lecturas de acceso exigen la cabecera personalizada X-Requested-With con valor
 exacto XMLHttpRequest. Origin puede faltar en un GET del mismo origen; si existe,

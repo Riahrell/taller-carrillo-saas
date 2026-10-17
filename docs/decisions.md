@@ -682,3 +682,23 @@ Referencias: [query models FastAPI](https://fastapi.tiangolo.com/tutorial/query-
 - Actualización del usuario: ya adquirió taller-carrillo.com y apuntó DNS a su
   VPS. Registrar el nombre como contexto, sin IP pública ni origen hardcodeado.
   DNS, proxy y TLS todavía sin verificar; no hubo cambios remotos desde aquí.
+
+## Acceso 2.17: adaptador de confirmación
+
+- Definir primero POST `/api/auth/reauthenticate` sobre el servicio de 2.16;
+  contraseña único campo, sin query y con contexto esperado obligatorio. Es una
+  ampliación de acceso, sin nuevas reglas comerciales o permisos de empresa.
+- 204 sin cuerpo, X-Access-Membership vinculado a la comparación del servicio y
+  cookies sesión/CSRF rotadas únicamente tras commit. Conservar expiración,
+  flags y política de cookies existentes; sin token o huella en JSON.
+- Validar IP del proxy y compartir slots/cuotas con login/alta. Rechazar cookies
+  mixtas con preautenticación pendiente, origen/CSRF y headers ambiguos antes de
+  verificar contraseña. Rechazo 401 genérico no borra cookies ni publica actor.
+- Extraer comparación de contexto común para administración/confirmación, sin
+  cambiar reglas del POST/PATCH administrativo. Guardia reciente todavía no
+  activa en alta/cambio; la integración de UI y transacciones corresponde a 2.18.
+- Rechazar claves JSON duplicadas en middleware compartido para evitar payloads
+  ambiguos; 400 saneado sin efectos, incluidas escrituras previas.
+- Nueva instrucción del usuario permite dejar limpia la VPS si es necesario.
+  Sustituye preservar obligatoriamente el despliegue anterior; inventariar y
+  respaldar recursos antes de retirarlos. No se ha accedido o borrado nada remoto.

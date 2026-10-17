@@ -1,11 +1,12 @@
-# Confirmación reciente: contrato interno 2.16
+# Confirmación reciente: servicio 2.16 y HTTP 2.17
 
 ## Alcance y estado
 
-Servicio interno y guardia transaccional, sin endpoint ni formulario nuevos.
+Servicio interno y guardia transaccional de 2.16; adaptador HTTP de 2.17 descrito
+al final. Todavía sin formulario.
 Las rutas administrativas actuales todavía no invocan esta guardia: **la brecha
-de confirmación reciente continúa abierta** hasta conectar API, UI y operaciones
-en entregas siguientes. No activar un requisito imposible de satisfacer desde
+de confirmación reciente continúa abierta** hasta conectar UI y operaciones
+en la entrega siguiente. No activar un requisito imposible de satisfacer desde
 la aplicación actual ni confundir esta base con protección operativa terminada.
 
 La decisión responde a la prioridad de seguridad del usuario. OWASP recomienda
@@ -109,13 +110,43 @@ de login. No se elimina la protección de auditoría de la migración 0007.
 
 ## Conexión pendiente y aceptación posterior
 
-Siguiente tarea 2.17: definir contrato HTTP mínimo y conectar este servicio con
-cookie privada, CSRF/origen, contexto obligatorio, slots Argon2 compartidos con
-login/alta, no-store, respuesta sin secretos y renovación de cookies/CSRF ligada
-al token rotado. Probar por HTTP/proxy payload/query/cookies ambiguas, rechazo,
-saturación, commit y ausencia de secretos. No fijar una ruta nueva sin ese contrato.
+Contrato HTTP 2.17 definido antes de su implementación: POST
+`/api/auth/reauthenticate` por proxy, `/auth/reauthenticate` directo. JSON estricto
+con solo `password`, sin query. Sesión privada actual, Origin exacto y prueba
+CSRF firmada ligada a esa sesión. `X-Expected-Membership` obligatorio y UUID
+canónico; solo compara contexto, no selecciona identidad. Rechazar cookies
+mezcladas de sesión con preautenticación/selección pendiente. Sin sesión,
+una preautenticación o identidad pendiente no autoriza confirmación.
 
-Después: confirmación en frontend con campos no persistentes, pérdida de
+Adaptador toma IP del proxy confiable y comparte dos slots Argon2 por proceso
+con login/alta, sin esperar en cola al saturar. Límites persistentes de cuenta/IP
+del servicio y límites Nginx de `/api/auth/` permanecen vigentes. Cookies ambiguas,
+origen/CSRF o contexto mal formado se rechazan antes del servicio.
+
+Éxito: **204 sin cuerpo**, `Cache-Control: no-store` y `X-Access-Membership` con
+la membresía comparada por el servicio. `Set-Cookie` de sesión con nuevo token
+y misma expiración absoluta, CSRF nuevo ligado a ese token, retirada de cookies
+preauth/challenge. Cookie privada HttpOnly; Secure y prefijo __Host- en HTTPS,
+SameSite=Lax y Path=/, sin Domain. Ni token, contraseña, huella, tenant, fecha o
+duración en cuerpo/URL. Sin ETag o Location ni autoridad tomada de Host.
+
+Rechazo de credencial/sesión/permiso/contexto vigente: **401 Access denied**
+genérico, sin borrar cookies (evitar que un error tardío borre una rotación).
+Otros rechazos: 400 JSON inválido/ambiguo; 403 Request rejected para origen,
+CSRF, cookies/headers ambiguos o par remoto no confiable; 413 cuerpo excesivo;
+415 tipo de contenido; 422 campos/query inválidos; 428 Precondition required
+si falta membresía esperada; 429 del proxy; 503 Authentication unavailable
+por slots/DB/hash/commit. Siempre no-store; sin Set-Cookie ni cabecera de actor,
+ETag o Location en error. Rechazos previos al servicio no tocan sesión o contadores.
+
+Límite JSON 8192 bytes. El middleware compartido rechaza claves JSON duplicadas,
+sin eco del cuerpo, para evitar interpretación ambigua en escrituras existentes
+y nuevas. El adaptador no expone la guardia ni agrega un bypass para escribir.
+Una prueba CSRF previa no vale con token nuevo; un token previo no autentica.
+Ante respuesta perdida, iniciar sesión de nuevo; no repetir la confirmación.
+La protección del transporte debe probarse con PostgreSQL y proxy reales.
+
+Siguiente 2.18: confirmación en frontend con campos no persistentes, pérdida de
 visibilidad/contexto, rotación entre pestañas y resultado incierto sin replay;
 activar guardia en alta y cambios dentro de su transacción, con denegaciones
 sin efectos y recorrido completo. Mantener ejecutable cada entrega. No afirmar

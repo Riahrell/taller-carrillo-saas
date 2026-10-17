@@ -5,6 +5,7 @@ import json
 import os
 import socket
 import time
+from copy import copy
 from http.client import HTTPResponse
 from http.cookiejar import CookieJar
 from urllib.error import HTTPError
@@ -12,10 +13,17 @@ from urllib.parse import urljoin
 from urllib.request import HTTPCookieProcessor, ProxyHandler, Request, build_opener
 
 import pytest
+from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.modules.access.models import AuditEvent, LoginThrottle, TenantMembership
+from app.modules.access.models import (
+    AuditEvent,
+    LoginThrottle,
+    SessionRecord,
+    TenantMembership,
+)
+from app.modules.access.reauthentication import require_recent_administrator
 
 pytestmark = [
     pytest.mark.integration,
@@ -322,6 +330,117 @@ def test_administrative_creation_and_new_user_login_through_real_proxy(
     with Session(state["runtime"]) as session:
         records = list(session.scalars(select(AuditEvent)))
         assert len(records) == 1 and records[0].action == "membership_created"
+
+
+def test_confirmation_rotates_cookies_and_rejects_replay_through_real_proxy(
+    http_identity,
+):
+    state = http_identity
+    browser = Browser(state)
+    assert browser.request("/auth/csrf", headers=READ)[0] == 204
+    assert (
+        browser.request(
+            "/auth/login",
+            body={
+                "email": state["email"],
+                "password": state["password"].get_secret_value(),
+            },
+        )[0]
+        == 200
+    )
+    context = {"X-Expected-Membership": str(state["membership"])}
+    original = [copy(cookie) for cookie in browser.cookies]
+    status, data, headers = browser.request(
+        "/auth/reauthenticate",
+        body={"password": CANARY},
+        headers=context,
+    )
+    assert status == 401 and data == {"detail": "Access denied"}
+    assert (
+        headers.get("Set-Cookie") is None and headers.get("X-Access-Membership") is None
+    )
+    assert headers["Cache-Control"] == "no-store"
+    assert [(cookie.name, cookie.value) for cookie in browser.cookies] == [
+        (cookie.name, cookie.value) for cookie in original
+    ]
+    # Direct access to the backend cannot claim the trusted proxy, even with
+    # real session/proof cookies from the isolated authenticated browser.
+    direct = Browser(state, base="http://backend:8000")
+    for cookie in original:
+        direct.cookies.set_cookie(copy(cookie))
+    status, data, headers = direct.request(
+        "/auth/reauthenticate",
+        body={"password": state["password"].get_secret_value()},
+        headers=context
+        | {
+            "Cookie": "; ".join(f"{cookie.name}={cookie.value}" for cookie in original),
+            "X-Real-IP": "127.0.0.1",
+        },
+    )
+    assert status == 403 and data == {"detail": "Request rejected"}
+    assert headers.get("Set-Cookie") is None
+    with Session(state["runtime"]) as session:
+        before = session.scalar(select(SessionRecord))
+        expiry, record_id = before.expires_at, before.id
+    status, data, headers = browser.request(
+        "/auth/reauthenticate",
+        body={"password": state["password"].get_secret_value()},
+        headers=context | {"X-Real-IP": "127.0.9.1", "X-Forwarded-For": "127.0.9.1"},
+    )
+    assert status == 204 and data is None
+    assert headers["Cache-Control"] == "no-store" and headers[
+        "X-Access-Membership"
+    ] == str(state["membership"])
+    fresh = {cookie.name: cookie.value for cookie in browser.cookies}
+    old = {cookie.name: cookie.value for cookie in original}
+    assert fresh["carrillo_session"] != old["carrillo_session"]
+    assert fresh["carrillo_csrf"] != old["carrillo_csrf"]
+    with Session(state["runtime"]) as session, session.begin():
+        record = session.scalar(select(SessionRecord))
+        assert record.id == record_id and record.expires_at == expiry
+        assert record.reauthenticated_at is not None
+        actor = require_recent_administrator(
+            session,
+            SecretStr(fresh["carrillo_session"]),
+            expected_actor=state["membership"],
+        )
+        assert actor.tenant_id == state["tenant"]
+    replay = Browser(state)
+    for cookie in original:
+        replay.cookies.set_cookie(copy(cookie))
+    status, data, headers = replay.request(
+        "/auth/reauthenticate",
+        body={"password": state["password"].get_secret_value()},
+        headers=context,
+    )
+    assert status == 401 and data == {"detail": "Access denied"}
+    assert (
+        headers.get("Set-Cookie") is None and headers.get("X-Access-Membership") is None
+    )
+    stale_proof = Browser(state)
+    for cookie in browser.cookies:
+        stale_proof.cookies.set_cookie(copy(cookie))
+    for cookie in original:
+        if cookie.name == "carrillo_csrf":
+            stale_proof.cookies.set_cookie(copy(cookie))
+    assert (
+        stale_proof.request(
+            "/auth/reauthenticate",
+            body={"password": CANARY},
+            headers=context,
+        )[0]
+        == 403
+    )
+    status, data, headers = browser.request(
+        "/auth/reauthenticate?probe=" + CANARY,
+        body={"password": CANARY},
+        headers=context,
+    )
+    assert status == 422 and CANARY not in json.dumps(data)
+    assert headers.get("Set-Cookie") is None
+    assert browser.request("/auth/session", headers=READ)[0] == 200
+    assert browser.request("/auth/logout", body={})[0] == 204
+    assert not list(browser.cookies)
 
 
 def test_proxy_rejects_excess_body_uploads_without_reaching_authentication(
