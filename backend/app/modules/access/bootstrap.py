@@ -171,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         if engine is not None:
             engine.dispose()
-    print("Empresa y administrador creados. El acceso web sigue pendiente.")
+    print("Empresa y administrador creados. Ya puedes iniciar sesión en la web.")
     return 0
 
 

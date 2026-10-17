@@ -75,6 +75,8 @@ def test_cli_success_disposes_engine_and_does_not_print_identity(monkeypatch, ca
     output = capsys.readouterr()
     assert password not in output.out + output.err
     assert "admin@example.com" not in output.out + output.err
+    assert "Ya puedes iniciar sesión en la web." in output.out
+    assert "pendiente" not in output.out
 
 
 def test_cli_rejects_piped_input_before_accessing_db(monkeypatch, capsys):

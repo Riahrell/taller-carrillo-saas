@@ -110,3 +110,18 @@ acceso o cambiar visibilidad; señales entre pestañas solo solicitan otra lectu
 No hay garantía de actualización instantánea frente a cambios remotos mientras
 una pestaña permanece sin interacción. Los controles DB siguen aplicándose en
 la siguiente petición. Sin altas, permisos comerciales o auditoría consultable.
+
+## Alta interna en acceso 2.13
+
+El servicio exige sesión, tenant/usuario/membresía activos y rol admin actual.
+expected_actor obligatorio compara el contexto esperado con la membresía que
+autorizó; no la selecciona. Solo después comprueba disponibilidad y calcula hash.
+Tenant y estados activos nunca son campos de entrada; el perfil objetivo no
+otorga autoridad al llamador. El lock de empresa coordina altas con último admin.
+
+Conocer un correo existente no permite crear otra membresía, reactivar la cuenta
+o cambiar su contraseña. Conflicto genérico para cuenta propia/ajena/inactiva;
+sin IDs ni información de su empresa. El alta se audita en el mismo commit.
+No hay adaptador HTTP/UI todavía, ni permisos comerciales, invitaciones,
+verificación de correo o recuperación implícitas. El contrato interno está en
+`user-provisioning-contract.md`; bootstrap se mantiene como acción del operador.

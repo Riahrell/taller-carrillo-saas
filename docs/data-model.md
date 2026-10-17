@@ -2,7 +2,7 @@
 
 Este documento distingue el modelo objetivo y los contratos implementados por
 entrega. Acceso 2.1 incorporó `tenants`, `users` y `tenant_memberships` mediante
-`0002_access`; las ampliaciones hasta 2.12 se detallan al final. Los atributos comerciales
+`0002_access`; las ampliaciones hasta 2.13 se detallan al final. Los atributos comerciales
 se limitan a los requeridos por el plan y a las decisiones de `decisions.md`.
 La especificación de cada tarea cerrará contratos antes de generar código.
 
@@ -235,3 +235,19 @@ Se excluye del JSON y del ETag. X-Expected-Membership es una precondición opcio
 del cliente comparada contra el actor real, sin persistencia ni selección de
 identidad. La pantalla conserva solo una página y un borrador en memoria, y
 reutiliza el cambio transaccional existente para rol/estado, auditoría y revocación.
+
+## Alta interna 2.13
+
+`0007_membership_creation_audit` amplía CHECKs y permite before_role/before_active
+null exclusivamente en eventos `membership_created`; after_role sigue siendo un
+perfil válido y after_active debe ser true. Los eventos `membership_changed`
+siguen exigiendo antes no nulo y estado distinto. No se altera evidencia anterior,
+FKs de empresa/actor/objetivo ni privilegios SELECT/INSERT de aplicación.
+Downgrade a 0006 aborta si existen eventos de alta: no se destruye evidencia ni
+se fabrica un estado anterior para hacerla encajar en ese esquema.
+
+El servicio crea users/tenant_memberships/evento en un commit. Cuenta y membresía
+activas, rol objetivo explícito y tenant del actor autorizado. Unicidad global de
+users.email arbitra colisiones entre empresas, sin adjuntar ni actualizar al
+usuario existente. El resultado solo expone ID de membresía/rol/estado; sin ID
+global, hash o contraseña. No emite sesiones ni crea empresas nuevas.

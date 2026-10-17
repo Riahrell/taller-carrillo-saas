@@ -17,9 +17,12 @@ cursor por UUID, correo/estados existentes y filtro de empresa desde sesión.
 Acceso 2.12 conecta el listado y cambio a una pantalla administrativa con revisión
 actual, confirmación explícita, CSRF/If-Match, vínculo al contexto autenticado y
 limpieza ante pérdida de acceso. Recorrido visual aislado de cambio y último admin.
-Resultados actuales en `deliveries/access-2.12.md`; entregas anteriores como
+Acceso 2.13 añade alta interna de cuenta global nueva/membresía/auditoría atómicas,
+sin vincular correos existentes; permiso actual, duplicados y concurrencia probados.
+El alta todavía no tiene endpoint ni formulario. Migración de auditoría 0007.
+Resultados actuales en `deliveries/access-2.13.md`; entregas anteriores como
 registros históricos.
-El hito 2 sigue abierto: faltan altas,
+El hito 2 sigue abierto: falta conectar altas a HTTP/UI,
 gestión global de cuentas, permisos de otros módulos, consulta/ampliación de
 auditoría, recuperación y limpieza de registros de acceso.
 Contrato actualizado en `auth-http-contract.md`, con límites y pendientes explícitos.

@@ -5,6 +5,8 @@ acceso 2.7. Probados con PostgreSQL, Nginx/Uvicorn y recorrido real de navegador
 con identidades sintéticas en una base efímera. No hay rutas comerciales ni
 registro público de usuarios. Acceso 2.10–2.12 añade listado/consulta/cambio de membresías
 existentes solo para administradores: [contrato específico](membership-http-contract.md).
+Acceso 2.13 añade [alta interna](user-provisioning-contract.md), todavía sin ruta
+HTTP ni formulario. No cambia el login ni añade registro público.
 
 ## Rutas y contratos
 

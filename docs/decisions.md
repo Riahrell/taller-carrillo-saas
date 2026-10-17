@@ -593,3 +593,22 @@ Referencias: [query models FastAPI](https://fastapi.tiangolo.com/tutorial/query-
 - QA manual con proyecto aleatorio, DB tmpfs e identidades desechables; harness
   `scripts.browser_qa` reutiliza guards/limpieza del CI. Credenciales solo en un
   archivo privado dentro del fixture. Nunca crear usuarios reales para pruebas.
+
+## Acceso 2.13: alta interna de cuenta nueva y membresía
+
+- Implementar primero el contrato/servicio y sus pruebas, sin API/UI ni cuentas
+  reales. Reutilizar la autoridad transaccional del administrador y el lock de
+  empresa; expected_actor obligatorio solo comprueba contexto previamente leído.
+- Identidad global: correo existente produce conflicto genérico, sin adjuntar,
+  reactivar o reemplazar contraseña. Un enlace a otra empresa requiere un flujo
+  posterior con control de identidad; no inferir consentimiento por conocer correo.
+- Cuenta y membresía activas creadas por servidor, rol objetivo explícito entre
+  los cuatro ya aprobados. SecretStr de 15–128 caracteres y hash existente;
+  sin generación/entrega de contraseñas, sesión automática o contraseña de reserva.
+- Registrar `membership_created` en audit_events, con estado previo null y estado
+  posterior real, en el mismo commit. Ampliar CHECKs mediante migración 0007,
+  conservar privilegios y rechazar downgrade si existe evidencia no representable
+  en 0006. No borrar historial para permitir una reversión.
+- Detalles y límites: `user-provisioning-contract.md`. El adaptador posterior debe
+  concretar CSRF, límites y elección/entrega segura de contraseña antes de exponer
+  altas a usuarios. No declarar el hito de acceso completo con este servicio.

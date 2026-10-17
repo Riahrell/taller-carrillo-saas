@@ -1,10 +1,11 @@
-"""Session-authorized membership reads and atomic, audited state changes."""
+"""Session-authorized reads, new users and atomic, audited membership changes."""
 
 import hashlib
 import re
 from dataclasses import dataclass
 from uuid import UUID
 
+from argon2.exceptions import HashingError
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -14,11 +15,12 @@ from pydantic import (
     field_validator,
 )
 from sqlalchemy import Engine, func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.database import create_session_factory
-from app.modules.access.authentication import _limit_transaction
+from app.modules.access.authentication import Credentials, _limit_transaction
 from app.modules.access.login_challenges import revoke_user_challenges
 from app.modules.access.membership import AccessDenied, MembershipContext
 from app.modules.access.models import (
@@ -29,6 +31,7 @@ from app.modules.access.models import (
     TenantMembership,
     User,
 )
+from app.modules.access.passwords import hash_password
 from app.modules.access.sessions import (
     _database_now,
     _lock_user,
@@ -45,6 +48,17 @@ class MembershipChange(BaseModel):
 
     role: MembershipRole
     is_active: StrictBool
+
+
+class UserCreation(Credentials):
+    """New global identity only; never attach or reset an existing account."""
+
+    password: SecretStr = Field(min_length=15, max_length=128, repr=False, exclude=True)
+    role: MembershipRole
+
+
+class UserCreationConflict(Exception):
+    """Email unavailable; do not disclose identity, state or other tenants."""
 
 
 class LastAdministratorRequired(Exception):
@@ -127,11 +141,74 @@ class MembershipAdministrator:
 
     No caller-supplied actor, tenant or context. An adapter must pass the private
     session cookie and independently enforce CSRF before calling this service.
-    Future membership creation/global user changes must share the lock protocol.
+    Creation shares the lock protocol; future global user changes must do so too.
     """
 
     def __init__(self, engine: Engine) -> None:
         self._factory = create_session_factory(engine)
+
+    def create_user(
+        self,
+        token: SecretStr,
+        *,
+        data: UserCreation,
+        expected_actor: UUID,
+    ) -> MembershipView:
+        if not isinstance(data, UserCreation) or not isinstance(expected_actor, UUID):
+            raise AccessDenied("Access denied")
+        digest = _token_hash(token)
+        try:
+            with self._factory.begin() as session:
+                _limit_transaction(session)
+                tenant, actor_user = self._locked_tenant(session, digest)
+                if _lock_user(session, actor_user) is None:
+                    raise AccessDenied("Access denied")
+                actor = self._administrator(session, token, tenant.id)
+                if actor.membership_id != expected_actor:
+                    raise AdministrationDenied("Access denied")
+                # No existing identity is locked, attached, reactivated or reset.
+                if session.scalar(select(User.id).where(User.email == str(data.email))):
+                    raise UserCreationConflict("User creation unavailable")
+                encoded = hash_password(data.password)
+                user_id = session.scalar(
+                    insert(User)
+                    .values(
+                        email=str(data.email), password_hash=encoded, is_active=True
+                    )
+                    .on_conflict_do_nothing(index_elements=[User.email])
+                    .returning(User.id)
+                )
+                if user_id is None:
+                    # A competing tenant can win the global email uniqueness race.
+                    raise UserCreationConflict("User creation unavailable")
+                member = TenantMembership(
+                    tenant_id=actor.tenant_id,
+                    user_id=user_id,
+                    role=data.role,
+                    is_active=True,
+                )
+                session.add(member)
+                session.flush()
+                session.add(
+                    AuditEvent(
+                        tenant_id=actor.tenant_id,
+                        actor_membership_id=actor.membership_id,
+                        target_membership_id=member.id,
+                        action="membership_created",
+                        before_role=None,
+                        before_active=None,
+                        after_role=data.role,
+                        after_active=True,
+                        created_at=_database_now(session),
+                    )
+                )
+                session.flush()
+                result = self._view(member).model_copy(
+                    update={"actor_membership_id": actor.membership_id}
+                )
+            return result
+        except (SQLAlchemyError, HashingError):
+            raise AdministrationUnavailable("Administration unavailable") from None
 
     def change_membership(
         self,

@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.12
+## Estado: acceso 2.13
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -24,14 +24,16 @@ y confirma auditoría/revocaciones en una transacción. Ya tiene consulta y camb
 por HTTP con sesión/CSRF y precondición If-Match. El listado paginado ya limita
 resultados a la empresa autorizada y al perfil admin. La pantalla `/membresias`
 permite revisar y confirmar cambios sobre accesos existentes. Las operaciones
-comerciales siguen pendientes.
+comerciales siguen pendientes. El servicio interno ya puede crear una cuenta
+nueva y su membresía con autorización y auditoría atómicas; la conexión de altas
+a API/formulario queda para tareas posteriores.
 Bootstrap CLI atómico y hashing Argon2id
 disponibles; no se creó una cuenta real automáticamente.
 La fundación tiene validación integral local y workflow CI preparado. Su primera
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 2.12](docs/deliveries/access-2.12.md).
+- [Aceptación](docs/acceptance.md) y [entrega 2.13](docs/deliveries/access-2.13.md).
 - Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
   en 8080, y el arranque requiere DB.
 
@@ -96,8 +98,9 @@ La API comprueba la conexión al arrancar y dispone su engine al detenerse.
 Liveness indica vida del proceso, no disponibilidad continua de DB o versión de
 esquema. Las migraciones no se ejecutan desde la API.
 
-La revisión actual `0006_membership_audit` añade auditoría tipada de cambios de
-membresía sobre `0005_login_challenges` (selección temporal de empresa),
+La revisión actual `0007_membership_creation_audit` amplía la auditoría de
+`0006_membership_audit` con eventos tipados de alta. Ambas se apoyan en
+`0005_login_challenges` (selección temporal de empresa),
 `0004_login_throttles` (contadores), `0003_sessions` (sesiones) y
 `0002_access` (identidades). No inserta cuentas. Los roles
 son `admin`, `cashier`, `mechanic` y `read_only`, sin rol predeterminado.
@@ -506,7 +509,7 @@ el repositorio de destino y publicar los commits con autorización; no se hizo p
 Referencias: [sintaxis de GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax),
 [checkout](https://github.com/actions/checkout) y [actionlint](https://github.com/rhysd/actionlint).
 
-## Administración de membresías (2.9–2.12)
+## Administración de membresías (2.9–2.13)
 
 `MembershipAdministrator.change_membership` recibe el token privado de sesión,
 el UUID objetivo y un `MembershipChange` explícito de rol/estado. El servidor
@@ -520,7 +523,7 @@ revoca sesiones de la membresía, cancela pendientes globales del usuario y regi
 un evento tipado en `audit_events`, todo en un commit. La aplicación puede insertar
 y consultar esa tabla, pero no actualizarla ni borrarla; el propietario DB conserva
 autoridad administrativa. Sin RLS ni defensa frente a SQL arbitrario privilegiado.
-La auditoría inicial solo cubre estos cambios; su consulta HTTP y otras acciones
+La auditoría cubre estos cambios y las altas internas 2.13; su consulta HTTP y otras acciones
 se implementarán en tareas posteriores. Detalle y resultados en entrega 2.9.
 
 Contrato actual: [administración HTTP](docs/membership-http-contract.md).
@@ -539,7 +542,7 @@ limit (25 por defecto, 1–100) y after (UUID), sin parámetros extra o duplicad
 Orden UUID ascendente, respuesta items/next_after y no-store. La página siguiente
 lee estado actual; no es una exportación congelada ni un permiso obtenido del cursor.
 Antes de editar se consulta el detalle y su ETag. No se expone hash/token ni otras
-empresas del usuario. No hay nueva migración: aprovecha (tenant_id, id) existente.
+empresas del usuario. El listado aprovecha (tenant_id, id) existente, sin columnas nuevas.
 
 La sesión admin muestra el enlace a `/membresias`. La pantalla vuelve a comprobar
 sesión y perfil, muestra hasta 25 accesos por página y consulta el detalle antes
@@ -552,7 +555,7 @@ incluyen X-Access-Membership para descartar resultados de otro contexto de sesi�
 Ante acceso perdido, respuesta incierta, cambio de visibilidad o señal entre
 pestañas se retira el contexto y se comprueba de nuevo. Sin reintentos de PATCH,
 almacenamiento persistente de datos o polling. Las comprobaciones del navegador
-no sustituyen la autorización del servidor. Sin altas, cambios de usuario global
+no sustituyen la autorización del servidor. Sin altas por HTTP/UI, cambios de usuario global
 ni consulta HTTP de auditoría en esta fase. No se necesitan usuarios reales nuevos
 para ejecutar el pipeline.
 
@@ -563,10 +566,24 @@ contenedor de fixture. Las credenciales sintéticas quedan en el archivo privado
 con `docker exec NOMBRE_DEL_CONTENEDOR touch /tmp/carrillo-browser-finished`;
 el runner elimina sus recursos. Caduca a los 30 minutos. No usar datos reales.
 
+Alta interna 2.13: `MembershipAdministrator.create_user` acepta `UserCreation`
+(email, password SecretStr, role explícito) y expected_actor obligatorio. Tenant,
+permiso y estados activos se resuelven en servidor. Solo cuentas nuevas: correo
+global ya registrado produce el mismo conflicto, sin vincular ni resetear esa
+identidad. Usuario, membresía y evento `membership_created` se confirman juntos.
+No emite sesión ni entrega contraseña. Antes de exponerlo por HTTP se concretará
+la elección/entrega de contraseña mediante un canal controlado. Ver
+[contrato interno de alta](docs/user-provisioning-contract.md).
+
+La migración 0007 conserva eventos anteriores y privilegios de auditoría. Si hay
+eventos de alta, un downgrade a 0006 se rechaza para conservar evidencia que el
+esquema anterior no puede representar. No borrar registros para forzarlo.
+
 ## Siguiente tarea
 
-Acceso 2.13: alta administrativa controlada de usuarios y membresías, comenzando
-por el contrato y servicio transaccional, con aislamiento, último administrador,
-auditoría y pruebas de concurrencia. Sin registro público ni contraseñas por defecto.
+Acceso 2.14: adaptador HTTP de alta administrativa sobre el servicio probado,
+con sesión/admin, CSRF/origen, contexto, conflicto genérico y límites. Concretar
+el canal controlado para elección/entrega de contraseña antes de habilitar la UI;
+sin registro público ni credenciales predeterminadas.
 CI remota sigue
 pendiente hasta conectar un repositorio autorizado.
