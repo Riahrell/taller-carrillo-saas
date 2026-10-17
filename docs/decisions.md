@@ -880,3 +880,11 @@ Referencias: [query models FastAPI](https://fastapi.tiangolo.com/tutorial/query-
 - Contrato en mfa-verification-contract.md. Faltan retención, volumen/observabilidad,
   revisión/obligación, pendientes, guardias de sesión y UI/correo antes de activar
   MFA. Siguiente 2.25: estado global/revisión de seguridad del usuario.
+
+## Acceso 2.25: revisión global
+
+0012 añade estado neutral, trigger de revisión monotónica/obligación persistente
+y eventos tipados de avance. El servicio autorizado por su llamador revoca todas
+las sesiones/pendientes y audita en el mismo commit. No es un endpoint ni prueba
+transferible. Sin hooks automáticos en roles/factores o login: integración pendiente.
+Siguiente 2.26: pendientes tipados. Ver `deliveries/access-2.25.md`.

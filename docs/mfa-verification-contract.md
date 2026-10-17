@@ -68,6 +68,6 @@ temporal si un atacante llega al flujo autorizado y agota sus intentos; no se
 promete ausencia de ese riesgo. No hay auditoría de autenticación completa,
 alertas, credenciales activadas o integración pública por crear estas cuotas.
 
-Siguiente 2.25: estado global de seguridad del usuario y revisión monotónica,
-como base de pendientes tipados y revocación consistente, todavía sin activar
-MFA en login hasta integrar todos los caminos previstos.
+2.25 implementa el kernel de estado/revisión global con revocación y auditoría.
+La fachada aún no lo conecta a pruebas de sesión. Siguiente 2.26: pendientes MFA
+tipados; ver `deliveries/access-2.25.md` para límites y resultados.

@@ -284,3 +284,6 @@ persistencia ni selección de identidad. Respuesta 201 mínima después de commi
 sin modificar las identidades globales existentes ni emitir sesión al nuevo usuario.
 Duplicados siguen arbitrados por unicidad global de correo, sin crear membresía
 en otra empresa por conocer el email. No se agregan campos de invitación o recuperación.
+
+2.25 agrega 0012: revisión global/obligación MFA en users y eventos de avance,
+sin correo verificado o integración de login. Ver `deliveries/access-2.25.md`.

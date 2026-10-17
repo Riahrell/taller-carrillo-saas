@@ -133,3 +133,7 @@ consultada el 2026-10-17.
 eventos **o cualquier factor**, aun si no consumió códigos: volver a un consumidor
 sin auditoría no debe permitir continuar con esos factores. El recorrido vacío
 base/head/base/head se conserva; no eliminar evidencia para forzarlo.
+
+2.25 amplía security_events con security_revision_advanced: factor nulo, revisión
+positiva y FK directa al sujeto. Los eventos MFA conservan factor obligatorio y
+revisión nula. Ver `deliveries/access-2.25.md`; no hay auditoría histórica inventada.

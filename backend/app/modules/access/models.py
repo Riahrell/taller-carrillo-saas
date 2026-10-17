@@ -16,6 +16,7 @@ from sqlalchemy import (
     LargeBinary,
     String,
     UniqueConstraint,
+    false,
     func,
     text,
     true,
@@ -50,6 +51,7 @@ class Tenant(AccessRecord, Base):
 class User(AccessRecord, Base):
     __tablename__ = "users"
     __table_args__ = (
+        CheckConstraint("security_revision >= 0", name="security_revision_bounds"),
         CheckConstraint(
             "email = lower(trim(email)) AND length(email) > 0",
             name="email_canonical",
@@ -59,6 +61,8 @@ class User(AccessRecord, Base):
         ),
     )
 
+    security_revision: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    mfa_required: Mapped[bool] = mapped_column(Boolean, server_default=false())
     email: Mapped[str] = mapped_column(String(254), unique=True)
     password_hash: Mapped[str] = mapped_column(String(512))
 
@@ -312,6 +316,13 @@ class SecurityEvent(Base):
 
     __tablename__ = "security_events"
     __table_args__ = (
+        CheckConstraint(
+            "(action = 'security_revision_advanced' AND credential_id IS NULL "
+            "AND security_revision IS NOT NULL AND security_revision > 0) OR "
+            "(action IN ('mfa_totp_consumed', 'mfa_recovery_consumed') "
+            "AND credential_id IS NOT NULL AND security_revision IS NULL)",
+            name="action_state",
+        ),
         ForeignKeyConstraint(
             ["user_id", "credential_id"],
             ["mfa_credentials.user_id", "mfa_credentials.id"],
@@ -319,7 +330,8 @@ class SecurityEvent(Base):
             name="fk_security_events_credential_owner",
         ),
         CheckConstraint(
-            "action IN ('mfa_totp_consumed', 'mfa_recovery_consumed')",
+            "action IN ('mfa_totp_consumed', 'mfa_recovery_consumed', "
+            "'security_revision_advanced')",
             name="action_allowed",
         ),
         CheckConstraint(
@@ -330,8 +342,9 @@ class SecurityEvent(Base):
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    user_id: Mapped[UUID] = mapped_column()
-    credential_id: Mapped[UUID] = mapped_column()
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    credential_id: Mapped[UUID | None] = mapped_column()
+    security_revision: Mapped[int | None] = mapped_column(BigInteger)
     action: Mapped[str] = mapped_column(String(32))
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 

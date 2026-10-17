@@ -278,8 +278,7 @@ sesiones/pending/HTTP/UI y operación siguen pendientes:
 
 ## Próxima tarea pequeña
 
-**2.25: estado global/revisión de seguridad del usuario**, como base de pendientes
-tipados y revocación consistente. 2.22–2.24 implementan consumo/auditoría/cuotas
-internas; no autorizan sesión o recuperación por sí solos. Después: pendientes
-y todos los caminos de autenticación, finalmente HTTP/UI/correo. Cada entrega
-declara la brecha restante.
+**2.26: pendientes MFA tipados**, ligados a navegador, revisión, propósito y plazo.
+2.25 añade estado/revisión global y avance con revocación/auditoría atómicas;
+los hooks de roles/factores y guardias de sesión aún no están conectados. Después:
+incorporación/recuperación e integración completa antes de HTTP/UI/correo.

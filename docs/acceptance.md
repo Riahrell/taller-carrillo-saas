@@ -138,3 +138,6 @@ no se cambia tenant en una sesión existente. Para otro acceso se exige logout.
 
 El README contiene los comandos de instalación, arranque y validación de la
 fundación actual. Los comandos de módulos futuros se incorporarán con su tarea.
+
+Acceso 2.25: estado/revisión global y avance con revocación/auditoría atómicas.
+Evidencia/límites en `deliveries/access-2.25.md`; MFA aún no integrado en login.
