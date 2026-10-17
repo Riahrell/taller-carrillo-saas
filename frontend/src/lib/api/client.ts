@@ -29,9 +29,15 @@ export type RequestOptions = { signal?: AbortSignal };
 
 async function request<T>(
   path: string,
-  decode: (value: unknown, status: number) => T,
+  decode: (value: unknown, status: number, headers: Headers) => T,
   options: RequestOptions,
-  mutation?: { body: unknown; csrf: string },
+  mutation?: {
+    body: unknown;
+    csrf: string;
+    method?: "PATCH";
+    etag?: string;
+    actor?: string;
+  },
 ): Promise<T> {
   const url = apiPath(path);
   const controller = new AbortController();
@@ -41,7 +47,7 @@ async function request<T>(
   const timeout = setTimeout(cancel, 15_000);
   try {
     const response = await fetch(url, {
-      method: mutation ? "POST" : "GET",
+      method: mutation ? (mutation.method ?? "POST") : "GET",
       credentials: "same-origin",
       cache: "no-store",
       redirect: "error",
@@ -52,6 +58,10 @@ async function request<T>(
           ? {
               "Content-Type": "application/json",
               "X-CSRF-Token": mutation.csrf,
+              ...(mutation.etag ? { "If-Match": mutation.etag } : {}),
+              ...(mutation.actor
+                ? { "X-Expected-Membership": mutation.actor }
+                : {}),
             }
           : {}),
       },
@@ -69,6 +79,7 @@ async function request<T>(
       return decode(
         response.status === 204 ? undefined : await response.json(),
         response.status,
+        response.headers,
       );
     } catch (error) {
       if (controller.signal.aborted) throw error;
@@ -90,7 +101,7 @@ async function request<T>(
 
 export function getJson<T>(
   path: string,
-  decode: (value: unknown, status: number) => T,
+  decode: (value: unknown, status: number, headers: Headers) => T,
   options: RequestOptions = {},
 ): Promise<T> {
   return request(path, decode, options);
@@ -100,8 +111,26 @@ export function sendJson<T>(
   path: string,
   body: unknown,
   csrf: string,
-  decode: (value: unknown, status: number) => T,
+  decode: (value: unknown, status: number, headers: Headers) => T,
   options: RequestOptions = {},
 ): Promise<T> {
   return request(path, decode, options, { body, csrf });
+}
+
+export function patchJson<T>(
+  path: string,
+  body: unknown,
+  csrf: string,
+  etag: string,
+  actor: string,
+  decode: (value: unknown, status: number, headers: Headers) => T,
+  options: RequestOptions = {},
+): Promise<T> {
+  return request(path, decode, options, {
+    body,
+    csrf,
+    method: "PATCH",
+    etag,
+    actor,
+  });
 }

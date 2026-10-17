@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import {
   useCallback,
   useEffect,
@@ -399,6 +401,11 @@ export default function AccessPanel() {
               <dd>{roles[view.session.role]}</dd>
             </div>
           </dl>
+          {view.session.role === "admin" && (
+            <Link className="action membership-link" href="/membresias">
+              Administrar membresías
+            </Link>
+          )}
           <button
             type="button"
             className="action primary"

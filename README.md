@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.11
+## Estado: acceso 2.12
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -22,15 +22,16 @@ y PostgreSQL aislado. El servicio interno de administración ya verifica sesión
 y rol actual, cambia rol/estado de una membresía, conserva un administrador activo
 y confirma auditoría/revocaciones en una transacción. Ya tiene consulta y cambio
 por HTTP con sesión/CSRF y precondición If-Match. El listado paginado ya limita
-resultados a la empresa autorizada y al perfil admin. La pantalla administrativa
-y las operaciones comerciales siguen pendientes.
+resultados a la empresa autorizada y al perfil admin. La pantalla `/membresias`
+permite revisar y confirmar cambios sobre accesos existentes. Las operaciones
+comerciales siguen pendientes.
 Bootstrap CLI atómico y hashing Argon2id
 disponibles; no se creó una cuenta real automáticamente.
 La fundación tiene validación integral local y workflow CI preparado. Su primera
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 2.11](docs/deliveries/access-2.11.md).
+- [Aceptación](docs/acceptance.md) y [entrega 2.12](docs/deliveries/access-2.12.md).
 - Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
   en 8080, y el arranque requiere DB.
 
@@ -505,12 +506,12 @@ el repositorio de destino y publicar los commits con autorización; no se hizo p
 Referencias: [sintaxis de GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax),
 [checkout](https://github.com/actions/checkout) y [actionlint](https://github.com/rhysd/actionlint).
 
-## Administración de membresías (2.9–2.11)
+## Administración de membresías (2.9–2.12)
 
 `MembershipAdministrator.change_membership` recibe el token privado de sesión,
 el UUID objetivo y un `MembershipChange` explícito de rol/estado. El servidor
 resuelve actor, empresa y permiso admin actual dentro de su transacción. El
-adaptador HTTP usa ese servicio; aún no hay pantalla ni CLI operativo. No llamarlo desde
+adaptador HTTP y la pantalla usan ese servicio; no hay CLI operativo. No llamarlo desde
 otra transacción ni adaptar identidad/tenant desde campos del navegador.
 
 Bloquea empresa, todos los usuarios implicados por UUID y luego sus registros de
@@ -540,13 +541,32 @@ lee estado actual; no es una exportación congelada ni un permiso obtenido del c
 Antes de editar se consulta el detalle y su ETag. No se expone hash/token ni otras
 empresas del usuario. No hay nueva migración: aprovecha (tenant_id, id) existente.
 
-Sin altas, cambios de usuario global ni consulta HTTP de auditoría en esta
-fase. La pantalla inicial mantiene el acceso de 2.8, sin controles administrativos
-simulados. No se necesitan usuarios reales nuevos para ejecutar el pipeline.
+La sesión admin muestra el enlace a `/membresias`. La pantalla vuelve a comprobar
+sesión y perfil, muestra hasta 25 accesos por página y consulta el detalle antes
+de editar rol/estado. Exige revisar el resumen y confirmar; un 409/412 exige otra
+lectura y decisión. Las escrituras renuevan CSRF y envían If-Match y
+X-Expected-Membership. Esta última compara el actor esperado con el autenticado,
+sin elegir actor ni empresa. Todas las respuestas exitosas de administración
+incluyen X-Access-Membership para descartar resultados de otro contexto de sesión.
+
+Ante acceso perdido, respuesta incierta, cambio de visibilidad o señal entre
+pestañas se retira el contexto y se comprueba de nuevo. Sin reintentos de PATCH,
+almacenamiento persistente de datos o polling. Las comprobaciones del navegador
+no sustituyen la autorización del servidor. Sin altas, cambios de usuario global
+ni consulta HTTP de auditoría en esta fase. No se necesitan usuarios reales nuevos
+para ejecutar el pipeline.
+
+QA manual aislado: `python3 -m scripts.browser_qa`. Construye imágenes, crea una
+base efímera y muestra una URL loopback con puerto dinámico y el nombre de un
+contenedor de fixture. Las credenciales sintéticas quedan en el archivo privado
+`/tmp/carrillo-browser-fixture.json` de ese contenedor, nunca en stdout. Terminar
+con `docker exec NOMBRE_DEL_CONTENEDOR touch /tmp/carrillo-browser-finished`;
+el runner elimina sus recursos. Caduca a los 30 minutos. No usar datos reales.
 
 ## Siguiente tarea
 
-Acceso 2.12: pantalla de membresías existentes con listado, revisión y cambio de
-rol/estado sobre el contrato probado, gestionando 401/403/409/412 y contexto de sesión.
+Acceso 2.13: alta administrativa controlada de usuarios y membresías, comenzando
+por el contrato y servicio transaccional, con aislamiento, último administrador,
+auditoría y pruebas de concurrencia. Sin registro público ni contraseñas por defecto.
 CI remota sigue
 pendiente hasta conectar un repositorio autorizado.

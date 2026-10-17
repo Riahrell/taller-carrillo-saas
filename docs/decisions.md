@@ -568,3 +568,28 @@ Referencias: [If-Match RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html#nam
 
 Referencias: [query models FastAPI](https://fastapi.tiangolo.com/tutorial/query-param-models/),
 [orden y LIMIT PostgreSQL](https://www.postgresql.org/docs/current/queries-limit.html).
+
+## Acceso 2.12: pantalla administrativa de membresías
+
+- Ruta `/membresias` con shell sin datos personales en HTML inicial y enlace
+  desde sesión admin. Verificar sesión antes de montar lista; nunca derivar
+  autoridad de URL, Storage, canal entre pestañas o perfil elegido en un formulario.
+- Una página de 25 accesos y un borrador en memoria. Revisar detalle actual y
+  ETag antes de editar; resumen y confirmación separados. Impedir doble envío
+  mientras hay escritura. Cancelar o volver a editar no cambia datos.
+- Añadir X-Access-Membership en éxitos de administración para vincular respuesta
+  a la sesión verificada. Capturar actor dentro de la transacción, excluir del
+  JSON/ETag. PATCH admite X-Expected-Membership opcional para compatibilidad;
+  la UI siempre lo envía. Compararlo contra el actor autorizado antes de escribir,
+  sin permitir elegir identidad/empresa. Sin migraciones ni nuevos permisos.
+- Reutilizar origen/CSRF, If-Match, locks, último admin, auditoría y revocación.
+  409/412 requieren otra revisión explícita. Fallos inciertos retiran contexto;
+  no retries automáticos de PATCH. Tras éxito ajeno releer sesión y primera página;
+  tras éxito propio comprobar acceso. Abort cliente no revierte servidor.
+- Focus/pageshow/visibilidad y `changed` sin payload personal retiran/recomprueban
+  contexto; timer visual de 30 minutos sin polling. Sin promesa de actualización
+  instantánea de una pestaña inactiva ante cambios remotos. Backend autoriza cada
+  petición. Cuenta global inactiva se informa; no se activa desde esta pantalla.
+- QA manual con proyecto aleatorio, DB tmpfs e identidades desechables; harness
+  `scripts.browser_qa` reutiliza guards/limpieza del CI. Credenciales solo en un
+  archivo privado dentro del fixture. Nunca crear usuarios reales para pruebas.

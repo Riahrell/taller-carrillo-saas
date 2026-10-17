@@ -188,6 +188,7 @@ def test_membership_read_patch_stale_and_foreign_rejection_through_real_proxy(
     target_path = f"/auth/memberships/{membership_id}"
     status, page, headers = browser.request("/auth/memberships?limit=1", headers=READ)
     assert status == 200 and len(page["items"]) == 1
+    assert headers["X-Access-Membership"] == str(state["membership"])
     assert headers["Cache-Control"] == "no-store" and headers.get("ETag") is None
     status, tail, _ = browser.request(
         "/auth/memberships?limit=1&after=" + page["next_after"], headers=READ
@@ -208,7 +209,10 @@ def test_membership_read_patch_stale_and_foreign_rejection_through_real_proxy(
         target_path,
         method="PATCH",
         body={"role": "mechanic", "is_active": True},
-        headers={"If-Match": old_tag},
+        headers={
+            "If-Match": old_tag,
+            "X-Expected-Membership": str(state["membership"]),
+        },
     )
     assert status == 200 and data["role"] == "mechanic"
     assert headers["Cache-Control"] == "no-store" and headers["ETag"] != old_tag

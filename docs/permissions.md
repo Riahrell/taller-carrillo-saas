@@ -77,7 +77,7 @@ intención de navegador para GET, con CORS cerrado y respuestas no-store.
 If-Match identifica el estado revisado, sin otorgar autoridad. Se comprueba tras
 sesión/permiso bajo los locks del cambio: un estado diferente devuelve 412 sin
 efectos. Si el cambio revoca la sesión del actor, las cookies se retiran después
-de commit. La entrega 2.11 añade el listado descrito abajo; UI y permisos de los
+de commit. La entrega 2.11 añade el listado descrito abajo; los permisos de los
 módulos futuros siguen pendientes.
 
 ## Listado de membresías en acceso 2.11
@@ -93,3 +93,20 @@ global, hash, token ni otras empresas de la cuenta. Se incluyen accesos inactivo
 sin habilitarlos; el cambio de estado de la cuenta global sigue fuera del alcance.
 Otros perfiles, identidad pendiente o sesión inválida no reciben items/correos.
 Las páginas no emiten cookies ni ETag, llevan no-store y salen tras commit.
+
+## Pantalla de membresías en acceso 2.12
+
+El enlace administrativo aparece solo con perfil admin verificado. Entrar por
+URL directa vuelve a consultar sesión; otros perfiles no montan el listado. Esto
+mejora la interfaz, pero la autoridad sigue en el servicio de cada GET/PATCH.
+El rol elegido en el formulario es el estado solicitado del objetivo, nunca
+el permiso del actor. No admite tenant, identidad ni cuenta global como entradas.
+
+Las cabeceras X-Access-Membership y X-Expected-Membership vinculan respuesta y
+confirmación al contexto ya autenticado; no conceden permisos ni eligen sesión.
+La pantalla renueva CSRF, relee detalle y exige su If-Match. Ante conflicto no
+sobrescribe, y ante respuesta perdida no repite PATCH. Se retiran datos al perder
+acceso o cambiar visibilidad; señales entre pestañas solo solicitan otra lectura.
+No hay garantía de actualización instantánea frente a cambios remotos mientras
+una pestaña permanece sin interacción. Los controles DB siguen aplicándose en
+la siguiente petición. Sin altas, permisos comerciales o auditoría consultable.

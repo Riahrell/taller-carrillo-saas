@@ -1,7 +1,8 @@
 # Administración HTTP de membresías existentes
 
-Contrato de acceso 2.10–2.11. Extiende la operación interna 2.9 y sus reglas; sin altas,
-registro público, cambios globales de usuario, exportación masiva ni pantalla todavía.
+Contrato de acceso 2.10–2.12. Extiende la operación interna 2.9 y sus reglas; sin altas,
+registro público, cambios globales de usuario ni exportación masiva. La pantalla
+de administración existente está disponible en `/membresias` desde 2.12.
 Los nombres de rutas y cabeceras son decisiones técnicas de este adaptador.
 
 | Navegador | Entrada | Éxito |
@@ -82,6 +83,39 @@ el cliente hizo GET: si el estado vuelve exactamente al anterior, vuelve el tag.
 No es un secreto ni sustituye autorización/CSRF. No se usa para 304 ni caché.
 El servicio interno conserva llamadas sin precondición para casos coordinados;
 la ruta PATCH siempre valida y pasa If-Match, sin opción pública de omitirlo.
+
+## Contexto del navegador y pantalla (2.12)
+
+Cada respuesta 200 de listado, detalle y cambio incluye `X-Access-Membership`
+con el UUID de la membresía del actor que autorizó esa operación. Se captura
+dentro de la transacción y se publica después del commit. Es metadato de
+respuesta, excluido del JSON y del ETag; no es un token ni concede permiso.
+El cliente descarta respuestas que no correspondan a la membresía de su sesión
+verificada. Esto evita presentar correos de otro contexto si cambió la cookie
+entre la consulta de sesión y la lectura administrativa.
+
+PATCH admite además una única `X-Expected-Membership` opcional para compatibilidad
+con clientes del contrato anterior. Si existe debe ser un UUID canónico en
+minúsculas; inválida, duplicada o distinta del actor autenticado produce 403.
+La comparación sucede dentro de la transacción después de autorizar y antes de
+comparar If-Match o cambiar datos. No selecciona identidad/empresa ni permite
+suplantación. La pantalla siempre la envía para impedir que una confirmación
+preparada en una sesión se aplique usando otra cookie cambiada entre pestañas.
+
+La pantalla exige sesión admin actual, página de hasta 25 filas, detalle recién
+consultado, estado distinto y confirmación del resumen antes de PATCH. Muestra
+cuenta inactiva sin habilitarla. No incluye altas ni operaciones globales.
+409/412 bloquean el borrador y requieren lectura/revisión explícitas. Los demás
+fallos retiran el contexto y ofrecen comprobar acceso, sin repetir escrituras.
+Después de un cambio ajeno confirma sesión y vuelve a leer la primera página;
+un cambio propio comprueba acceso de nuevo tras el borrado de cookies del servidor.
+
+Focus/pageshow/visibilidad y BroadcastChannel `changed` descartan contexto y
+respuestas tardías. El canal no transmite datos ni autoridad; no hay Storage ni
+polling. El límite visual de 30 minutos no sustituye la caducidad DB. Si se
+interrumpe una escritura se informa resultado incierto: abortar no revierte un
+commit. No se promete purga instantánea de datos ante revocación remota mientras
+la pestaña permanece visible y sin nuevas peticiones.
 
 ## Errores y efectos de sesión
 

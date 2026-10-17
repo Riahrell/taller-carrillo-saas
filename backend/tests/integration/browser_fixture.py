@@ -2,14 +2,17 @@
 
 import json
 import os
+import secrets
 import time
 from pathlib import Path
 
 import pytest
+from pydantic import SecretStr
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from app.modules.access.models import Tenant, TenantMembership
+from app.modules.access.models import Tenant, TenantMembership, User
+from app.modules.access.passwords import hash_password
 
 pytestmark = [
     pytest.mark.integration,
@@ -38,6 +41,16 @@ def test_hold_browser_identity(http_identity):
                 tenant_id=state["other"], user_id=state["user"], role="mechanic"
             )
         )
+        session.add(
+            TenantMembership(
+                tenant_id=state["tenant"], user_id=state["foreign"], role="cashier"
+            )
+        )
+        session.execute(
+            update(User)
+            .where(User.id == state["foreign"])
+            .values(password_hash=hash_password(SecretStr(secrets.token_urlsafe(32))))
+        )
     target = Path("/tmp/carrillo-browser-fixture.json")
     # Synthetic, random test credentials stay in a private file, never stdout/logs.
     descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -51,7 +64,7 @@ def test_hold_browser_identity(http_identity):
         flush=True,
     )
     try:
-        deadline = time.monotonic() + 900
+        deadline = time.monotonic() + 1800
         while not Path("/tmp/carrillo-browser-finished").exists():
             if time.monotonic() >= deadline:
                 pytest.fail("Browser QA window expired")

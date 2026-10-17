@@ -2,7 +2,7 @@
 
 Este documento distingue el modelo objetivo y los contratos implementados por
 entrega. Acceso 2.1 incorporó `tenants`, `users` y `tenant_memberships` mediante
-`0002_access`; las ampliaciones hasta 2.11 se detallan al final. Los atributos comerciales
+`0002_access`; las ampliaciones hasta 2.12 se detallan al final. Los atributos comerciales
 se limitan a los requeridos por el plan y a las decisiones de `decisions.md`.
 La especificación de cada tarea cerrará contratos antes de generar código.
 
@@ -226,3 +226,12 @@ Paginación por índice (tenant_id, id), frontera UUID exclusiva y máximo 101 f
 consultadas para devolver hasta 100. Sin contador global ni persistencia del cursor.
 Lectura viva entre páginas; no es snapshot de toda la empresa ni fuente para
 exportación histórica. No crea eventos ni cambia membresías al consultar.
+
+## Contexto de administración 2.12
+
+Sin migración ni columna nueva. Los DTO internos de lectura/resultado transportan
+actor_membership_id desde la autorización hasta las cabeceras HTTP tras commit.
+Se excluye del JSON y del ETag. X-Expected-Membership es una precondición opcional
+del cliente comparada contra el actor real, sin persistencia ni selección de
+identidad. La pantalla conserva solo una página y un borrador en memoria, y
+reutiliza el cambio transaccional existente para rol/estado, auditoría y revocación.

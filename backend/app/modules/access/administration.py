@@ -69,6 +69,7 @@ class MembershipView(BaseModel):
     membership_id: UUID
     role: MembershipRole
     is_active: bool
+    actor_membership_id: UUID | None = Field(default=None, exclude=True, repr=False)
 
     @property
     def etag(self) -> str:
@@ -108,6 +109,7 @@ class MembershipPage(BaseModel):
 
     items: tuple[MembershipListItem, ...]
     next_after: UUID | None
+    actor_membership_id: UUID | None = Field(default=None, exclude=True, repr=False)
 
 
 @dataclass(frozen=True)
@@ -117,6 +119,7 @@ class MembershipChangeResult:
     is_active: bool
     changed: bool
     session_revoked: bool = False
+    actor_membership_id: UUID | None = None
 
 
 class MembershipAdministrator:
@@ -137,6 +140,7 @@ class MembershipAdministrator:
         membership_id: UUID,
         change: MembershipChange,
         expected_etag: str | None = None,
+        expected_actor: UUID | None = None,
     ) -> MembershipChangeResult:
         if not isinstance(membership_id, UUID) or not isinstance(
             change, MembershipChange
@@ -149,6 +153,8 @@ class MembershipAdministrator:
                 actor, target = self._authorized_target(
                     session, token, digest, membership_id
                 )
+                if expected_actor is not None and actor.membership_id != expected_actor:
+                    raise AdministrationDenied("Access denied")
                 if (
                     expected_etag is not None
                     and expected_etag != self._view(target).etag
@@ -168,10 +174,12 @@ class MembershipAdministrator:
         try:
             with self._factory.begin() as session:
                 _limit_transaction(session)
-                _, target = self._authorized_target(
+                actor, target = self._authorized_target(
                     session, token, digest, membership_id
                 )
-                result = self._view(target)
+                result = self._view(target).model_copy(
+                    update={"actor_membership_id": actor.membership_id}
+                )
             return result
         except SQLAlchemyError:
             raise AdministrationUnavailable("Administration unavailable") from None
@@ -218,6 +226,7 @@ class MembershipAdministrator:
                     for row in rows[: query.limit]
                 )
                 result = MembershipPage(
+                    actor_membership_id=actor.membership_id,
                     items=items,
                     next_after=items[-1].membership_id
                     if len(rows) > query.limit
@@ -310,7 +319,11 @@ class MembershipAdministrator:
         changed = (target.role, target.is_active) != (change.role, change.is_active)
         if not changed:
             return MembershipChangeResult(
-                target.id, change.role, change.is_active, False
+                target.id,
+                change.role,
+                change.is_active,
+                False,
+                actor_membership_id=actor.membership_id,
             )
         self._retain_admin(session, target, change)
         before_role, before_active = target.role, target.is_active
@@ -339,6 +352,7 @@ class MembershipAdministrator:
             change.is_active,
             True,
             session_revoked=actor.membership_id == target.id,
+            actor_membership_id=actor.membership_id,
         )
 
     @staticmethod

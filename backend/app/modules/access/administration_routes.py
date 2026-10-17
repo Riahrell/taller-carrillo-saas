@@ -13,6 +13,7 @@ from app.modules.access.administration import (
     MembershipListQuery,
     MembershipView,
 )
+from app.modules.access.http_security import RequestRejected
 from app.modules.access.membership import AccessDenied
 
 router = APIRouter(prefix="/auth/memberships", tags=["membership administration"])
@@ -40,9 +41,26 @@ def _if_match(request: Request) -> str:
     return values[0]
 
 
+def _expected_actor(request: Request) -> UUID | None:
+    values = request.headers.getlist("x-expected-membership")
+    if not values:
+        return None
+    try:
+        if len(values) != 1 or str(UUID(values[0])) != values[0]:
+            raise ValueError
+        return UUID(values[0])
+    except ValueError:
+        raise RequestRejected("Request rejected") from None
+
+
 def _representation(view: MembershipView) -> JSONResponse:
     return JSONResponse(
-        view.model_dump(mode="json"), headers=_NO_STORE | {"ETag": view.etag}
+        view.model_dump(mode="json"),
+        headers=_NO_STORE
+        | {
+            "ETag": view.etag,
+            "X-Access-Membership": str(view.actor_membership_id),
+        },
     )
 
 
@@ -54,7 +72,10 @@ def list_memberships(
     result = request.app.state.membership_administrator.list_memberships(
         _token(request, pagination=True), query=query
     )
-    return JSONResponse(result.model_dump(mode="json"), headers=_NO_STORE)
+    return JSONResponse(
+        result.model_dump(mode="json"),
+        headers=_NO_STORE | {"X-Access-Membership": str(result.actor_membership_id)},
+    )
 
 
 @router.get("/{membership_id}")
@@ -73,13 +94,18 @@ def change_membership(
     # The global ASGI middleware checks origin, CSRF, JSON and size before routing.
     token, expected = _token(request), _if_match(request)
     result = request.app.state.membership_administrator.change_membership(
-        token, membership_id=membership_id, change=payload, expected_etag=expected
+        token,
+        membership_id=membership_id,
+        change=payload,
+        expected_etag=expected,
+        expected_actor=_expected_actor(request),
     )
     response = _representation(
         MembershipView(
             membership_id=result.membership_id,
             role=result.role,
             is_active=result.is_active,
+            actor_membership_id=result.actor_membership_id,
         )
     )
     if result.session_revoked:

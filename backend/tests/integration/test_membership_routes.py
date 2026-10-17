@@ -108,6 +108,7 @@ def test_get_patch_noop_and_target_session_replay(membership_web):
     client, state, policy = membership_web
     view = client.get(path(state), headers=READ)
     assert view.status_code == 200
+    assert view.headers["x-access-membership"] == str(state["membership"])
     assert view.json() == {
         "membership_id": str(state["target"]),
         "role": "cashier",
@@ -117,6 +118,7 @@ def test_get_patch_noop_and_target_session_replay(membership_web):
     assert "set-cookie" not in view.headers
     response = patch(client, state, policy, etag=view.headers["etag"])
     assert response.status_code == 200
+    assert response.headers["x-access-membership"] == str(state["membership"])
     assert response.json() == {
         "membership_id": str(state["target"]),
         "role": "mechanic",
@@ -902,3 +904,42 @@ def test_list_next_page_reads_current_state_after_a_change(membership_pages):
         row for row in following["items"] if row["membership_id"] == str(target)
     )
     assert updated["role"] == "mechanic" and updated["is_active"] is False
+
+
+@pytest.mark.parametrize(
+    "expected,status", [("current", 200), ("foreign", 403), ("invalid", 403)]
+)
+def test_ui_context_precondition_cannot_select_actor(membership_web, expected, status):
+    client, state, policy = membership_web
+    view = client.get(path(state), headers=READ)
+    value = {
+        "current": str(state["membership"]),
+        "foreign": str(state["foreign_membership"]),
+        "invalid": "malformed",
+    }[expected]
+    before = stored(state)
+    response = patch(
+        client,
+        state,
+        policy,
+        etag=view.headers["etag"],
+        headers={"X-Expected-Membership": value},
+    )
+    assert response.status_code == status
+    if status == 200:
+        assert response.headers["x-access-membership"] == str(state["membership"])
+        assert "actor_membership_id" not in response.json()
+    else:
+        assert stored(state) == before
+        assert "x-access-membership" not in response.headers
+
+
+def test_list_response_context_is_server_owned(membership_web):
+    client, state, _ = membership_web
+    response = client.get(
+        "/auth/memberships",
+        headers=READ | {"X-Access-Membership": str(state["foreign_membership"])},
+    )
+    assert response.status_code == 200
+    assert response.headers["x-access-membership"] == str(state["membership"])
+    assert "actor_membership_id" not in response.json()
