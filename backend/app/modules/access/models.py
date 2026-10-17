@@ -95,6 +95,11 @@ class TenantMembership(AccessRecord, Base):
 class SessionRecord(Base):
     __tablename__ = "sessions"
     __table_args__ = (
+        CheckConstraint("security_revision >= 0", name="security_revision_bounds"),
+        CheckConstraint(
+            "mfa_pending_id IS NULL OR security_revision IS NOT NULL",
+            name="mfa_revision_present",
+        ),
         ForeignKeyConstraint(
             ["tenant_id", "membership_id"],
             ["tenant_memberships.tenant_id", "tenant_memberships.id"],
@@ -124,6 +129,10 @@ class SessionRecord(Base):
     tenant_id: Mapped[UUID] = mapped_column()
     membership_id: Mapped[UUID] = mapped_column(index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    security_revision: Mapped[int | None] = mapped_column(BigInteger)
+    mfa_pending_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("mfa_pendings.id", ondelete="RESTRICT"), unique=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

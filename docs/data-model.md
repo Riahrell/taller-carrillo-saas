@@ -297,3 +297,8 @@ Acceso 2.27 (0014): mfa_pendings admite login_verified con credential_id del
 mismo usuario y factor_verified_at entre contraseña y creación. Los otros
 propósitos exigen ambos NULL. Login conserva cinco minutos desde contraseña;
 no hay backfill de prueba. Ver `deliveries/access-2.27.md`.
+
+Acceso 2.28 (0015): sesiones guardan revisión y referencia única opcional a
+mfa_pendings. Esa referencia conserva evidencia global, no un MFA flag del
+cliente. Cookies antiguas con revisión NULL se rechazan sin backfill. Retención
+debe respetar FK de sesión a prueba. Ver `deliveries/access-2.28.md`.

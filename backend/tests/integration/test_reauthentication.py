@@ -14,7 +14,7 @@ from alembic.config import Config
 from argon2.exceptions import HashingError
 from pydantic import SecretStr
 from sqlalchemy import event, func, select, text, update
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import DBAPIError, IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.modules.access import authentication as auth
@@ -503,6 +503,23 @@ def test_migration_revokes_confirmed_tokens_on_downgrade_and_does_not_backfill(s
         )
     issued = confirm(state)
     config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    with (
+        pytest.raises(DBAPIError, match="Downgrade refused"),
+        state["owner"].begin() as connection,
+    ):
+        config.attributes["connection"] = connection
+        command.downgrade(config, "0007_membership_creation_audit")
+    # Exercise the historical 0008 rollback using synthetic pre-0015 sessions.
+    # This is isolated migration test setup, never an operational downgrade recipe.
+    with state["owner"].begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE sessions SET security_revision = NULL WHERE "
+                "mfa_pending_id IS NULL AND membership_id IN "
+                "(SELECT id FROM tenant_memberships WHERE user_id = :user)"
+            ),
+            {"user": state["user"]},
+        )
     with state["owner"].begin() as connection:
         config.attributes["connection"] = connection
         command.downgrade(config, "0007_membership_creation_audit")
@@ -520,7 +537,9 @@ def test_migration_revokes_confirmed_tokens_on_downgrade_and_does_not_backfill(s
             row.reauthenticated_at is None and row.reauthentication_fingerprint is None
             for row in session.scalars(select(SessionRecord))
         )
-        sessions.resolve_session(session, ordinary.token)
+        # Neither historical cookie receives a security revision on upgrade.
+        with pytest.raises(sessions.AccessDenied):
+            sessions.resolve_session(session, ordinary.token)
     with pytest.raises(sessions.AccessDenied):
         guard(state, issued.token)
 

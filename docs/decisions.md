@@ -902,3 +902,11 @@ no admite IDs/proof flags del cliente. Un código rechazado no consume el pendie
 sin renovar el plazo. El emisor tras contraseña no puede crear esa etapa.
 Orden IP -> cuenta -> usuario -> pendiente -> factor; no adquirir tenant después.
 Lectura inicial sin locks solo descubre identidad, luego se relee bajo locks.
+
+Acceso 2.28: referenciar la prueba consumida evita copiar evidencia MFA a otra
+sesión. FK y unicidad preservan una prueba/una sesión; servicios validan dueño,
+propósito, revisión, contraseña, factor y tiempos. No backfill de sesiones:
+revisión NULL exige login nuevo. Factor vigente o mfa_required bloquean la vía
+heredada; obligación admin por rol espera hooks/incorporación completos. La
+confirmación reciente MFA usa la prueba más antigua, sin renovación por selección
+o actividad; endpoint de contraseña no la renueva. Sin activación pública.

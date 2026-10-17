@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.access.login_challenges import _password_fingerprint
 from app.modules.access.membership import AccessDenied, MembershipContext
-from app.modules.access.models import MembershipRole, SessionRecord, User
+from app.modules.access.models import MembershipRole, MfaPending, SessionRecord, User
 from app.modules.access.sessions import _database_now, _token_hash, resolve_session
 
 RECENT_AUTHENTICATION_WINDOW = timedelta(minutes=5)
@@ -56,6 +56,17 @@ def require_recent_administrator(
     )
     user = session.get(User, actor.user_id, populate_existing=True)
     now = _database_now(session)
+    if record.mfa_pending_id is not None:
+        # resolve_session has validated ownership, revision, factor and fingerprint.
+        proof = session.get(MfaPending, record.mfa_pending_id, populate_existing=True)
+        oldest = min(proof.password_verified_at, proof.factor_verified_at)
+        if (
+            now < record.last_seen_at
+            or now >= record.expires_at
+            or now >= oldest + RECENT_AUTHENTICATION_WINDOW
+        ):
+            raise RecentAuthenticationRequired("Recent authentication required")
+        return actor
     if (
         record.reauthenticated_at is None
         or record.reauthentication_fingerprint is None

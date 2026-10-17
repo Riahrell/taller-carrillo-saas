@@ -88,6 +88,7 @@ genérica y rollback. Un pendiente fuera de su ventana se rechaza.
 
 La evidencia persistida conserva revisión, huella de contraseña, factor y fechas
 de ambas verificaciones, navegador y límite original. Consumir/rotar esa etapa
-vuelve a exigir factor vigente. No hay sesión operativa ni activación MFA; sigue
-2.28: emisión de sesión desde prueba persistida. Detalles y comandos en
-`deliveries/access-2.27.md`.
+vuelve a exigir factor vigente. 2.28 añade un emisor separado que consume la etapa persistida en la transacción
+de sesión. La fachada de verificación no emite sesiones. Sin HTTP o activación
+MFA pública; sigue 2.29: inicio de login interno con pendientes MFA. Detalles en
+`deliveries/access-2.28.md`.

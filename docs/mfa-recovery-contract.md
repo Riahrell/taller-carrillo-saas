@@ -278,12 +278,14 @@ sesiones/pending/HTTP/UI y operación siguen pendientes:
 
 ## Próxima tarea pequeña
 
-2.27 compone pendiente login_totp, cuotas, consumo TOTP y evento en un commit;
-rota a login_verified con evidencia persistida, navegador y plazo original.
-No emite sesión ni está conectado al login HTTP. Ver
-[entrega 2.27](deliveries/access-2.27.md).
+2.28 consume login_verified ligado al navegador al seleccionar membresía y emite
+sesión en ese commit. Emisión/resolución centrales comprueban revisión/evidencia;
+cuentas con factor activo u obligación persistida no obtienen sesión por contraseña.
+La prueba reciente MFA deriva de la verificación más antigua. Cookies históricas
+sin revisión dejan de servir; no se acredita MFA por backfill. Ver
+[entrega 2.28](deliveries/access-2.28.md).
 
-**2.28: emisión de sesión desde prueba MFA persistida**, con revisión/estado
-actuales y selección dentro del plazo original. Guardias de resolución de sesión,
-hooks de roles/factores, incorporación/recuperación, cancelación por navegador e
-integración HTTP/UI/correo siguen pendientes antes de activar MFA.
+**2.29: iniciar login interno con pendientes MFA**, sin emitir sesión o revelar
+empresas antes de la prueba requerida. Reautenticación MFA, hooks de roles/factores,
+obligación admin por rol, incorporación/recuperación, cancelación por navegador,
+HTTP/UI/correo y operación siguen pendientes antes de activar MFA público.

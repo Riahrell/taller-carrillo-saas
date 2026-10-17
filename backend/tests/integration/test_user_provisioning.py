@@ -513,7 +513,7 @@ def test_downgrade_refuses_to_discard_creation_evidence(provisioning):
     with state["owner"].connect() as connection:
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0014_mfa_login_proof"
+            == "0015_mfa_sessions"
         )
     assert counts(state) == before
 
@@ -526,6 +526,18 @@ def test_migration_roundtrip_preserves_existing_change_audit(provisioning):
         change=MembershipChange(role="mechanic", is_active=True),
     )
     config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    # Preserve the historical audit roundtrip using pre-0015 synthetic sessions.
+    # New session evidence is separately covered by downgrade refusal tests.
+    with state["owner"].begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE sessions SET security_revision = NULL WHERE "
+                "mfa_pending_id IS NULL AND membership_id IN "
+                "(SELECT id FROM tenant_memberships WHERE tenant_id IN "
+                "(:tenant, :other))"
+            ),
+            {"tenant": state["tenant"], "other": state["other"]},
+        )
     with state["owner"].begin() as connection:
         before = connection.execute(text("SELECT * FROM audit_events")).all()
         config.attributes["connection"] = connection

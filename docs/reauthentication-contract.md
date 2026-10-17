@@ -193,3 +193,8 @@ todas las carreras entre navegadores ni revocación global desde un token antigu
 MFA/passkeys, recuperación, auditoría de eventos de autenticación, limpieza de
 throttles y revisión de seguridad general siguen pendientes en `security-review.md`.
 No se requiere adquirir servicios para esta entrega interna.
+
+Actualización 2.28: las sesiones internas MFA usan las fechas persistidas de
+contraseña/factor para confirmación reciente, cinco minutos desde la más antigua.
+El endpoint heredado por contraseña no renueva esas sesiones. La reautenticación
+MFA aún está pendiente y no hay integración pública de este flujo.

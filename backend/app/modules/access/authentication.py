@@ -46,6 +46,7 @@ from app.modules.access.sessions import (
     IssuedSession,
     _database_now,
     _lock_user,
+    _requires_mfa,
     _token_hash,
     issue_session,
     resolve_session,
@@ -247,7 +248,9 @@ class Authenticator:
                 prior_activity = record.last_seen_at
                 actor = resolve_session(session, token)
                 if (
-                    actor.membership_id != expected_actor
+                    record.mfa_pending_id is not None
+                    or _requires_mfa(session, user)
+                    or actor.membership_id != expected_actor
                     or actor.role != MembershipRole.ADMIN
                     or actor.tenant_id != tenant.id
                     or user.email != hint.email
@@ -341,6 +344,10 @@ class Authenticator:
             credentials.password, encoded if usable else self._dummy_hash
         )
         allowed = valid and usable and user is not None and user.is_active
+        if allowed and _requires_mfa(session, user):
+            # Public MFA login is not integrated yet. Never expose tenant choices
+            # or a password-only session for an account requiring a second factor.
+            return None
         memberships = []
         if allowed and tenant_id is None:
             memberships = _active_memberships(session, user.id)

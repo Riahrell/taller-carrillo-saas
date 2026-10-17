@@ -149,3 +149,7 @@ Resultados reales y límites en `deliveries/access-2.26.md`. MFA sigue sin activ
 Acceso 2.27: pendiente/cuotas/TOTP/evento/evidencia confirman juntos; rechazo
 conserva pendiente y fallos. Pruebas de rollback, caducidad, replay y concurrencia
 en PostgreSQL aislado; resultados y límites en `deliveries/access-2.27.md`.
+
+Acceso 2.28: consumo de prueba/emisión atómicos, contexto actual, guardias
+centrales sin bypass por contraseña, resolución con revisión/factor y ventana
+reciente original. Evidencia, comandos y límites en `deliveries/access-2.28.md`.

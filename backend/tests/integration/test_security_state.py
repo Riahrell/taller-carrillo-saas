@@ -44,8 +44,15 @@ def state(mfa_state):
         session.flush()
         tenant_ids = [t.id for t in tenants]
         member_ids = [m.id for m in members]
+        # Arrange historical password sessions before the synthetic factor is
+        # current. This test setup is never a runtime authentication bypass.
+        credential = session.get(MfaCredential, state["credential"])
+        credential.revoked_at = session.scalar(select(func.clock_timestamp()))
+        session.flush()
         for t in tenants:
             issue_session(session, user_id=state["user"], tenant_id=t.id)
+        credential.revoked_at = None
+        session.flush()
         now = session.scalar(select(func.clock_timestamp()))
         session.add(
             LoginChallenge(

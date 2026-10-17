@@ -392,9 +392,8 @@ def test_quota_downgrade_and_runtime_delete_refused(state):
     assert buckets(state) == before
 
 
-def test_password_success_and_new_pending_do_not_reset_mfa_quota(state):
+def test_password_only_flow_with_factor_is_rejected_without_resetting_mfa_quota(state):
     from app.modules.access.authentication import Authenticator, Credentials
-    from app.modules.access.login_challenges import PendingLogin
     from app.modules.access.passwords import hash_password
 
     password = SecretStr(secrets.token_urlsafe(32))
@@ -423,7 +422,7 @@ def test_password_success_and_new_pending_do_not_reset_mfa_quota(state):
                 client_ip=PEER,
                 browser_binding=SecretStr("A" * 43),
             )
-            assert isinstance(pending, PendingLogin)
+            assert pending is None
             assert buckets(state) == before
         assert failures(state) == (1, 1)
     finally:
