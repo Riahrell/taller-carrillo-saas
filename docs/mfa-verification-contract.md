@@ -69,5 +69,6 @@ promete ausencia de ese riesgo. No hay auditoría de autenticación completa,
 alertas, credenciales activadas o integración pública por crear estas cuotas.
 
 2.25 implementa el kernel de estado/revisión global con revocación y auditoría.
-La fachada aún no lo conecta a pruebas de sesión. Siguiente 2.26: pendientes MFA
-tipados; ver `deliveries/access-2.25.md` para límites y resultados.
+La fachada aún no lo conecta a pruebas de sesión. 2.26 añade pendientes MFA
+tipados; siguiente 2.27: componer pendiente/cuota/TOTP en una transacción. Ver
+`deliveries/access-2.26.md` para límites y resultados.

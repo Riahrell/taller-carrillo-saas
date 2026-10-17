@@ -888,3 +888,10 @@ y eventos tipados de avance. El servicio autorizado por su llamador revoca todas
 las sesiones/pendientes y audita en el mismo commit. No es un endpoint ni prueba
 transferible. Sin hooks automáticos en roles/factores o login: integración pendiente.
 Siguiente 2.26: pendientes tipados. Ver `deliveries/access-2.25.md`.
+
+Acceso 2.26: separar pendientes MFA de la selección heredada evita conceder
+permisos de negocio a un primer factor. Propósitos cerrados login_totp/enrollment;
+5/15 minutos desde contraseña. Rotación conserva origen/plazo. Consumo devuelve
+solo contexto restringido y debe componerse con la transición autorizada antes
+de commit. Orden usuario -> selección heredada -> pendientes MFA -> sesiones.
+Sin HTTP, recuperación ni habilitación MFA en esta entrega.

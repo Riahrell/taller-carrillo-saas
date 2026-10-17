@@ -181,6 +181,48 @@ class LoginChallenge(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class MfaPending(Base):
+    """Restricted browser-bound state; never a session or a verified MFA proof."""
+
+    __tablename__ = "mfa_pendings"
+    __table_args__ = (
+        CheckConstraint(
+            "purpose IN ('login_totp', 'enrollment')", name="purpose_allowed"
+        ),
+        CheckConstraint("security_revision >= 0", name="revision_bounds"),
+        CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="token_hash_sha256"),
+        CheckConstraint("binding_hash ~ '^[0-9a-f]{64}$'", name="binding_hash_sha256"),
+        CheckConstraint(
+            "password_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="password_fingerprint_sha256",
+        ),
+        CheckConstraint(
+            "created_at >= password_verified_at AND created_at < expires_at",
+            name="creation_window",
+        ),
+        CheckConstraint(
+            "expires_at = password_verified_at + CASE WHEN purpose = 'login_totp' "
+            "THEN interval '5 minutes' ELSE interval '15 minutes' END",
+            name="absolute_lifetime",
+        ),
+        CheckConstraint("finished_at >= created_at", name="finish_window"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    binding_hash: Mapped[str] = mapped_column(String(64))
+    purpose: Mapped[str] = mapped_column(String(16))
+    security_revision: Mapped[int] = mapped_column(BigInteger)
+    password_fingerprint: Mapped[str] = mapped_column(String(64))
+    password_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class AuditEvent(Base):
     """Typed creation/change evidence; no arbitrary payloads or credentials."""
 

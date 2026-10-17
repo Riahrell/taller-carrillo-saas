@@ -13,7 +13,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.access.membership import AccessDenied
-from app.modules.access.models import LoginChallenge, Tenant, TenantMembership, User
+from app.modules.access.models import (
+    LoginChallenge,
+    MfaPending,
+    Tenant,
+    TenantMembership,
+    User,
+)
 from app.modules.access.sessions import (
     IssuedSession,
     _database_now,
@@ -100,6 +106,19 @@ def revoke_user_challenges(session: Session, user_id: UUID) -> None:
     """Same transaction as account/password changes; caller owns commit/rollback."""
     if _lock_user(session, user_id) is not None:
         _close_pending(session, user_id)
+        # Global lock order: user -> login challenges -> MFA pendings -> sessions.
+        records = session.scalars(
+            select(MfaPending)
+            .where(MfaPending.user_id == user_id, MfaPending.finished_at.is_(None))
+            .order_by(MfaPending.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).all()
+        if records:
+            now = _database_now(session)
+            for record in records:
+                record.finished_at = max(now, record.created_at)
+            session.flush()
 
 
 def _issue_challenge(

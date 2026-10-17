@@ -287,3 +287,8 @@ en otra empresa por conocer el email. No se agregan campos de invitación o recu
 
 2.25 agrega 0012: revisión global/obligación MFA en users y eventos de avance,
 sin correo verificado o integración de login. Ver `deliveries/access-2.25.md`.
+
+Acceso 2.26: `mfa_pendings` guarda hashes separados de token/navegador, propósito
+login_totp/enrollment, usuario/revisión/huella de contraseña y tiempos absolutos
+de 5/15 minutos. Solo estado restringido; sin empresa o prueba MFA/buzón.
+Migración 0013, sin filas operativas iniciales. Ver `deliveries/access-2.26.md`.

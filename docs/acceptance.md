@@ -141,3 +141,7 @@ fundación actual. Los comandos de módulos futuros se incorporarán con su tare
 
 Acceso 2.25: estado/revisión global y avance con revocación/auditoría atómicas.
 Evidencia/límites en `deliveries/access-2.25.md`; MFA aún no integrado en login.
+
+Acceso 2.26: pendientes internos de uso único, navegador/propósito/revisión,
+rotación sin ampliar plazo, rollback, concurrencia y revocación global.
+Resultados reales y límites en `deliveries/access-2.26.md`. MFA sigue sin activar.
