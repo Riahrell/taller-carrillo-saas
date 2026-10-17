@@ -182,12 +182,28 @@ class LoginChallenge(Base):
 
 
 class MfaPending(Base):
-    """Restricted browser-bound state; never a session or a verified MFA proof."""
+    """Browser-bound authentication stages, never a tenant session."""
 
     __tablename__ = "mfa_pendings"
     __table_args__ = (
         CheckConstraint(
-            "purpose IN ('login_totp', 'enrollment')", name="purpose_allowed"
+            "purpose IN ('login_totp', 'enrollment', 'login_verified')",
+            name="purpose_allowed",
+        ),
+        ForeignKeyConstraint(
+            ["user_id", "credential_id"],
+            ["mfa_credentials.user_id", "mfa_credentials.id"],
+            ondelete="RESTRICT",
+            name="fk_mfa_pendings_credential_owner",
+        ),
+        CheckConstraint(
+            "(purpose = 'login_verified' AND credential_id IS NOT NULL "
+            "AND factor_verified_at IS NOT NULL "
+            "AND factor_verified_at >= password_verified_at "
+            "AND factor_verified_at <= created_at) OR "
+            "(purpose IN ('login_totp', 'enrollment') AND credential_id IS NULL "
+            "AND factor_verified_at IS NULL)",
+            name="factor_state",
         ),
         CheckConstraint("security_revision >= 0", name="revision_bounds"),
         CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="token_hash_sha256"),
@@ -201,8 +217,8 @@ class MfaPending(Base):
             name="creation_window",
         ),
         CheckConstraint(
-            "expires_at = password_verified_at + CASE WHEN purpose = 'login_totp' "
-            "THEN interval '5 minutes' ELSE interval '15 minutes' END",
+            "expires_at = password_verified_at + CASE WHEN purpose = 'enrollment' "
+            "THEN interval '15 minutes' ELSE interval '5 minutes' END",
             name="absolute_lifetime",
         ),
         CheckConstraint("finished_at >= created_at", name="finish_window"),
@@ -216,6 +232,8 @@ class MfaPending(Base):
     binding_hash: Mapped[str] = mapped_column(String(64))
     purpose: Mapped[str] = mapped_column(String(16))
     security_revision: Mapped[int] = mapped_column(BigInteger)
+    credential_id: Mapped[UUID | None] = mapped_column()
+    factor_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     password_fingerprint: Mapped[str] = mapped_column(String(64))
     password_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

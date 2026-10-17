@@ -513,7 +513,7 @@ def test_downgrade_refuses_to_discard_creation_evidence(provisioning):
     with state["owner"].connect() as connection:
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0013_mfa_pendings"
+            == "0014_mfa_login_proof"
         )
     assert counts(state) == before
 

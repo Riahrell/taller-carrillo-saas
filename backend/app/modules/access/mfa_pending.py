@@ -18,13 +18,14 @@ from sqlalchemy.orm import Session
 
 from app.modules.access.login_challenges import _password_fingerprint
 from app.modules.access.membership import AccessDenied
-from app.modules.access.models import MfaPending, User
+from app.modules.access.models import MfaCredential, MfaPending, User
 from app.modules.access.sessions import _database_now, _lock_user
 
 
 class PendingPurpose(StrEnum):
     LOGIN_TOTP = "login_totp"
     ENROLLMENT = "enrollment"
+    LOGIN_VERIFIED = "login_verified"
 
 
 @dataclass(frozen=True)
@@ -35,13 +36,15 @@ class PendingToken:
 
 @dataclass(frozen=True)
 class PendingContext:
-    """Restricted state only; does not prove a factor, mailbox or membership."""
+    """Consumed stage data, not a transferable proof, mailbox or membership."""
 
     user_id: UUID
     security_revision: int
     purpose: PendingPurpose
     password_verified_at: datetime
     expires_at: datetime
+    credential_id: UUID | None
+    factor_verified_at: datetime | None
 
 
 def _hash(secret: SecretStr, domain: str) -> str:
@@ -67,6 +70,8 @@ def _insert(
     verified_at: datetime,
     expires_at: datetime,
     now: datetime,
+    credential_id: UUID | None = None,
+    factor_verified_at: datetime | None = None,
 ) -> PendingToken:
     token = SecretStr(secrets.token_urlsafe(32))
     session.add(
@@ -76,6 +81,8 @@ def _insert(
             binding_hash=binding_hash,
             purpose=purpose.value,
             security_revision=user.security_revision,
+            credential_id=credential_id,
+            factor_verified_at=factor_verified_at,
             password_fingerprint=_password_fingerprint(user),
             password_verified_at=verified_at,
             created_at=now,
@@ -100,6 +107,8 @@ def _issue_after_password(
     and own commit; it cannot present this result as MFA or email verification.
     """
     _purpose(purpose)
+    if purpose is PendingPurpose.LOGIN_VERIFIED:
+        raise ValueError("Password alone cannot issue a verified pending")
     if (
         not isinstance(user_id, UUID)
         or type(expected_revision) is not int
@@ -119,7 +128,7 @@ def _issue_after_password(
     return _insert(session, user, binding_hash, purpose, now, now + lifetime, now)
 
 
-def _take(
+def _lock_pending(
     session: Session, *, token: SecretStr, binding: SecretStr, purpose: PendingPurpose
 ) -> tuple[User, MfaPending, datetime] | None:
     _purpose(purpose)
@@ -153,9 +162,32 @@ def _take(
         )
     ):
         return None
+    if purpose is PendingPurpose.LOGIN_VERIFIED and (
+        row.factor_verified_at is None
+        or row.factor_verified_at > now
+        or session.scalar(
+            select(MfaCredential.id).where(
+                MfaCredential.id == row.credential_id,
+                MfaCredential.user_id == user_id,
+                MfaCredential.revoked_at.is_(None),
+            )
+        )
+        is None
+    ):
+        return None
+    return user, row, now
+
+
+def _take(
+    session: Session, *, token: SecretStr, binding: SecretStr, purpose: PendingPurpose
+) -> tuple[User, MfaPending, datetime] | None:
+    taken = _lock_pending(session, token=token, binding=binding, purpose=purpose)
+    if taken is None:
+        return None
+    _, row, now = taken
     row.finished_at = now
     session.flush()
-    return user, row, now
+    return taken
 
 
 def _consume(
@@ -176,6 +208,8 @@ def _consume(
         purpose,
         row.password_verified_at,
         row.expires_at,
+        row.credential_id,
+        row.factor_verified_at,
     )
 
 
@@ -195,4 +229,6 @@ def _rotate(
         row.password_verified_at,
         row.expires_at,
         now,
+        row.credential_id,
+        row.factor_verified_at,
     )

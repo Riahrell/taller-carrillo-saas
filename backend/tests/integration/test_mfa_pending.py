@@ -127,7 +127,8 @@ def test_stale_identity_state_rejects_pending(state, change):
 
 
 def test_global_revision_advance_closes_both_purposes(state):
-    pendings = [issue(state, p) for p in P]
+    purposes = (P.LOGIN_TOTP, P.ENROLLMENT)
+    pendings = [issue(state, p) for p in purposes]
     with Session(state["runtime"]) as session, session.begin():
         security_state.advance_security_revision(
             session, user_id=state["user"], expected_revision=0
@@ -139,7 +140,7 @@ def test_global_revision_advance_closes_both_purposes(state):
             )
         )
         assert len(rows) == 2 and all(row.finished_at is not None for row in rows)
-    for pending, purpose in zip(pendings, P, strict=True):
+    for pending, purpose in zip(pendings, purposes, strict=True):
         assert consume(state, pending.token, purpose) is None
 
 

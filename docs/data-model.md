@@ -292,3 +292,8 @@ Acceso 2.26: `mfa_pendings` guarda hashes separados de token/navegador, propósi
 login_totp/enrollment, usuario/revisión/huella de contraseña y tiempos absolutos
 de 5/15 minutos. Solo estado restringido; sin empresa o prueba MFA/buzón.
 Migración 0013, sin filas operativas iniciales. Ver `deliveries/access-2.26.md`.
+
+Acceso 2.27 (0014): mfa_pendings admite login_verified con credential_id del
+mismo usuario y factor_verified_at entre contraseña y creación. Los otros
+propósitos exigen ambos NULL. Login conserva cinco minutos desde contraseña;
+no hay backfill de prueba. Ver `deliveries/access-2.27.md`.

@@ -1,8 +1,10 @@
 # Cuotas y verificación MFA interna: acceso 2.24
 
 `MfaVerifier` es la fachada interna para verificar/consumir factores bajo cuota.
-No está conectada a rutas, login, selección o reautenticación; no valida contraseña,
-pendiente, revisión o autorización de recuperación y no emite sesiones. No usar
+No está conectada a rutas, login operativo, selección o reautenticación. Los
+métodos de factor aislado no validan contraseña/pendiente/revisión. La variante
+login 2.27 valida pendiente persistido; no verifica contraseña de nuevo ni autoriza
+recuperación ni emite sesiones. No usar
 el resultado como prueba transferible. Complementa el contrato de
 [persistencia/auditoría](mfa-persistence-contract.md), sin activar MFA operativo.
 
@@ -44,7 +46,7 @@ claves o datos del factor. No hay reintento automático con resultado incierto.
 Timeouts de lock de tres segundos y sentencia de diez limitan las esperas; no son
 promesa de latencia ni sustituyen límites de volumen/conexiones del proxy.
 
-La fachada actual solo confirma cuota/consumo/evento. Al integrar pendientes y
+Los métodos de factor aislado solo confirman cuota/consumo/evento. Al integrar pendientes y
 sesiones, sus transiciones autorizadas deben incorporarse a la misma transacción
 propietaria con revisión/locks actuales; **no** emitir sesión después en otra
 transacción basándose únicamente en este resultado. No se expone callback libre
@@ -69,6 +71,23 @@ promete ausencia de ese riesgo. No hay auditoría de autenticación completa,
 alertas, credenciales activadas o integración pública por crear estas cuotas.
 
 2.25 implementa el kernel de estado/revisión global con revocación y auditoría.
-La fachada aún no lo conecta a pruebas de sesión. 2.26 añade pendientes MFA
-tipados; siguiente 2.27: componer pendiente/cuota/TOTP en una transacción. Ver
-`deliveries/access-2.26.md` para límites y resultados.
+2.26 añade pendientes tipados; 2.27 compone la variante `verify_login_totp` y rota
+a `login_verified` en el mismo commit que factor/evento/cuotas. El nuevo método
+no acepta usuario, factor, revisión, empresa o propósito del cliente: los relee
+del pendiente y estado actuales. No interpreta el resultado aislado de los métodos
+anteriores como prueba de login.
+
+Rechazos de código con pendiente válido conservan el pendiente y confirman cuotas;
+pending desconocido, binding/propósito incorrecto o estado inválido no carga fallos
+a la cuenta. Puede crear buckets vacíos tras descubrir una identidad válida.
+Hace falta protección HTTP/proxy de volumen: esto no limita todo tráfico inválido.
+Agotar cuota evita evaluar factor; acertar no borra historial. Caducar durante la
+verificación provoca rollback de consumo/evento/cuotas, sin emitir token nuevo.
+Clave/DB/commit y regresión durante la verificación generan indisponibilidad
+genérica y rollback. Un pendiente fuera de su ventana se rechaza.
+
+La evidencia persistida conserva revisión, huella de contraseña, factor y fechas
+de ambas verificaciones, navegador y límite original. Consumir/rotar esa etapa
+vuelve a exigir factor vigente. No hay sesión operativa ni activación MFA; sigue
+2.28: emisión de sesión desde prueba persistida. Detalles y comandos en
+`deliveries/access-2.27.md`.

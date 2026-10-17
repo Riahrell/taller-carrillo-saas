@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.26, pendientes MFA internos; login sin segundo factor
+## Estado: acceso 2.27, verificación MFA interna; login sin segundo factor
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -34,7 +34,7 @@ La fundación tiene validación integral local y workflow CI preparado. Su prime
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md), [última entrega 2.26](docs/deliveries/access-2.26.md)
+- [Aceptación](docs/acceptance.md), [última entrega 2.27](docs/deliveries/access-2.27.md)
   y [contrato de diseño 2.20](docs/deliveries/access-2.20.md).
 - [MFA y recuperación](docs/mfa-recovery-contract.md): TOTP, incorporación,
   códigos offline y separación de recuperación por correo. Primitivas internas
@@ -632,7 +632,8 @@ UPDATE/DELETE/TRUNCATE para la app. 2.24 incorpora cuotas MFA (0011), separadas
 de contraseña y compartidas entre propósitos, con fallos confirmados y sin reset
 al acertar un factor. 2.25 añade estado/revisión global (0012) con
 revocación/auditoría atómicas como servicio interno. 2.26 añade pendientes
-MFA tipados (0013). Siguiente 2.27: composición pendiente/cuota/TOTP. Faltan los caminos completos de autenticación/
+MFA tipados (0013). 2.27 compone pendiente/cuota/TOTP y guarda la prueba (0014).
+Siguiente 2.28: consumo de esa prueba al emitir sesión. Faltan los caminos completos de autenticación/
 recuperación antes de HTTP/UI.
 El contrato 2.20 ya define incorporación con prueba fresca de buzón, obligatoriedad
 admin global, recuperación sin bypass y cambios futuros de sesión/confirmación.

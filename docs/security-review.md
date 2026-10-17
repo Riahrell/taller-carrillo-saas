@@ -29,7 +29,7 @@ heredar estas comprobaciones; el frontend nunca determina autoridad.
 | Acciones administrativas | Admin de empresa, contexto esperado, transacción y último admin protegidos; no vincular cuenta existente por conocer correo. En 2.18, UI y confirmación reciente obligatoria en alta/cambio (incluso no-op); 428 revierte efectos. Alta comprueba nuevamente antes del commit. | Confirmación por contraseña no es MFA. Web Locks/BroadcastChannel coordinan clientes cooperantes, sin garantizar cancelación de efectos tras desconexión. MFA/recuperación siguen bloqueantes antes de inventario. |
 | Contraseñas | Argon2id, longitud Unicode 15–128, sin composición artificial, secretos fuera de logs/Storage. | Política de contraseñas comprometidas/comunes y cambios seguros; no evaluada resistencia a phishing solo con contraseña. |
 | Alta asistida | UI 2.15 sobre contrato 2.14, comprobación de contexto y secreto en campos no controlados. | Requiere confianza en equipo/admin. El navegador y sus extensiones/gestor de claves quedan fuera de la aplicación; no afirmar borrado criptográfico de strings JS. Evaluar incorporación por invitación de un solo uso en dispositivo propio. |
-| Recuperación y MFA | Contrato 2.20 en mfa-recovery-contract.md; primitivas 2.21 y persistencia/consumo 2.22 y eventos globales 2.23, más cuotas internas 2.24 probados, sin MFA activo. TOTP admin, prueba fresca de buzón para incorporación y códigos offline; correo no desactiva MFA. | 2.27 composición pendiente/cuota/TOTP; después integración, emisión/resolución de sesiones, selección, promoción, reautenticación y UI/correo, con aceptación completa. TOTP no resiste phishing; passkeys pendientes. Decisión de recuperación excepcional y verificación antes de producción/inventario según alcance. |
+| Recuperación y MFA | Contrato 2.20 en mfa-recovery-contract.md; primitivas 2.21 y persistencia/consumo 2.22 y eventos globales 2.23, más cuotas internas 2.24 probados, sin MFA activo. TOTP admin, prueba fresca de buzón para incorporación y códigos offline; correo no desactiva MFA. | 2.28 emisión desde prueba persistida; después integración, emisión/resolución de sesiones, selección, promoción, reautenticación y UI/correo, con aceptación completa. TOTP no resiste phishing; passkeys pendientes. Decisión de recuperación excepcional y verificación antes de producción/inventario según alcance. |
 | Auditoría | Altas/cambios de membresía y, en 2.23, eventos globales de consumo MFA en el mismo commit; permisos append-only para la app y rollback probados. | Login/denegaciones/cambios de credencial, consulta autorizada, retención y alertas. No hay registro de seguridad completo ni monitoreo. |
 | Transporte y navegador | Proxy mismo origen, CORS cerrado, flags de cookie según entorno, cabeceras básicas. | TLS público, CSP compatible con Next.js y revisión de historial/cache/bfcache. No hay CSP estricta o ensayo HTTPS de despliegue público. |
 | Dependencias y secretos | 2.19 agrega Gitleaks en archivos/historial, pip-audit y npm audit obligatorios en CI. Herramientas fijadas, canary sintético y fallos cerrados. | Un aviso raíz dev-only (cuatro entradas npm), SEC-2026-001, aceptado temporalmente hasta 2026-10-31; visible y probado contra cambios de alcance. Pendientes corrección del proveedor, CVEs de imágenes/SO, actualización/SBOM. Ver security-scanning.md; no equivale a ausencia de CVEs. |
@@ -47,7 +47,7 @@ heredar estas comprobaciones; el frontend nunca determina autoridad.
    SEC-2026-001 antes de 2026-10-31. 2.20 define contrato MFA admin/recuperación;
    2.21 implementa primitivas y 2.22 persistencia/consumo transaccional.
    2.23 agrega auditoría global de consumos y 2.24 cuotas MFA compartidas.
-   2.25 añade estado/revisión global interna. 2.26 añade pendientes tipados. Siguiente 2.27: componer pendiente/cuota/TOTP. Cambio/recuperación de
+   2.25 añade estado/revisión global interna. 2.26 añade pendientes tipados. 2.27 compone pendiente/cuota/TOTP con evidencia persistida. Cambio/recuperación de
    credenciales y cierre global, conservando
    las fronteras de identidad global/administración de empresa. No resetear una
    cuenta global desde otro tenant ni exponer un bypass de soporte.
@@ -107,5 +107,5 @@ esas referencias al alcance actual; no implican que todos sus controles existan.
 
 Actualización 2.26: pendientes MFA internos ligados a navegador, propósito,
 revisión y contraseña, con rotación y consumo transaccionales. No satisfacen
-por sí solos MFA ni buzón; no están conectados al login operativo. Siguiente:
-componer pendiente/cuota/TOTP, luego guardias de sesión y flujos completos.
+por sí solos MFA ni buzón; no están conectados al login operativo. 2.27 compone pendiente/cuota/TOTP. Siguiente: emisión desde evidencia persistida,
+guardias de sesión y flujos completos.

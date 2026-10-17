@@ -278,12 +278,12 @@ sesiones/pending/HTTP/UI y operación siguen pendientes:
 
 ## Próxima tarea pequeña
 
-2.26 incorpora almacenamiento interno de pendientes `login_totp` y `enrollment`,
-consumo/rotación de uso único y cierre en revocaciones globales. No son pruebas de
-factor/buzón ni están conectados al login. Selección MFA, recuperación, cancelación
-por navegador y hooks de roles/factores siguen pendientes. Ver
-[entrega 2.26](deliveries/access-2.26.md).
+2.27 compone pendiente login_totp, cuotas, consumo TOTP y evento en un commit;
+rota a login_verified con evidencia persistida, navegador y plazo original.
+No emite sesión ni está conectado al login HTTP. Ver
+[entrega 2.27](deliveries/access-2.27.md).
 
-**2.27: componer pendiente, cuota y consumo TOTP en una transacción propietaria**,
-sin emitir sesión a partir de un resultado aislado. Después, guardias de sesión,
-incorporación/recuperación e integración HTTP/UI/correo.
+**2.28: emisión de sesión desde prueba MFA persistida**, con revisión/estado
+actuales y selección dentro del plazo original. Guardias de resolución de sesión,
+hooks de roles/factores, incorporación/recuperación, cancelación por navegador e
+integración HTTP/UI/correo siguen pendientes antes de activar MFA.

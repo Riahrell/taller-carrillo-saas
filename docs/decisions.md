@@ -895,3 +895,10 @@ permisos de negocio a un primer factor. Propósitos cerrados login_totp/enrollme
 solo contexto restringido y debe componerse con la transición autorizada antes
 de commit. Orden usuario -> selección heredada -> pendientes MFA -> sesiones.
 Sin HTTP, recuperación ni habilitación MFA en esta entrega.
+
+Acceso 2.27: verify_login_totp deriva identidad/factor del estado del servidor;
+no admite IDs/proof flags del cliente. Un código rechazado no consume el pendiente.
+Éxito rota a login_verified y persiste evidencia en la transacción propietaria,
+sin renovar el plazo. El emisor tras contraseña no puede crear esa etapa.
+Orden IP -> cuenta -> usuario -> pendiente -> factor; no adquirir tenant después.
+Lectura inicial sin locks solo descubre identidad, luego se relee bajo locks.

@@ -145,3 +145,7 @@ Evidencia/límites en `deliveries/access-2.25.md`; MFA aún no integrado en logi
 Acceso 2.26: pendientes internos de uso único, navegador/propósito/revisión,
 rotación sin ampliar plazo, rollback, concurrencia y revocación global.
 Resultados reales y límites en `deliveries/access-2.26.md`. MFA sigue sin activar.
+
+Acceso 2.27: pendiente/cuotas/TOTP/evento/evidencia confirman juntos; rechazo
+conserva pendiente y fallos. Pruebas de rollback, caducidad, replay y concurrencia
+en PostgreSQL aislado; resultados y límites en `deliveries/access-2.27.md`.
