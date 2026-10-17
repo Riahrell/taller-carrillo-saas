@@ -1,5 +1,10 @@
 import { accessApi, readCsrfCookie, type Role } from "@/lib/access/api";
-import { getJson, patchJson, type RequestOptions } from "@/lib/api/client";
+import {
+  createJson,
+  getJson,
+  patchJson,
+  type RequestOptions,
+} from "@/lib/api/client";
 
 export type Membership = {
   membership_id: string;
@@ -9,6 +14,7 @@ export type Membership = {
 export type Member = Membership & { email: string; user_is_active: boolean };
 export type Page = { items: Member[]; next_after: string | null };
 export type Detail = Membership & { etag: string };
+export type NewUser = { email: string; password: string; role: Role };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const ETAG = /^"membership-v1-[0-9a-f]{64}"$/;
 export const roleNames: Record<Role, string> = {
@@ -41,8 +47,13 @@ function membership(value: unknown): Membership {
     is_active: data.is_active,
   };
 }
-function bound(headers: Headers, actor: string, status: number) {
-  if (status !== 200 || headers.get("X-Access-Membership") !== id(actor))
+function bound(
+  headers: Headers,
+  actor: string,
+  status: number,
+  expected = 200,
+) {
+  if (status !== expected || headers.get("X-Access-Membership") !== id(actor))
     throw new Error("Unmatched context");
 }
 export function decodePage(
@@ -102,6 +113,48 @@ export function decodeDetail(
   return { ...current, etag };
 }
 export const membershipsApi = {
+  create: async (
+    actor: string,
+    data: NewUser,
+    options: RequestOptions = {},
+  ) => {
+    id(actor);
+    if (
+      !Object.hasOwn(roleNames, data.role) ||
+      !data.email.trim() ||
+      Array.from(data.email).length > 254 ||
+      Array.from(data.password).length < 15 ||
+      Array.from(data.password).length > 128
+    )
+      throw new TypeError("Invalid creation");
+    await accessApi.prepare(options);
+    const csrf = readCsrfCookie(
+      document.cookie,
+      window.location.protocol === "https:",
+    );
+    return createJson(
+      "/auth/memberships",
+      { email: data.email, password: data.password, role: data.role },
+      csrf,
+      actor,
+      (value, status, headers) => {
+        bound(headers, actor, status, 201);
+        const current = membership(value);
+        const etag = headers.get("ETag");
+        if (
+          !etag ||
+          !ETAG.test(etag) ||
+          current.membership_id === actor ||
+          current.role !== data.role ||
+          !current.is_active ||
+          headers.get("Location") !== `./memberships/${current.membership_id}`
+        )
+          throw new Error("Invalid creation result");
+        return { ...current, etag };
+      },
+      options,
+    );
+  },
   page: (actor: string, after?: string, options: RequestOptions = {}) => {
     id(actor);
     return getJson(

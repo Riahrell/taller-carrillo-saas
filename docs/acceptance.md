@@ -21,15 +21,24 @@ Acceso 2.13 añade alta interna de cuenta global nueva/membresía/auditoría at�
 sin vincular correos existentes; permiso actual, duplicados y concurrencia probados.
 Migración de auditoría 0007. Acceso 2.14 conecta POST administrativo con sesión,
 CSRF/origen y contexto obligatorio, respuesta mínima tras commit y conflicto
-genérico; límites y login de la identidad nueva por proxy real. Falta formulario.
-Resultados actuales en `deliveries/access-2.14.md`; entregas anteriores como
+genérico; límites y login de la identidad nueva por proxy real. Acceso 2.15 añade
+formulario asistido, revisión/confirmación, retirada de contraseñas y validación
+de contexto posterior, con pruebas de componente y recorrido de navegador aislado.
+Resultados actuales en `deliveries/access-2.15.md`; entregas anteriores como
 registros históricos.
-El hito 2 sigue abierto: falta el formulario de alta,
+El hito 2 sigue abierto: falta reautenticación reciente,
 gestión global de cuentas, permisos de otros módulos, consulta/ampliación de
 auditoría, recuperación y limpieza de registros de acceso.
 Contrato actualizado en `auth-http-contract.md`, con límites y pendientes explícitos.
 Administración existente detallada en `membership-http-contract.md`.
 No confundir criterios futuros de esta lista con verificaciones realizadas.
+
+Prioridad explícita del usuario el 2026-10-16: seguridad aunque retrase inventario.
+Se revoca pasar a 3.1 inmediatamente después del formulario. La puerta de paso
+se amplía con `security-review.md`: cerrar brechas de acceso y revisar evidencia
+antes de comenzar inventario; los permisos de ese módulo se prueban al construirlo.
+Contabo/Namecheap son el entorno previsto, no un despliegue hecho; ver
+`staging-plan.md`. Comprar un dominio no configura HTTPS por sí solo.
 
 La selección interna ya verifica pertenencia actual y rol desde DB. Se probaron
 IDs ajenos, otro navegador, expiración exacta, contraseña cambiada/rehash,

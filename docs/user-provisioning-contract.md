@@ -1,7 +1,7 @@
-# Alta administrativa (acceso 2.13–2.14)
+# Alta administrativa (acceso 2.13–2.15)
 
-La entrega 2.13 añadió el servicio interno y 2.14 lo conecta a HTTP. Todavía sin
-formulario ni registro público. El operador inicial sigue usando bootstrap. No ejecutarlo sobre cuentas
+La entrega 2.13 añadió el servicio interno, 2.14 lo conecta a HTTP y 2.15 añade
+formulario asistido. Sin registro público. El operador inicial sigue usando bootstrap. No ejecutarlo sobre cuentas
 reales como parte de pruebas o desde otra transacción.
 
 ## Entrada y autoridad
@@ -107,7 +107,7 @@ permiso de reintento automático. Ante respuesta perdida consultar listado/sesi�
 
 ## Canal de contraseña y límites del alta asistida
 
-Decisión para el siguiente formulario: alta presencial/asistida en un equipo
+Canal del formulario 2.15: alta presencial/asistida en un equipo
 controlado, con administrador autenticado. La persona nueva elige/escribe su
 contraseña en un campo oculto sin estado persistente; el formulario debe borrarla
 al enviar/cancelar y retirarla de memoria al perder contexto. Sin generar o
@@ -118,6 +118,26 @@ loopback, según la validación de configuración vigente.
 Este canal requiere confianza en el equipo y en el administrador; ocultar el campo
 no protege contra quien controla ese navegador/equipo. No promete invitación
 remota, verificación de correo, contraseña temporal/cambio forzoso, recuperación
-ni MFA. No adjunta cuentas existentes. El formulario todavía no se implementa en
-2.14 y las pruebas HTTP usan únicamente credenciales sintéticas en DB efímera.
+ni MFA. No adjunta cuentas existentes. Las pruebas usan únicamente credenciales
+sintéticas en DB efímera.
 La recuperación de acceso debe completarse antes de declarar listo para producción.
+
+## Formulario 2.15
+
+Ruta `/membresias/nueva`, montada solo tras consultar sesión admin actual. Primer
+paso: correo y perfil explícitos sin predeterminado. Segundo: resumen sin clave y
+campos ocultos de contraseña/confirmación sin estado React. Contar puntos de código
+Unicode 15–128 y conservar espacios; volver a validar todo en backend. Campos
+reseteados al enviar, editar, cancelar o desmontar por pérdida de contexto.
+
+El transporte renueva CSRF, envía solo email/password/role y X-Expected-Membership;
+no elige tenant, cookies u Origin. Requiere 201 y actor/rol/estado/ETag/Location
+válidos. Sin reintentos, Storage, logs de payload o contraseña en el resumen.
+Mutex impide doble envío y controles quedan deshabilitados durante la escritura.
+
+Antes de mostrar éxito se confirma la misma sesión admin y se relee el detalle
+creado. 409/422 retiran contraseña y exigen otra revisión; 401/403/428/429/503 o
+fallo incierto retiran formulario/contexto. Focus/visibilidad/timer y señales
+entre pestañas reutilizan el control de workspace. Abort no revierte un commit.
+La reautenticación reciente/MFA todavía no existe en servidor: es una brecha
+priorizada en `security-review.md`, no un control que este formulario sustituya.

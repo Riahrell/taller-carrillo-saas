@@ -134,3 +134,14 @@ export function patchJson<T>(
     actor,
   });
 }
+
+export function createJson<T>(
+  path: string,
+  body: unknown,
+  csrf: string,
+  actor: string,
+  decode: (value: unknown, status: number, headers: Headers) => T,
+  options: RequestOptions = {},
+): Promise<T> {
+  return request(path, decode, options, { body, csrf, actor });
+}

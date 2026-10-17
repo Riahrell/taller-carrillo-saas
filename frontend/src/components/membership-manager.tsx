@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { accessApi, type Role, type SessionContext } from "@/lib/access/api";
 import { ApiError } from "@/lib/api/client";
@@ -358,6 +359,9 @@ export default function MembershipManager({
               <h2 ref={heading} tabIndex={-1}>
                 Accesos de la empresa
               </h2>
+              <Link className="action secondary" href="/membresias/nueva">
+                Crear acceso
+              </Link>
               <button
                 className="text-action"
                 disabled={busy}

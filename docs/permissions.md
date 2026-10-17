@@ -139,5 +139,19 @@ Los errores no devuelven payload, ETag, Location, actor ni cookies. Saturación 
 los slots compartidos con login devuelve 503 sin crear registros. El proxy
 mantiene sus límites y logs sin cuerpo/query/cookies. Solo un 201 tras commit
 permite mostrar éxito; respuesta perdida requiere revisar estado, sin reintento.
-El formulario de alta asistida sigue pendiente, al igual que recuperación,
+En 2.14 el formulario de alta asistida seguía pendiente, al igual que recuperación,
 invitación remota, verificación de correo y permisos de módulos comerciales.
+
+## Alta asistida en acceso 2.15
+
+La ruta directa comprueba sesión admin antes de presentar datos/campos. Perfil
+objetivo sin selección predeterminada y contraseña solo en la confirmación,
+fuera de estado persistente. La UI no concede autoridad: POST reautoriza en DB.
+Respuesta de alta vinculada a la membresía del actor; el éxito visible exige
+revalidar sesión y detalle. Perder contexto retira las credenciales y descarta
+resultados tardíos, sin reintentar la creación. Los perfiles no admin no montan
+el formulario aunque entren por URL.
+
+Una sesión vigente todavía basta para crear/cambiar accesos; no hay step-up o
+MFA. La prioridad de seguridad del usuario exige cerrar esas brechas según
+`security-review.md` antes de inventario, sin afirmar que la UI las resuelve.

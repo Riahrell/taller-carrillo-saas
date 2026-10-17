@@ -23,8 +23,8 @@ pytestmark = [
 ]
 
 
-def test_hold_browser_identity(http_identity):
-    state = http_identity
+def test_hold_browser_identity(new_identity_scope):
+    state = new_identity_scope
     with Session(state["runtime"]) as session, session.begin():
         session.execute(
             update(Tenant)
@@ -56,7 +56,12 @@ def test_hold_browser_identity(http_identity):
     descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "w") as stream:
         json.dump(
-            {"email": state["email"], "password": state["password"].get_secret_value()},
+            {
+                "email": state["email"],
+                "password": state["password"].get_secret_value(),
+                "new_email": state["prefix"] + "staff@example.com",
+                "new_password": secrets.token_urlsafe(32),
+            },
             stream,
         )
     print(

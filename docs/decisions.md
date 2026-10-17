@@ -633,3 +633,25 @@ Referencias: [query models FastAPI](https://fastapi.tiangolo.com/tutorial/query-
   Requiere confianza en el administrador y equipo. Sin enviar claves por chat,
   correo o URL. HTTPS fuera de loopback. No afirmar invitación remota, verificación
   de correo, cambio inicial forzoso o recuperación; esos mecanismos siguen pendientes.
+
+## Acceso 2.15 y prioridad de seguridad
+
+- Formulario de alta asistida en `/membresias/nueva`, bajo el workspace de sesión
+  existente. Elegir correo/perfil, revisar y luego introducir contraseña/confirmación
+  en campos ocultos no controlados. Sin perfil predeterminado ni clave en resumen.
+- Reutilizar transporte mismo origen y contexto obligatorio. Requerir 201 con
+  actor/rol/estado/ETag/Location coincidentes; confirmar sesión y detalle antes de
+  éxito. 409/422 exigen revisión; otros errores retiran contexto. Sin retries.
+- Retirar claves DOM en envío, edición, cancelación y desmontaje; no Storage ni
+  promesa de borrado criptográfico de strings JS. El equipo y administrador deben
+  ser confiables. Continuar pruebas aisladas, nunca con cuentas reales del usuario.
+- El usuario prioriza seguridad incluso demorando inventario. Revocar el paso
+  inmediato a catálogo propuesto durante la conversación. Registrar amenazas,
+  controles/brechas y puerta de paso en `security-review.md`, tomando OWASP ASVS
+  como referencia, sin alegar cumplimiento completo o certificación.
+- Siguiente tarea: reautenticación reciente de acciones administrativas, antes
+  de inventario. Recuperación/MFA, auditoría, dependencias, navegador y backup
+  requieren revisión/evidencia; no se completan por añadir esta documentación.
+- Dominio previsto en Namecheap y VPS Contabo que ya aloja imágenes. Registrar
+  staging aislado y plan DNS/HTTPS/renovación, sin conectar una DB operativa,
+  cambiar el VPS o publicar esta entrega. Ver `staging-plan.md`.
