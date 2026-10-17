@@ -39,6 +39,9 @@ ejecución en GitHub está pendiente: no hay remoto configurado. No usar en prod
   y POST `/api/auth/reauthenticate` disponibles; todavía sin formulario ni guardia
   activada en las transacciones administrativas.
 - [Revisión de seguridad](docs/security-review.md) y [pruebas remotas](docs/staging-plan.md).
+- [Revisión del nuevo Plan Maestro v1.1](docs/reviews/plan-maestro-v1.1.md):
+  diferencias, mejoras propuestas y adaptación de hitos; revisión documental,
+  sin implementación del alcance nuevo ni cambios de servidor.
 - Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
   en 8080, y el arranque requiere DB.
 
