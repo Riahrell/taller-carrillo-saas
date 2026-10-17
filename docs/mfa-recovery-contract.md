@@ -283,7 +283,10 @@ sesiones/pending/HTTP/UI y operación siguen pendientes:
 uso único, con auditoría y caducidad original. No envía correo, marca una dirección
 histórica verificada ni activa factor/sesión. Ver [entrega 2.30](deliveries/access-2.30.md).
 
-**2.31: entrega de correo con outbox cifrada, cuotas y transporte de pruebas**,
+2.31 implementa staging cifrado y cuotas atómicos (0017), no un emisor.
+Se divide la entrega para revisar primero persistencia, claves y rollback.
+Ver [entrega 2.31](deliveries/access-2.31.md).
+**2.32: consumidor y transporte simulado con revalidación y fallos**,
 antes de SMTP real/HTTP. Después incorporación TOTP completa, recuperación,
 hooks de roles/factores y último admin, reautenticación MFA, UI y operación.
 Mantener el alcance de la puerta de seguridad previa al inventario.

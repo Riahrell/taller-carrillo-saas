@@ -12,13 +12,14 @@ from uuid import uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
-from pydantic import SecretStr
+from pydantic import SecretBytes, SecretStr
 from sqlalchemy import delete, event, select, text, update
 from sqlalchemy.exc import DBAPIError, IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.modules.access import (
     authentication,
+    email_outbox,
     login_challenges,
     mfa_pending,
     security_state,
@@ -28,6 +29,8 @@ from app.modules.access import enrollment_email as service
 from app.modules.access.mfa_sessions import MfaSessionIssuer
 from app.modules.access.models import (
     EnrollmentEmailChallenge,
+    EnrollmentMailOutbox,
+    EnrollmentMailThrottle,
     LoginChallenge,
     LoginThrottle,
     MfaCredential,
@@ -56,6 +59,7 @@ def state(mfa_state, monkeypatch):
         (authentication, "_database_now"),
         (mfa_pending, "_database_now"),
         (service, "_database_now"),
+        (email_outbox, "_database_now"),
         (security_state, "_database_now"),
         (sessions, "_database_now"),
         (login_challenges, "_database_now"),
@@ -75,11 +79,30 @@ def state(mfa_state, monkeypatch):
     state["auth"] = authentication.Authenticator(state["runtime"])
     state["pending"] = start(state)
     assert state["pending"].purpose is mfa_pending.PendingPurpose.ENROLLMENT
-    state["mail"] = service.EnrollmentEmailService(state["runtime"])
+    state["protection"] = email_outbox.MailProtection(
+        {"test": SecretBytes(secrets.token_bytes(32))},
+        active_key_id="test",
+        quota_key=SecretBytes(secrets.token_bytes(32)),
+    )
+    state["mail"] = service.EnrollmentEmailService(
+        state["runtime"], protection=state["protection"]
+    )
     try:
         yield state
     finally:
         with state["owner"].begin() as connection:
+            connection.execute(
+                delete(EnrollmentMailOutbox).where(
+                    EnrollmentMailOutbox.challenge_id.in_(
+                        select(EnrollmentEmailChallenge.id).where(
+                            EnrollmentEmailChallenge.user_id.in_(
+                                [state["user"], state["identity"]]
+                            )
+                        )
+                    )
+                )
+            )
+            connection.execute(delete(EnrollmentMailThrottle))
             connection.execute(
                 delete(SessionRecord).where(
                     SessionRecord.membership_id == state["member"]
@@ -122,7 +145,9 @@ def start(state, binding=None):
 
 def issue(state):
     return state["mail"].issue(
-        enrollment_token=state["pending"].token, browser_binding=state["binding"]
+        enrollment_token=state["pending"].token,
+        browser_binding=state["binding"],
+        client_ip=ip_address("127.0.0.1"),
     )
 
 
@@ -552,3 +577,271 @@ def test_concurrent_confirmations_have_one_permit_and_one_event(state, monkeypat
         )
         == 1
     )
+
+
+def outbox_rows(state):
+    with Session(state["runtime"]) as session:
+        return list(
+            session.scalars(
+                select(EnrollmentMailOutbox).order_by(EnrollmentMailOutbox.challenge_id)
+            )
+        )
+
+
+def quota_rows(state):
+    with Session(state["runtime"]) as session:
+        return [
+            (r.scope, r.key_hash, r.issued, r.last_issued_at)
+            for r in session.scalars(
+                select(EnrollmentMailThrottle).order_by(
+                    EnrollmentMailThrottle.scope, EnrollmentMailThrottle.key_hash
+                )
+            )
+        ]
+
+
+def test_issue_stages_only_encrypted_payload_and_reserves_account_and_ip(state):
+    draft = issue(state)
+    rows = outbox_rows(state)
+    assert len(rows) == 1 and rows[0].expires_at == draft.expires_at
+    row = rows[0]
+    decoded = state["protection"].decrypt(
+        email_outbox.MailEnvelope(
+            key_id=row.key_id, nonce=row.nonce, ciphertext=row.ciphertext
+        ),
+        user_id=state["identity"],
+        challenge_id=row.challenge_id,
+        expires_at=row.expires_at,
+    )
+    assert decoded.recipient == draft.recipient and decoded.token == draft.token
+    assert draft.token.get_secret_value().encode() not in row.ciphertext
+    assert draft.recipient.get_secret_value().encode() not in row.ciphertext
+    before = quota_rows(state)
+    assert len(before) == 2 and {r[2] for r in before} == {1}
+    assert all(len(r[1]) == 64 and "127.0.0.1" not in r[1] for r in before)
+    assert issue(state) is None and quota_rows(state) == before
+
+
+def test_missing_mail_keys_fails_closed_without_challenge_or_quota(state):
+    mail = service.EnrollmentEmailService(state["runtime"])
+    with pytest.raises(service.EnrollmentEmailUnavailable):
+        mail.issue(
+            enrollment_token=state["pending"].token,
+            browser_binding=state["binding"],
+            client_ip=ip_address("127.0.0.1"),
+        )
+    assert not outbox_rows(state) and not quota_rows(state)
+    assert not snapshot(state)[1]
+
+
+def test_mail_account_cooldown_window_and_limit_survive_browser_restart(state):
+    initial = state["now"]
+    assert issue(state) is not None
+    state["pending"] = start(state)
+    assert issue(state) is None
+    state["now"] += timedelta(seconds=59)
+    assert issue(state) is None
+    state["now"] += timedelta(seconds=1)
+    assert issue(state) is not None
+    state["now"] += timedelta(seconds=60)
+    state["pending"] = start(state)
+    assert issue(state) is not None
+    state["now"] += timedelta(seconds=60)
+    state["pending"] = start(state)
+    assert issue(state) is None
+    assert {r[2] for r in quota_rows(state)} == {3}
+    state["now"] = initial + timedelta(minutes=15)
+    state["pending"] = start(state)
+    assert issue(state) is not None
+    assert {r[2] for r in quota_rows(state)} == {1}
+
+
+def test_shared_ip_quota_rejects_without_spending_account_allowance(state):
+    scope, key_hash = state["protection"].scopes(
+        state["identity"], ip_address("127.0.0.1")
+    )[1]
+    with Session(state["runtime"]) as session, session.begin():
+        session.add(
+            EnrollmentMailThrottle(
+                scope=scope,
+                key_hash=key_hash,
+                window_started_at=state["now"],
+                issued=20,
+                last_issued_at=state["now"],
+            )
+        )
+    assert issue(state) is None
+    assert not snapshot(state)[1] and not outbox_rows(state)
+    assert [(r[0], r[2]) for r in quota_rows(state)] == [("account", 0), ("ip", 20)]
+
+
+@pytest.mark.parametrize("clock", ["expired", "regressed"])
+def test_issue_rechecks_time_after_quota_locks(state, monkeypatch, clock):
+    checked = state["now"]
+    monkeypatch.setattr(
+        email_outbox,
+        "_database_now",
+        lambda session: (
+            state["pending"].expires_at
+            if clock == "expired"
+            else checked - timedelta(microseconds=1)
+        ),
+    )
+    if clock == "expired":
+        assert issue(state) is None
+        assert all(r[2] == 0 for r in quota_rows(state))
+    else:
+        with pytest.raises(service.EnrollmentEmailUnavailable):
+            issue(state)
+        assert not quota_rows(state)
+    assert not snapshot(state)[1] and not outbox_rows(state)
+
+
+@pytest.mark.parametrize("reason", ["confirm", "restart", "revoke", "expire"])
+def test_outbox_payload_is_discarded_without_deleting_evidence(state, reason):
+    draft = issue(state)
+    if reason == "confirm":
+        assert confirm(state, draft) is not None
+    elif reason == "restart":
+        start(state)
+    elif reason == "revoke":
+        with Session(state["runtime"]) as session, session.begin():
+            login_challenges.revoke_user_challenges(session, state["identity"])
+    else:
+        state["now"] = draft.expires_at - timedelta(microseconds=1)
+        assert email_outbox.purge_expired_mail(state["runtime"]) == 0
+        state["now"] = draft.expires_at
+        assert email_outbox.purge_expired_mail(state["runtime"], limit=1) == 1
+        assert email_outbox.purge_expired_mail(state["runtime"]) == 0
+    (row,) = outbox_rows(state)
+    assert row.discarded_at == state["now"]
+    assert row.ciphertext is row.nonce is row.key_id is None
+    assert len(snapshot(state)[1]) == 1
+
+
+@pytest.mark.parametrize(
+    "failure", ["outbox_insert", "quota_update", "crypto", "commit"]
+)
+def test_issue_rollback_preserves_atomic_challenge_outbox_and_mail_quota(
+    state, monkeypatch, failure
+):
+    privileges = {
+        "outbox_insert": ("enrollment_mail_outbox", "INSERT"),
+        "quota_update": ("enrollment_mail_throttles", "UPDATE"),
+    }
+    if failure in privileges:
+        table, operation = privileges[failure]
+        with state["owner"].begin() as connection:
+            connection.execute(text(f"REVOKE {operation} ON {table} FROM carrillo_app"))
+    elif failure == "crypto":
+
+        def fail(**kwargs):
+            raise email_outbox.MailProtectionError("Mail protection unavailable")
+
+        monkeypatch.setattr(state["protection"], "encrypt", fail)
+    else:
+
+        def fail_commit(session):
+            raise SQLAlchemyError("Synthetic commit failure")
+
+        event.listen(state["mail"]._factory, "before_commit", fail_commit, once=True)
+    try:
+        with pytest.raises(service.EnrollmentEmailUnavailable):
+            issue(state)
+        assert not outbox_rows(state) and not quota_rows(state)
+        assert not snapshot(state)[1]
+    finally:
+        if failure in privileges:
+            with state["owner"].begin() as connection:
+                connection.execute(
+                    text(f"GRANT {operation} ON {table} TO carrillo_app")
+                )
+
+
+def test_confirm_outbox_write_failure_rolls_back_mail_proof_and_audit(state):
+    draft = issue(state)
+    before = snapshot(state)
+    with state["owner"].begin() as connection:
+        connection.execute(
+            text("REVOKE UPDATE ON enrollment_mail_outbox FROM carrillo_app")
+        )
+    try:
+        with pytest.raises(service.EnrollmentEmailUnavailable):
+            confirm(state, draft)
+        assert (
+            snapshot(state) == before and outbox_rows(state)[0].ciphertext is not None
+        )
+    finally:
+        with state["owner"].begin() as connection:
+            connection.execute(
+                text("GRANT UPDATE ON enrollment_mail_outbox TO carrillo_app")
+            )
+    assert confirm(state, draft) is not None
+
+
+def test_outbox_constraints_delete_and_downgrade_guard(state):
+    issue(state)
+    (row,) = outbox_rows(state)
+    with pytest.raises(IntegrityError), state["runtime"].begin() as connection:
+        connection.execute(update(EnrollmentMailOutbox).values(ciphertext=None))
+    with pytest.raises(DBAPIError), state["runtime"].begin() as connection:
+        connection.execute(delete(EnrollmentMailOutbox))
+    config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    with (
+        pytest.raises(DBAPIError, match="Downgrade refused"),
+        state["owner"].begin() as connection,
+    ):
+        config.attributes["connection"] = connection
+        command.downgrade(config, "0016_enrollment_email")
+    assert outbox_rows(state)[0].challenge_id == row.challenge_id
+
+
+def test_concurrent_issuance_has_one_ciphertext_and_one_quota_reservation(
+    state, monkeypatch
+):
+    second_binding = SecretStr(secrets.token_urlsafe(32))
+    second_pending = start(state, binding=second_binding)
+    entered, release, started = Event(), Event(), Event()
+    pids = []
+    original = mfa_pending._lock_user
+
+    def pause(session):
+        if not entered.is_set():
+            entered.set()
+            if not release.wait(10):
+                raise TimeoutError("Synthetic mail contention")
+
+    def observe(session, user_id):
+        if entered.is_set() and not release.is_set():
+            pids.append(session.scalar(text("SELECT pg_backend_pid()")))
+            started.set()
+        return original(session, user_id)
+
+    event.listen(state["mail"]._factory, "before_commit", pause)
+    monkeypatch.setattr(mfa_pending, "_lock_user", observe)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(issue, state)
+        try:
+            assert entered.wait(5)
+            second = pool.submit(
+                state["mail"].issue,
+                enrollment_token=second_pending.token,
+                browser_binding=second_binding,
+                client_ip=ip_address("127.0.0.1"),
+            )
+            assert started.wait(5)
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                with state["owner"].connect() as connection:
+                    if connection.scalar(
+                        text("SELECT cardinality(pg_blocking_pids(:pid)) > 0"),
+                        {"pid": pids[0]},
+                    ):
+                        break
+                time.sleep(0.01)
+            else:
+                pytest.fail("Second mail issuer did not block")
+        finally:
+            release.set()
+        assert first.result(timeout=5) is not None and second.result(timeout=5) is None
+    assert len(outbox_rows(state)) == 1 and {r[2] for r in quota_rows(state)} == {1}

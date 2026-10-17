@@ -1,8 +1,8 @@
-"""Initial MFA mailbox proof kernel. No SMTP, outbox, HTTP or session authority.
+"""Initial MFA mailbox proof kernel. No SMTP, HTTP or session authority.
 
 Delivery drafts carry secrets only after commit for tests/future transport design.
-Production delivery must compose encrypted outbox/quota inside issuance, not send
-from this module. A permit authorizes only the future initial factor use case.
+Issuance composes encrypted staging/quota atomically; no worker sends messages.
+A permit authorizes only the future initial factor use case.
 """
 
 import hashlib
@@ -10,7 +10,8 @@ import hmac
 import secrets
 from dataclasses import dataclass
 from datetime import datetime
-from uuid import UUID
+from ipaddress import IPv4Address, IPv6Address
+from uuid import UUID, uuid4
 
 from pydantic import SecretStr
 from sqlalchemy import Engine, exists, select, text
@@ -19,10 +20,17 @@ from sqlalchemy.orm import Session
 
 from app.core.database import create_session_factory
 from app.modules.access import mfa_pending
+from app.modules.access.email_outbox import (
+    MailProtection,
+    MailProtectionError,
+    discard_mail,
+    reserve_mail,
+)
 from app.modules.access.login_challenges import _password_fingerprint
 from app.modules.access.membership import AccessDenied
 from app.modules.access.models import (
     EnrollmentEmailChallenge,
+    EnrollmentMailOutbox,
     MfaCredential,
     MfaPending,
     SecurityEvent,
@@ -128,15 +136,24 @@ def _challenge(
 
 
 class EnrollmentEmailService:
-    """Own transactions; public transport and mail request quotas are not integrated."""
+    """Own transactions; optional protection only permits read/confirm without keys."""
 
-    def __init__(self, engine: Engine) -> None:
+    def __init__(
+        self, engine: Engine, *, protection: MailProtection | None = None
+    ) -> None:
         self._factory = create_session_factory(engine)
+        self._protection = protection
 
     def issue(
-        self, *, enrollment_token: SecretStr, browser_binding: SecretStr
+        self,
+        *,
+        enrollment_token: SecretStr,
+        browser_binding: SecretStr,
+        client_ip: IPv4Address | IPv6Address,
     ) -> EmailDeliveryDraft | None:
         try:
+            if self._protection is None:
+                raise MailProtectionError("Mail protection unavailable")
             with self._factory.begin() as session:
                 _limits(session)
                 locked = _enrollment(session, enrollment_token, browser_binding)
@@ -153,14 +170,28 @@ class EnrollmentEmailService:
                 ):
                     # One issuance per pending, no recoverable token/resend.
                     return None
-                now = _database_now(session)
-                if now < checked_at:
-                    raise EnrollmentEmailUnavailable("Enrollment email unavailable")
-                if now >= pending.expires_at:
+                now = reserve_mail(
+                    session,
+                    self._protection,
+                    user_id=user.id,
+                    client_ip=client_ip,
+                    checked_at=checked_at,
+                    expires_at=pending.expires_at,
+                )
+                if now is None:
                     return None
                 token = SecretStr(secrets.token_urlsafe(32))
+                challenge_id = uuid4()
+                envelope = self._protection.encrypt(
+                    recipient=SecretStr(user.email),
+                    token=token,
+                    user_id=user.id,
+                    challenge_id=challenge_id,
+                    expires_at=pending.expires_at,
+                )
                 session.add(
                     EnrollmentEmailChallenge(
+                        id=challenge_id,
                         user_id=user.id,
                         pending_id=pending.id,
                         token_hash=mfa_pending._hash(
@@ -172,11 +203,22 @@ class EnrollmentEmailService:
                     )
                 )
                 session.flush()
+                session.add(
+                    EnrollmentMailOutbox(
+                        challenge_id=challenge_id,
+                        created_at=now,
+                        expires_at=pending.expires_at,
+                        key_id=envelope.key_id,
+                        nonce=envelope.nonce,
+                        ciphertext=envelope.ciphertext,
+                    )
+                )
+                session.flush()
                 result = EmailDeliveryDraft(
                     SecretStr(user.email), token, pending.expires_at
                 )
             return result
-        except SQLAlchemyError:
+        except (SQLAlchemyError, MailProtectionError):
             raise EnrollmentEmailUnavailable("Enrollment email unavailable") from None
 
     def inspect(
@@ -222,6 +264,7 @@ class EnrollmentEmailService:
                 row.permit_token_hash = mfa_pending._hash(
                     token, "enrollment-mail-permit-v1:"
                 )
+                discard_mail(session, row.id, now)
                 session.add(
                     SecurityEvent(
                         user_id=user.id,

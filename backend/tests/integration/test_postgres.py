@@ -33,7 +33,7 @@ def test_migrations_upgrade_check_downgrade_upgrade(databases) -> None:
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
         assert MigrationContext.configure(connection).get_current_revision() == (
-            "0016_enrollment_email"
+            "0017_enrollment_mail_outbox"
         )
         command.check(config)
         command.downgrade(config, "base")

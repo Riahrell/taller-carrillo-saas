@@ -162,3 +162,9 @@ Acceso 2.30: prueba de correo de incorporación, lectura sin consumo, propósito
 navegador/dirección actuales, caducidad/uso único, revocación, atomicidad y
 concurrencia. Sin SMTP/UI. Evidencia en `deliveries/access-2.30.md`. Carrillo no
 debe enumerar afiliadas ni consultar/modificar inventario de otras empresas.
+
+Acceso 2.31: emisión interna compone desafío, outbox cifrada y cuota cuenta/IP.
+Probar ausencia de destinatario/token/IP en claro en las nuevas tablas, integridad
+y vinculación del cifrado, rotación, cuota/cooldown/caducidad, concurrencia real,
+rollback ante cifrado/DB/commit, descarte al confirmar/revocar y purga exacta.
+Sin worker/envío: reintentos, entrega ambigua y transporte simulado siguen 2.32.

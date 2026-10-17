@@ -88,5 +88,6 @@ servicios ahora. Tener el proveedor pendiente no bloquea el diseño/pruebas loca
 En la entrega inicial, solo documentación. Comando ejecutado: `git diff --check`; resultado exit 0,
 sin errores de whitespace. No se ejecutan ni se atribuyen pruebas funcionales
 nuevas a este diseño.
-La entrega ejecutable vigente es 2.30; «Olvidé mi contraseña» sigue sin estar
-disponible. Resultados de esta base interna en `deliveries/access-2.30.md`.
+La entrega ejecutable vigente es 2.31; «Olvidé mi contraseña» sigue sin estar
+disponible. 2.31 añade staging cifrado/cuotas para incorporación, aún sin emisor.
+Resultados de esta base interna en `deliveries/access-2.31.md`.

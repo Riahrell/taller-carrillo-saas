@@ -313,3 +313,11 @@ pendiente, guarda hash de token, huella de dirección, fechas y hash/uso/cierre
 del permiso restringido. No almacena semilla, correo duplicado o token en claro.
 SecurityEvent admite mfa_enrollment_email_confirmed sin factor ficticio. No se
 marca User.email verificado automáticamente. Ver `deliveries/access-2.30.md`.
+
+Acceso 2.31 (0017): enrollment_mail_outbox, un registro por desafío con clave-ID,
+nonce y ciphertext autenticado (destinatario y token); al descartar conserva
+metadatos y elimina el contenido cifrado. FK RESTRICT y DELETE runtime denegado.
+Enrollment_mail_throttles guarda cuenta/IP con HMAC de clave externa independiente,
+ventana, cantidad y último envío reservado. No almacena IP o correo en claro.
+No cambia usuarios históricos ni encola desafíos anteriores. Downgrade rechaza
+cualquier fila nueva, incluso descartada/cuota cero. Ver deliveries/access-2.31.md.

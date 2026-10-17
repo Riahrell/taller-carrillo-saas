@@ -933,3 +933,25 @@ una empresa se selecciona automáticamente. Administración del SaaS y del talle
 son ámbitos separados; aún no se implementa una consola del propietario. El
 inventario futuro debe filtrar y autorizar cada consulta/movimiento por la empresa
 derivada de sesión en servidor, nunca un tenant o rol enviado por navegador.
+
+## Acceso 2.31: staging de correo y cuotas independientes
+
+Decisión técnica: máximo tres mensajes por cuenta y veinte por IP en una ventana
+persistente de quince minutos; separación mínima por cuenta de
+sesenta segundos. Son límites iniciales de seguridad, no reglas comerciales.
+Reiniciar navegador/login o confirmar correo no reinicia las cuotas. Solo contar
+mensajes encolados en el mismo commit del desafío; rechazos no gastan reservas.
+El adaptador HTTP futuro debe usar la IP del proxy verificado, no campos del cliente.
+
+AES-256-GCM con nonce aleatorio de 96 bits y AAD ligada a propósito/versión, usuario,
+desafío, caducidad e identificador de clave. Claves de cifrado fuera de DB y separadas
+de TOTP; clave HMAC de cuotas independiente y estable ante rotación de cifrado.
+Sin claves por defecto ni carga/configuración productiva todavía. Sin claves de
+correo no se emite desafío nuevo; lectura/confirmación no las necesitan.
+La rotación futura debe preservar claves antiguas mientras haya mensajes vivos,
+y cerrar una transición de cuotas si cambia la clave HMAC. No regenerar al arrancar.
+
+Descartar ciphertext al confirmar/revocar y con purga explícita acotada al caducar;
+no equivale a borrado seguro de backups/WAL. Falta programar mantenimiento.
+Esta fase no implementa envío, leases/reintentos ni afirma entrega; sigue consumidor
+y transporte simulado. No introducir SMTP/HTTP antes de esos controles.

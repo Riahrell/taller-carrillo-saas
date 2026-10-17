@@ -300,6 +300,69 @@ class EnrollmentEmailChallenge(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class EnrollmentMailOutbox(Base):
+    """Encrypted initial MFA mail only; no plaintext token/address or SMTP state."""
+
+    __tablename__ = "enrollment_mail_outbox"
+    __table_args__ = (
+        CheckConstraint(
+            "expires_at > created_at AND expires_at <= created_at + "
+            "interval '15 minutes'",
+            name="lifetime_bounds",
+        ),
+        CheckConstraint(
+            "(discarded_at IS NULL AND key_id IS NOT NULL AND "
+            "key_id ~ '^[A-Za-z0-9_-]{1,64}$' AND nonce IS NOT NULL AND "
+            "octet_length(nonce) = 12 AND ciphertext IS NOT NULL AND "
+            "octet_length(ciphertext) BETWEEN 64 AND 2048) OR "
+            "(discarded_at IS NOT NULL AND discarded_at >= created_at AND "
+            "key_id IS NULL AND nonce IS NULL AND ciphertext IS NULL)",
+            name="payload_state",
+        ),
+    )
+
+    challenge_id: Mapped[UUID] = mapped_column(
+        ForeignKey(
+            "enrollment_email_challenges.id",
+            ondelete="RESTRICT",
+            name="fk_mail_outbox_challenge",
+        ),
+        primary_key=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    key_id: Mapped[str | None] = mapped_column(String(64))
+    nonce: Mapped[bytes | None] = mapped_column(LargeBinary)
+    ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
+    discarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EnrollmentMailThrottle(Base):
+    """Mail quotas independent of password/MFA verification failures."""
+
+    __tablename__ = "enrollment_mail_throttles"
+    __table_args__ = (
+        CheckConstraint("scope IN ('account', 'ip')", name="scope_allowed"),
+        CheckConstraint("key_hash ~ '^[0-9a-f]{64}$'", name="key_hash_sha256"),
+        CheckConstraint(
+            "issued >= 0 AND issued <= CASE WHEN scope = 'account' THEN 3 ELSE 20 END",
+            name="issued_bounds",
+        ),
+        CheckConstraint(
+            "(issued = 0 AND last_issued_at IS NULL) OR "
+            "(issued > 0 AND last_issued_at IS NOT NULL AND "
+            "last_issued_at >= window_started_at)",
+            name="issuance_state",
+        ),
+    )
+
+    scope: Mapped[str] = mapped_column(String(7), primary_key=True)
+    key_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    issued: Mapped[int] = mapped_column(Integer)
+    last_issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class AuditEvent(Base):
     """Typed creation/change evidence; no arbitrary payloads or credentials."""
 

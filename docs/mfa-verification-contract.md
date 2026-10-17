@@ -90,7 +90,8 @@ La evidencia persistida conserva revisión, huella de contraseña, factor y fech
 de ambas verificaciones, navegador y límite original. Consumir/rotar esa etapa
 vuelve a exigir factor vigente. 2.28 añade un emisor separado que consume la etapa persistida en la transacción
 de sesión. La fachada de verificación no emite sesiones. Sin HTTP o activación
-MFA pública. 2.29 conecta contraseña/política global a pendientes internos; sigue
+MFA pública. 2.29 conecta contraseña/política global a pendientes internos.
 2.30 implementa desafíos/permiso de buzón internos; no son login, factor o reset
-de contraseña. Sigue entrega cifrada/cuotas y transporte de pruebas. Ver
-`deliveries/access-2.30.md`.
+de contraseña. 2.31 añade cola cifrada/cuotas atómicas, sin enviar. Sigue
+consumidor/transporte simulado y revalidación antes de envío real. Ver
+`deliveries/access-2.31.md`.

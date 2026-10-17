@@ -12,6 +12,7 @@ from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.modules.access.email_outbox import discard_mail
 from app.modules.access.membership import AccessDenied
 from app.modules.access.models import (
     EnrollmentEmailChallenge,
@@ -126,6 +127,7 @@ def _close_enrollment_emails(
         now = _database_now(session)
         for row in rows:
             row.closed_at = max(now, row.created_at, row.consumed_at or row.created_at)
+            discard_mail(session, row.id, row.closed_at)
         session.flush()
 
 
