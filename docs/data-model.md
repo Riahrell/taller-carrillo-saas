@@ -307,3 +307,9 @@ Acceso 2.29 reutiliza 0015, sin migración o backfill. El inicio MFA interno pue
 establecer obligación/revisión, revocar sesiones/pendientes globales y registrar
 evento antes de crear el nuevo pendiente en el mismo commit. Reiniciar desde
 el mismo navegador cierra sus pendientes previos; no borra la cuota MFA.
+
+Acceso 2.30 (0016): enrollment_email_challenges referencia al propietario del
+pendiente, guarda hash de token, huella de dirección, fechas y hash/uso/cierre
+del permiso restringido. No almacena semilla, correo duplicado o token en claro.
+SecurityEvent admite mfa_enrollment_email_confirmed sin factor ficticio. No se
+marca User.email verificado automáticamente. Ver `deliveries/access-2.30.md`.

@@ -16,7 +16,10 @@ from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.modules.access.login_challenges import _password_fingerprint
+from app.modules.access.login_challenges import (
+    _close_enrollment_emails,
+    _password_fingerprint,
+)
 from app.modules.access.membership import AccessDenied
 from app.modules.access.models import MfaCredential, MfaPending, User
 from app.modules.access.sessions import _database_now, _lock_user
@@ -159,6 +162,7 @@ def _close_browser_pendings(
         for row in rows:
             row.finished_at = max(now, row.created_at)
         session.flush()
+    _close_enrollment_emails(session, user_id, binding_hash=binding_hash)
 
 
 def _lock_pending(

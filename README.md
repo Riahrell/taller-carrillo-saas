@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.29, inicio de login MFA interno; web sin segundo factor
+## Estado: acceso 2.30, prueba de buzón MFA interna; web sin segundo factor
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -34,7 +34,7 @@ La fundación tiene validación integral local y workflow CI preparado. Su prime
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md), [última entrega 2.29](docs/deliveries/access-2.29.md)
+- [Aceptación](docs/acceptance.md), [última entrega 2.30](docs/deliveries/access-2.30.md)
   y [contrato de diseño 2.20](docs/deliveries/access-2.20.md).
 - [MFA y recuperación](docs/mfa-recovery-contract.md): TOTP, incorporación,
   códigos offline y separación de recuperación por correo. Primitivas internas
@@ -635,8 +635,9 @@ revocación/auditoría atómicas como servicio interno. 2.26 añade pendientes
 MFA tipados (0013). 2.27 compone pendiente/cuota/TOTP y guarda la prueba (0014).
 2.28 consume la prueba al emitir sesión y exige revisión/evidencia al resolver (0015).
 Cookies previas sin revisión dejan de servir, sin backfill. 2.29 inicia login
-MFA interno con política global y pendientes restringidos. Siguiente 2.30:
-verificación de buzón para incorporación MFA. Faltan los caminos completos de autenticación/
+MFA interno con política global y pendientes restringidos. 2.30 añade desafíos
+de buzón y permisos restringidos (0016), sin envíos. Sigue integrar entrega
+de correo cifrada/cuotas e incorporación completa. Faltan los caminos completos de autenticación/
 recuperación antes de HTTP/UI.
 El contrato 2.20 ya define incorporación con prueba fresca de buzón, obligatoriedad
 admin global, recuperación sin bypass y cambios futuros de sesión/confirmación.

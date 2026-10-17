@@ -157,3 +157,8 @@ reciente original. Evidencia, comandos y límites en `deliveries/access-2.28.md`
 Acceso 2.29: inicio interno con cuotas compartidas, resultado restringido, política
 global y revocación/auditoría/pending atómicos, plazo original, concurrencia y
 fallos de infraestructura. Comandos/resultados en `deliveries/access-2.29.md`.
+
+Acceso 2.30: prueba de correo de incorporación, lectura sin consumo, propósito/
+navegador/dirección actuales, caducidad/uso único, revocación, atomicidad y
+concurrencia. Sin SMTP/UI. Evidencia en `deliveries/access-2.30.md`. Carrillo no
+debe enumerar afiliadas ni consultar/modificar inventario de otras empresas.

@@ -279,12 +279,11 @@ sesiones/pending/HTTP/UI y operación siguen pendientes:
 
 ## Próxima tarea pequeña
 
-2.29 añade begin_mfa_login interno: contraseña bajo cuotas compartidas, requisito
-global, revocación atómica al endurecer y pendiente TOTP/incorporación. No entrega
-empresas/sesión antes del segundo factor ni autoriza buzón o semilla por contraseña.
-La entrada web actual no lo invoca. Ver [entrega 2.29](deliveries/access-2.29.md).
+2.30 implementa desafíos de buzón ligados a incorporación/navegador y permiso de
+uso único, con auditoría y caducidad original. No envía correo, marca una dirección
+histórica verificada ni activa factor/sesión. Ver [entrega 2.30](deliveries/access-2.30.md).
 
-**2.30: desafíos de correo para incorporación MFA restringida**. SMTP/proveedor,
-incorporación/recuperación completas, hooks de roles/factores y último admin,
-reautenticación MFA, cancelación HTTP, UI y operación siguen pendientes antes de
-activar el flujo público. Sin incorporar controles nuevos fuera de esos criterios.
+**2.31: entrega de correo con outbox cifrada, cuotas y transporte de pruebas**,
+antes de SMTP real/HTTP. Después incorporación TOTP completa, recuperación,
+hooks de roles/factores y último admin, reautenticación MFA, UI y operación.
+Mantener el alcance de la puerta de seguridad previa al inventario.

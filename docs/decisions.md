@@ -917,3 +917,19 @@ conserva las cuotas MFA. No acepta tenant/rol/propósito. Incorporación pendien
 no prueba buzón ni permite fijar semilla. Historial de factor sin factor actual
 no abre una incorporación por correo; requiere recuperación/sustitución aparte.
 Se toma la hora al verificar contraseña y no se renueva al esperar otros locks.
+
+Acceso 2.30: token de correo separado de pendiente y permiso de incorporación,
+con hashes por propósito y destinatario derivado del correo exacto registrado.
+Confirmar no equivale a activar TOTP o emitir sesión. Vencimiento total de quince
+minutos desde contraseña; sin renovación. Lectura/inspección no consume. Permiso
+ligado a fuente/navegador/revisión/contraseña/dirección, cerrado en revocaciones
+globales o reinicio del mismo navegador. Un desafío por pendiente: sin recuperar
+token ni reenvío implícito; requiere outbox cifrada/cuotas antes de envíos reales.
+
+Contexto del titular: el SaaS pertenece al desarrollador; Taller Carrillo es una
+empresa afiliada. Administrar Carrillo no concede listado de afiliadas ni datos
+de otros negocios. El selector muestra solo membresías activas del usuario; con
+una empresa se selecciona automáticamente. Administración del SaaS y del taller
+son ámbitos separados; aún no se implementa una consola del propietario. El
+inventario futuro debe filtrar y autorizar cada consulta/movimiento por la empresa
+derivada de sesión en servidor, nunca un tenant o rol enviado por navegador.

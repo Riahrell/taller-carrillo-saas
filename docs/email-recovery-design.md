@@ -1,9 +1,11 @@
 # Recuperación de acceso mediante correo
 
-Decisión solicitada por el usuario el 2026-10-17. Diseño pendiente de implementar;
-no hay formulario, endpoint, migración, proveedor conectado o envío activo.
-Escaneos integrados en 2.19 y contrato conjunto en `mfa-recovery-contract.md`
-(2.20). Siguiente 2.21: primitivas internas; este documento no implementa recuperación.
+Decisión solicitada por el usuario el 2026-10-17. Recuperación de contraseña
+aún sin formulario, endpoint o migración propia; no hay proveedor/envío activo.
+Escaneos integrados y contrato conjunto en `mfa-recovery-contract.md`.
+2.30 implementa solo desafíos internos de buzón para incorporación MFA, no reset
+de contraseña ni envío. Ver `deliveries/access-2.30.md`. No se acreditan correos
+verificados por backfill ni se intercambian los permisos de ambos propósitos.
 
 ## Alcance acordado
 
@@ -81,10 +83,10 @@ El dominio por sí solo no proporciona el servicio de envío. Proveedor/remitent
 y costes se concretan al integrar, sin solicitar claves por chat ni contratar
 servicios ahora. Tener el proveedor pendiente no bloquea el diseño/pruebas locales.
 
-## Validación de esta decisión
+## Validación histórica de la decisión inicial
 
-Solo documentación. Comando ejecutado: `git diff --check`; resultado exit 0,
+En la entrega inicial, solo documentación. Comando ejecutado: `git diff --check`; resultado exit 0,
 sin errores de whitespace. No se ejecutan ni se atribuyen pruebas funcionales
 nuevas a este diseño.
-La entrega ejecutable vigente es 2.19; «Olvidé mi contraseña» sigue sin estar
-disponible. Resultados históricos de ejecución en `deliveries/access-2.19.md`.
+La entrega ejecutable vigente es 2.30; «Olvidé mi contraseña» sigue sin estar
+disponible. Resultados de esta base interna en `deliveries/access-2.30.md`.

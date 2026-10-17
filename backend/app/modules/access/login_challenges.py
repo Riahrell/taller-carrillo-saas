@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.access.membership import AccessDenied
 from app.modules.access.models import (
+    EnrollmentEmailChallenge,
     LoginChallenge,
     MfaPending,
     Tenant,
@@ -102,6 +103,32 @@ def _close_pending(session: Session, user_id: UUID) -> None:
         session.flush()
 
 
+def _close_enrollment_emails(
+    session: Session, user_id: UUID, *, binding_hash: str | None = None
+) -> None:
+    """Caller holds user and preceding pending locks; mailbox children come next."""
+    query = (
+        select(EnrollmentEmailChallenge)
+        .join(MfaPending, MfaPending.id == EnrollmentEmailChallenge.pending_id)
+        .where(
+            EnrollmentEmailChallenge.user_id == user_id,
+            EnrollmentEmailChallenge.closed_at.is_(None),
+        )
+    )
+    if binding_hash is not None:
+        query = query.where(MfaPending.binding_hash == binding_hash)
+    rows = session.scalars(
+        query.order_by(EnrollmentEmailChallenge.id)
+        .with_for_update(of=EnrollmentEmailChallenge)
+        .execution_options(populate_existing=True)
+    ).all()
+    if rows:
+        now = _database_now(session)
+        for row in rows:
+            row.closed_at = max(now, row.created_at, row.consumed_at or row.created_at)
+        session.flush()
+
+
 def revoke_user_challenges(session: Session, user_id: UUID) -> None:
     """Same transaction as account/password changes; caller owns commit/rollback."""
     if _lock_user(session, user_id) is not None:
@@ -119,6 +146,7 @@ def revoke_user_challenges(session: Session, user_id: UUID) -> None:
             for record in records:
                 record.finished_at = max(now, record.created_at)
             session.flush()
+        _close_enrollment_emails(session, user_id)
 
 
 def _issue_challenge(

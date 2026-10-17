@@ -195,6 +195,7 @@ class MfaPending(Base):
 
     __tablename__ = "mfa_pendings"
     __table_args__ = (
+        UniqueConstraint("user_id", "id", name="uq_mfa_pendings_user_id_id"),
         CheckConstraint(
             "purpose IN ('login_totp', 'enrollment', 'login_verified')",
             name="purpose_allowed",
@@ -248,6 +249,55 @@ class MfaPending(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EnrollmentEmailChallenge(Base):
+    """Initial MFA mailbox proof only, never password reset or an auth session."""
+
+    __tablename__ = "enrollment_email_challenges"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["user_id", "pending_id"],
+            ["mfa_pendings.user_id", "mfa_pendings.id"],
+            ondelete="RESTRICT",
+            name="fk_enrollment_email_challenges_pending_owner",
+        ),
+        CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="token_hash_sha256"),
+        CheckConstraint(
+            "email_fingerprint ~ '^[0-9a-f]{64}$'", name="email_fingerprint_sha256"
+        ),
+        CheckConstraint(
+            "expires_at > created_at AND expires_at <= created_at + interval "
+            "'15 minutes'",
+            name="lifetime_bounds",
+        ),
+        CheckConstraint(
+            "closed_at >= created_at AND (consumed_at IS NULL OR closed_at "
+            ">= consumed_at)",
+            name="closure_window",
+        ),
+        CheckConstraint(
+            "(consumed_at IS NULL AND permit_token_hash IS NULL AND "
+            "permit_used_at IS NULL) OR (consumed_at IS NOT NULL AND "
+            "consumed_at >= created_at AND consumed_at < expires_at AND "
+            "permit_token_hash IS NOT NULL AND permit_token_hash ~ "
+            "'^[0-9a-f]{64}$' AND (permit_used_at IS NULL OR (permit_used_at "
+            ">= consumed_at AND permit_used_at < expires_at)))",
+            name="proof_state",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(index=True)
+    pending_id: Mapped[UUID] = mapped_column(unique=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    email_fingerprint: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    permit_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    permit_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AuditEvent(Base):
@@ -388,6 +438,8 @@ class SecurityEvent(Base):
         CheckConstraint(
             "(action = 'security_revision_advanced' AND credential_id IS NULL "
             "AND security_revision IS NOT NULL AND security_revision > 0) OR "
+            "(action = 'mfa_enrollment_email_confirmed' AND credential_id IS NULL "
+            "AND security_revision IS NOT NULL AND security_revision >= 0) OR "
             "(action IN ('mfa_totp_consumed', 'mfa_recovery_consumed') "
             "AND credential_id IS NOT NULL AND security_revision IS NULL)",
             name="action_state",
@@ -400,7 +452,7 @@ class SecurityEvent(Base):
         ),
         CheckConstraint(
             "action IN ('mfa_totp_consumed', 'mfa_recovery_consumed', "
-            "'security_revision_advanced')",
+            "'security_revision_advanced', 'mfa_enrollment_email_confirmed')",
             name="action_allowed",
         ),
         CheckConstraint(
