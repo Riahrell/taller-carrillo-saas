@@ -34,6 +34,13 @@ por módulo; no hay acciones de escritura. Si se concede un módulo financiero s
 registra esa autorización explícita, sin acceso indirecto desde otro módulo.
 
 Los cambios de roles y accesos se auditan y revocan las sesiones afectadas.
+
+Diseño 2.20, pendiente de implementar: el factor pertenece al usuario global;
+una concesión admin impone MFA y puede invalidar sus pruebas/sesiones en todas
+las empresas, sin modificar otras membresías. No autoriza a elegir semilla,
+restablecer correo o sustituir el factor del titular. Hoy el cambio de membresía
+conserva la revocación por membresía de 2.9; no afirmar revocación global nueva.
+Detalles y futura integración en `mfa-recovery-contract.md`.
 La administración de precios no habilita enviar precios arbitrarios al POS:
 el cambio sucede en catálogo con permiso propio, validación y auditoría.
 

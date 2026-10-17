@@ -12,6 +12,12 @@ Acceso 2.16–2.18 conecta [reautenticación](reauthentication-contract.md) con
 rotación de cookies tras commit, formulario y requisito reciente obligatorio
 dentro de las transacciones administrativas de alta/cambio (428 si falta).
 
+2.20 define [MFA y recuperación](mfa-recovery-contract.md) como diseño futuro;
+**no cambia ninguna ruta/respuesta de este documento**. Login y reautenticación
+actuales siguen usando solo contraseña. La integración posterior deberá cubrir
+emisión interna, sesión única, selección multiempresa y confirmación sensible,
+sin emitir sesión/choices antes del factor exigido.
+
 ## Rutas y contratos
 
 El navegador usa el prefijo `/api`; Nginx lo retira antes de FastAPI. Todas las

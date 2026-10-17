@@ -33,7 +33,10 @@ en alta/cambio, con rollback ante confirmación ausente, vencida o invalidada.
 Acceso 2.19 integra escaneos obligatorios de secretos/historial y dependencias,
 fallos cerrados y una excepción dev-only temporal documentada. Ese aviso
 sigue abierto y visible; no se registra como corregido.
-Resultados actuales en `deliveries/access-2.19.md`; entregas anteriores como
+2.20 define MFA/recuperación, estados, modelo lógico y criterios pendientes en
+`mfa-recovery-contract.md`; no cambia runtime o DB. Registro documental en
+`deliveries/access-2.20.md`. Resultados ejecutables en `deliveries/access-2.19.md`;
+entregas anteriores como
 registros históricos.
 El hito 2 sigue abierto: faltan MFA, resolver/revisar el aviso dev-only vigente,
 gestión global de cuentas, permisos de otros módulos, consulta/ampliación de

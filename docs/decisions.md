@@ -762,3 +762,31 @@ Referencias: [query models FastAPI](https://fastapi.tiangolo.com/tutorial/query-
 - Siguiente 2.20: contrato de MFA admin/recuperación, incluyendo buzón verificado.
   Recuperación por correo sigue como diseño. Sin cambios de VPS/DNS/TLS, compras,
   credenciales operativas, migraciones o frontend en esta entrega.
+
+## Acceso 2.20: contrato MFA y recuperación
+
+- Contrato en `mfa-recovery-contract.md`, sin cambios ejecutables. TOTP inicial
+  para admin, factor del usuario global y obligación persistente tras conceder
+  admin. No eludir por membresía menos privilegiada o emisión interna de sesión.
+- Autenticación pendiente no muestra empresas ni permite operar antes del factor
+  exigido. Login/selección comparten deadline; no aceptar flags de verificación
+  del cliente. Emisión y resolución deben comprobar evidencia/revisión del servidor.
+- Alta inicial admin exige contraseña y prueba fresca del buzón exacto; sin
+  backfill de correos verificados, semilla enviada por correo o bypass de soporte.
+  Semilla cifrada con AEAD/keyring externo, contador TOTP consumido globalmente.
+- Cuota MFA independiente de contraseña, persistente entre propósitos/pendientes;
+  acertar contraseña no restaura intentos del segundo factor.
+- Códigos offline de uso único con contraseña solo abren recuperación restringida.
+  Sustitución final/códigos nuevos, revisión, revocaciones y evento en un commit.
+  Correo restablece contraseña, preserva factor/códigos MFA sin usar y no crea sesión.
+- Un login MFA completo podrá aportar prueba reciente hasta cinco minutos desde
+  el factor más antiguo, reduciendo confirmaciones repetidas sin relajar la
+  guardia transaccional. Cambio futuro de UX/HTTP, no comportamiento ya existente.
+- TOTP no es resistente al phishing. Passkeys, recuperación excepcional y ensayos
+  de reloj/restauración son pendientes; no declarar certificación AAL2/ASVS.
+- Un admin nuevo con factor pendiente no sustituirá al último admin con factor
+  confirmado al endurecer la protección de último administrador. Validar ese
+  caso junto con alta/promoción e incorporación concurrentes antes de integrarlo.
+- Siguiente 2.21: primitivas TOTP/cifrado/códigos offline con dependencias auditadas
+  y pruebas. Después persistencia/servicios y HTTP/UI/correo. Sin claves operativas,
+  migración, endpoints, compras, envíos o cambios de VPS en esta entrega documental.

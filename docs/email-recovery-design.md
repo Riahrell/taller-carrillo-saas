@@ -2,8 +2,8 @@
 
 Decisión solicitada por el usuario el 2026-10-17. Diseño pendiente de implementar;
 no hay formulario, endpoint, migración, proveedor conectado o envío activo.
-Se conserva el orden de trabajo: escaneos integrados en 2.19; siguiente 2.20,
-contrato conjunto con MFA. Este documento no implementa recuperación.
+Escaneos integrados en 2.19 y contrato conjunto en `mfa-recovery-contract.md`
+(2.20). Siguiente 2.21: primitivas internas; este documento no implementa recuperación.
 
 ## Alcance acordado
 
@@ -25,11 +25,16 @@ requiere un procedimiento distinto, que no se sustituye con preguntas de segurid
 3. Abrir el enlace muestra el formulario; una lectura o un escáner de correo no
    consume el permiso ni modifica la cuenta. El usuario confirma una contraseña
    nueva conforme a la política existente.
-4. Cambiar contraseña, consumir el permiso, invalidar otros permisos de
-   recuperación, sesiones y autenticaciones pendientes del usuario global y
+4. Cambiar contraseña, consumir el permiso, invalidar otros enlaces de
+   restablecimiento de contraseña, sesiones y autenticaciones pendientes del usuario global y
    registrar el evento en una misma transacción. Fallo de commit revierte todo.
 5. Avisar del cambio sin incluir contraseña y exigir login normal. Con MFA
    habilitado, restablecer la contraseña conserva el requisito del segundo factor.
+
+Precisión 2.20: conservar también códigos offline MFA sin usar; pertenecen al
+factor, no al hash de contraseña. El correo no regenera/consume esos códigos ni
+desactiva MFA. Perder teléfono y contraseña permite primero restablecer contraseña
+y luego iniciar recuperación restringida con un código offline, si se conserva.
 
 Estos controles se apoyan en [OWASP Forgot Password](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html).
 Recuperar MFA requiere su propio contrato: [OWASP MFA](https://cheatsheetseries.owasp.org/cheatsheets/Multifactor_Authentication_Cheat_Sheet.html).
@@ -81,5 +86,5 @@ servicios ahora. Tener el proveedor pendiente no bloquea el diseño/pruebas loca
 Solo documentación. Comando ejecutado: `git diff --check`; resultado exit 0,
 sin errores de whitespace. No se ejecutan ni se atribuyen pruebas funcionales
 nuevas a este diseño.
-La entrega ejecutable vigente sigue siendo 2.18; no se declara disponible aún
-«Olvidé mi contraseña» ni cambia el estado de sus 906 pruebas históricas.
+La entrega ejecutable vigente es 2.19; «Olvidé mi contraseña» sigue sin estar
+disponible. Resultados históricos de ejecución en `deliveries/access-2.19.md`.

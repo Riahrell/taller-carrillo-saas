@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.19
+## Estado: acceso 2.19 ejecutable y contrato MFA 2.20
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -34,7 +34,10 @@ La fundación tiene validación integral local y workflow CI preparado. Su prime
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 2.19](docs/deliveries/access-2.19.md).
+- [Aceptación](docs/acceptance.md), [entrega ejecutable 2.19](docs/deliveries/access-2.19.md)
+  y [contrato de diseño 2.20](docs/deliveries/access-2.20.md).
+- [MFA y recuperación](docs/mfa-recovery-contract.md): TOTP, incorporación,
+  códigos offline y separación de recuperación por correo. Todavía sin implementar.
 - [Escaneos de seguridad](docs/security-scanning.md): secretos en archivos/historial,
   dependencias Python/npm y excepción temporal dev-only visible hasta 2026-10-31.
 - [Contrato de confirmación reciente](docs/reauthentication-contract.md): servicio
@@ -616,8 +619,11 @@ esquema anterior no puede representar. No borrar registros para forzarlo.
 
 ## Siguiente tarea
 
-Acceso 2.20: contrato de MFA obligatorio para administradores y recuperación segura,
-con verificación de buzón y diseño de recuperación por correo ya documentado.
+Acceso 2.21: biblioteca interna para TOTP, cifrado de semillas y códigos offline,
+con dependencias auditadas y vectores/pruebas criptográficas. No habilitar login
+MFA hasta integrar persistencia, todos los caminos de autenticación y HTTP/UI.
+El contrato 2.20 ya define incorporación con prueba fresca de buzón, obligatoriedad
+admin global, recuperación sin bypass y cambios futuros de sesión/confirmación.
 2.19 incorpora escaneos obligatorios de secretos/dependencias en CI; el hallazgo
 dev-only SEC-2026-001 permanece visible con vencimiento 2026-10-31. Detalles en
 `docs/security-scanning.md`. La prioridad conserva el orden de seguridad

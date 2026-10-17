@@ -17,6 +17,13 @@ de las transacciones de alta/cambio administrativos; alta la comprueba de nuevo
 antes del commit. 2.19 agrega tooling de seguridad sin modificar ese esquema.
 Contrato y downgrade con revocación: `reauthentication-contract.md`.
 
+2.20 propone el modelo lógico MFA/recuperación en `mfa-recovery-contract.md`:
+estado de seguridad global/revisión, factor cifrado, pendientes tipados, códigos
+offline, evidencia de sesión/correo y eventos globales separados de auditoría
+comercial. **No son tablas existentes o una migración nueva**. La entrega 2.21
+comenzará por primitivas sin persistencia; cerrar esquema/migración al implementar
+los servicios. No reutilizar un evento comercial con actor/tenant falsos.
+
 ## Entidades
 
 | Grupo | Entidades y relaciones |

@@ -103,8 +103,9 @@ se puede seguir desarrollando localmente, dejando la validación pendiente.
 No cubren CVEs de paquetes del sistema operativo/imágenes, análisis estático
 completo, licencias/SBOM, pruebas de penetración, diseño comercial, restauración
 de backups o evaluación ASVS. GitHub CI remoto todavía no fue ejecutado: no hay
-repositorio remoto configurado. Próxima tarea: contrato de MFA admin y su
-recuperación, coordinado con email-recovery-design.md y verificación de buzón.
+repositorio remoto configurado. Contrato MFA/recuperación definido en 2.20:
+`mfa-recovery-contract.md`. Próxima tarea 2.21: biblioteca interna TOTP/cifrado,
+con nuevas dependencias auditadas; email-recovery-design.md sigue sin implementar.
 
 Referencias oficiales consultadas el 2026-10-17:
 

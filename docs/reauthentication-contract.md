@@ -21,6 +21,12 @@ La ventana de cinco minutos es una decisión conservadora del proyecto, no un
 plazo impuesto por esas referencias. Repetir contraseña no constituye MFA ni
 resistencia a phishing.
 
+Actualización de diseño 2.20: `mfa-recovery-contract.md` exige en el futuro
+contraseña y TOTP, contador consumido globalmente y prueba combinada desde la
+verificación más antigua. Un login MFA completo podrá establecer prueba reciente
+para evitar otra petición inmediata. Nada de eso cambia todavía este servicio,
+la ruta password-only o la UX conservadora de 2.18.
+
 ## Entrada y autoridad
 
 `Authenticator.reauthenticate(token, data, expected_actor, client_ip)` recibe:

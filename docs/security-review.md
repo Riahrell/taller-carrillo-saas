@@ -29,7 +29,7 @@ heredar estas comprobaciones; el frontend nunca determina autoridad.
 | Acciones administrativas | Admin de empresa, contexto esperado, transacción y último admin protegidos; no vincular cuenta existente por conocer correo. En 2.18, UI y confirmación reciente obligatoria en alta/cambio (incluso no-op); 428 revierte efectos. Alta comprueba nuevamente antes del commit. | Confirmación por contraseña no es MFA. Web Locks/BroadcastChannel coordinan clientes cooperantes, sin garantizar cancelación de efectos tras desconexión. MFA/recuperación siguen bloqueantes antes de inventario. |
 | Contraseñas | Argon2id, longitud Unicode 15–128, sin composición artificial, secretos fuera de logs/Storage. | Política de contraseñas comprometidas/comunes y cambios seguros; no evaluada resistencia a phishing solo con contraseña. |
 | Alta asistida | UI 2.15 sobre contrato 2.14, comprobación de contexto y secreto en campos no controlados. | Requiere confianza en equipo/admin. El navegador y sus extensiones/gestor de claves quedan fuera de la aplicación; no afirmar borrado criptográfico de strings JS. Evaluar incorporación por invitación de un solo uso en dispositivo propio. |
-| Recuperación y MFA | No implementados. No se sustituyen por una contraseña de reserva ni por email conocido. | Contrato, prueba de control de identidad, caducidad/uso único y revocación atómica; elección y recuperación de MFA/passkeys de administradores. Decisión y verificación antes de inventario. |
+| Recuperación y MFA | Contrato 2.20 en mfa-recovery-contract.md; todavía sin implementar. TOTP admin, prueba fresca de buzón para incorporación y códigos offline; correo no desactiva MFA. | 2.21 biblioteca interna; después persistencia, emisión/resolución de sesiones, selección, promoción, reautenticación y UI/correo, con aceptación completa. TOTP no resiste phishing; passkeys pendientes. Decisión de recuperación excepcional y verificación antes de producción/inventario según alcance. |
 | Auditoría | Altas/cambios de membresía en mismo commit; app no puede UPDATE/DELETE esos eventos. | Login/denegaciones/cambios de credencial, consulta autorizada, retención y alertas. No hay registro de seguridad completo ni monitoreo. |
 | Transporte y navegador | Proxy mismo origen, CORS cerrado, flags de cookie según entorno, cabeceras básicas. | TLS público, CSP compatible con Next.js y revisión de historial/cache/bfcache. No hay CSP estricta o ensayo HTTPS de despliegue público. |
 | Dependencias y secretos | 2.19 agrega Gitleaks en archivos/historial, pip-audit y npm audit obligatorios en CI. Herramientas fijadas, canary sintético y fallos cerrados. | Un aviso raíz dev-only (cuatro entradas npm), SEC-2026-001, aceptado temporalmente hasta 2026-10-31; visible y probado contra cambios de alcance. Pendientes corrección del proveedor, CVEs de imágenes/SO, actualización/SBOM. Ver security-scanning.md; no equivale a ausencia de CVEs. |
@@ -44,8 +44,8 @@ heredar estas comprobaciones; el frontend nunca determina autoridad.
    denegación/rollback y recorrido de navegador aislado. Detalles y límites en
    `deliveries/access-2.18.md`.
 3. 2.19: escaneos automatizados de dependencias/secretos integrados; revisar
-   SEC-2026-001 antes de 2026-10-31. Siguiente 2.20: contrato de MFA obligatorio
-   admin y recuperación. Cambio/recuperación de
+   SEC-2026-001 antes de 2026-10-31. 2.20 define contrato MFA admin/recuperación;
+   siguiente 2.21: primitivas TOTP/cifrado/códigos offline. Cambio/recuperación de
    credenciales y cierre global, conservando
    las fronteras de identidad global/administración de empresa. No resetear una
    cuenta global desde otro tenant ni exponer un bypass de soporte.
