@@ -724,3 +724,16 @@ Referencias: [query models FastAPI](https://fastapi.tiangolo.com/tutorial/query-
 - Adoptar el orden de revisión v1.1: 2.19 escaneos de dependencias/secretos,
   después MFA admin y recuperación, antes de inventario. Sin servicios adquiridos,
   secretos nuevos, migraciones o trabajo en la VPS durante esta entrega.
+
+## Recuperación por correo: decisión posterior a 2.18
+
+- Solicitud del usuario (2026-10-17): recuperar acceso mediante correo. Incorporar
+  «Olvidé mi contraseña» enviado al buzón previamente verificado del usuario global.
+- Enlace aleatorio, uso único, caducidad y cambio/revocaciones atómicos, sin
+  revelar existencia de cuentas ni permitir que admin de otra empresa resetee
+  identidades. Restablecer contraseña conserva MFA y no reactiva accesos.
+- No marcar correos existentes verificados automáticamente. Diseñar incorporación
+  y recuperación de MFA junto con este flujo; no crear bypass de soporte.
+- Detalle y aceptación en `email-recovery-design.md`. Solo diseño documental,
+  sin rutas, migración, credenciales, cambios de cuenta o envíos reales. No altera
+  la siguiente tarea 2.19 de escaneos ni requiere comprar servicios ahora.

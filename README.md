@@ -39,6 +39,8 @@ ejecución en GitHub está pendiente: no hay remoto configurado. No usar en prod
   y POST `/api/auth/reauthenticate`, formulario y guardia obligatoria dentro de
   las transacciones de alta/cambio administrativos. Sin prueba vigente: 428.
 - [Revisión de seguridad](docs/security-review.md) y [pruebas remotas](docs/staging-plan.md).
+- [Recuperación por correo](docs/email-recovery-design.md): diseño solicitado,
+  pendiente de implementación junto con verificación de correo y MFA.
 - [Revisión del nuevo Plan Maestro v1.1](docs/reviews/plan-maestro-v1.1.md):
   diferencias, mejoras propuestas y adaptación de hitos; revisión documental,
   sin implementación del alcance nuevo ni cambios de servidor.

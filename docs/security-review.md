@@ -48,6 +48,8 @@ heredar estas comprobaciones; el frontend nunca determina autoridad.
    credenciales y cierre global, conservando
    las fronteras de identidad global/administración de empresa. No resetear una
    cuenta global desde otro tenant ni exponer un bypass de soporte.
+   El usuario solicita recuperación por correo: diseño en `email-recovery-design.md`.
+   Requiere buzón previamente verificado y no reemplaza la recuperación de MFA.
 4. Ampliar evidencia de seguridad: auditoría consultable/denegaciones, revisión de
    dependencias/secretos, defensas del navegador y restauración aislada de backup.
 5. Revisar esta matriz y resolver los bloqueantes o registrar una limitación
