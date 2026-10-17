@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.22, persistencia interna MFA; login sin segundo factor
+## Estado: acceso 2.23, auditoría interna MFA; login sin segundo factor
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -34,12 +34,13 @@ La fundación tiene validación integral local y workflow CI preparado. Su prime
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md), [entrega ejecutable 2.19](docs/deliveries/access-2.19.md)
+- [Aceptación](docs/acceptance.md), [última entrega 2.23](docs/deliveries/access-2.23.md)
   y [contrato de diseño 2.20](docs/deliveries/access-2.20.md).
 - [MFA y recuperación](docs/mfa-recovery-contract.md): TOTP, incorporación,
   códigos offline y separación de recuperación por correo. Primitivas internas
   implementadas en [2.21](docs/deliveries/access-2.21.md), persistencia/consumo
-  transaccional en [2.22](docs/deliveries/access-2.22.md); integración pendiente.
+  transaccional en [2.22](docs/deliveries/access-2.22.md) y auditoría global
+  de consumos en [2.23](docs/deliveries/access-2.23.md); integración pendiente.
 - [Escaneos de seguridad](docs/security-scanning.md): secretos en archivos/historial,
   dependencias Python/npm y excepción temporal dev-only visible hasta 2026-10-31.
 - [Contrato de confirmación reciente](docs/reauthentication-contract.md): servicio
@@ -625,8 +626,10 @@ Acceso 2.21 agrega la biblioteca interna TOTP, cifrado de semillas y códigos of
 con dependencias fijadas y pruebas. Detalles en `docs/deliveries/access-2.21.md`.
 2.22 agrega persistencia/consumo interno con concurrencia y rollback, migración
 0009 y [contrato](docs/mfa-persistence-contract.md); login MFA aún no activo.
-Siguiente 2.23: auditoría global append-only para consumos MFA. Faltan cuotas,
-pendientes y todos los caminos de autenticación/recuperación antes de HTTP/UI.
+2.23 agrega auditoría global de consumos en el mismo commit (0010), sin
+UPDATE/DELETE/TRUNCATE para la app. Siguiente 2.24: cuotas MFA independientes de
+contraseña y compartidas entre propósitos. Faltan pendientes y todos los caminos
+de autenticación/recuperación antes de HTTP/UI.
 El contrato 2.20 ya define incorporación con prueba fresca de buzón, obligatoriedad
 admin global, recuperación sin bypass y cambios futuros de sesión/confirmación.
 2.19 incorpora escaneos obligatorios de secretos/dependencias en CI; el hallazgo
@@ -636,7 +639,8 @@ de la revisión del Plan Maestro v1.1. La API de confirmación verifica la
 contraseña y rota cookies de sesión/CSRF tras commit, con contexto obligatorio,
 no-store y slots compartidos. JSON ambiguo se rechaza en el middleware común.
 La prueba interna dura cinco minutos y no extiende la vida absoluta. Migración
-0008 sin backfill de confirmación; 0009 agrega solo tablas MFA vacías. La guardia ya se exige en alta/cambio, incluyendo
+0008 sin backfill de confirmación; 0009/0010 agregan tablas MFA y de evidencia
+vacías. La guardia ya se exige en alta/cambio, incluyendo
 no-op; el alta vuelve a comprobarla antes del commit. La pantalla requiere
 contraseña actual, relee contexto tras rotar y retira controles al caducar o perder
 contexto. Web Locks coordina peticiones entre pestañas compatibles; no equivale

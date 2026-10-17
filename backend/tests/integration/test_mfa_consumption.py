@@ -24,6 +24,7 @@ from app.modules.access.models import (
     MfaCredential,
     MfaRecoveryCode,
     MfaRecoverySet,
+    SecurityEvent,
     User,
 )
 
@@ -112,6 +113,9 @@ def state(db_session, databases, monkeypatch):
     finally:
         with owner.begin() as connection:
             connection.execute(
+                delete(SecurityEvent).where(SecurityEvent.user_id.in_(user_ids))
+            )
+            connection.execute(
                 delete(MfaRecoveryCode).where(MfaRecoveryCode.set_id == set_id)
             )
             connection.execute(
@@ -167,6 +171,7 @@ def test_consume_once_and_reject_replay_across_sessions(state, kind):
     assert result == service.MfaConsumption(state["credential"], state["now"])
     before = saved(state)
     assert committed(state, kind) is None
+    assert len(security_events(state)) == 1
     assert saved(state) == before
     assert (before[0] is not None) == (kind == "totp")
     assert sum(t is not None for t in before[2]) == (1 if kind == "recovery" else 0)
@@ -186,6 +191,7 @@ def test_rollback_after_flush_restores_consumption_and_other_work(state, kind):
         )
         raise RuntimeError("Synthetic failure after consumption")
     assert saved(state) == before
+    assert security_events(state) == []
     with Session(state["runtime"]) as session:
         assert session.get(User, state["other"]).is_active
     assert committed(state, kind) is not None
@@ -246,6 +252,7 @@ def test_two_connections_only_one_commit_or_retry_after_rollback(
         assert winner.result(timeout=10) is (not rollback_first)
         assert contender.result(timeout=10) is rollback_first
     assert committed(state, kind) is None
+    assert len(security_events(state)) == 1
 
 
 @pytest.mark.parametrize("kind", ["totp", "recovery"])
@@ -393,7 +400,7 @@ def test_migration_refuses_downgrade_with_mfa_state_even_revoked(state):
     with state["owner"].connect() as connection:
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0009_mfa_credentials"
+            == "0010_mfa_security_events"
         )
     assert saved(state) == before
 
@@ -545,3 +552,165 @@ def test_runtime_cannot_delete_mfa_state(state, table):
     with pytest.raises(DBAPIError), state["runtime"].begin() as connection:
         # Table is from this fixed parameter list, never request data.
         connection.execute(text(f"DELETE FROM {table} WHERE false"))
+
+
+def security_events(state):
+    with Session(state["runtime"]) as session:
+        return [
+            (row.id, row.user_id, row.credential_id, row.action, row.occurred_at)
+            for row in session.scalars(
+                select(SecurityEvent)
+                .where(SecurityEvent.user_id == state["user"])
+                .order_by(SecurityEvent.occurred_at, SecurityEvent.id)
+            )
+        ]
+
+
+@pytest.mark.parametrize("kind", ["totp", "recovery"])
+def test_committed_event_identifies_consumption_not_login_or_tenant(state, kind):
+    assert security_events(state) == []
+    assert committed(state, kind) is not None
+    rows = security_events(state)
+    assert len(rows) == 1
+    assert rows[0][1:] == (
+        state["user"],
+        state["credential"],
+        "mfa_totp_consumed" if kind == "totp" else "mfa_recovery_consumed",
+        state["now"],
+    )
+    # The audit timestamp is the exact server verification time, not commit time.
+    assert rows[0][0] is not None
+
+
+@pytest.mark.parametrize("kind", ["totp", "recovery"])
+def test_event_and_consumption_invisible_before_commit_and_rolled_back_together(
+    state, kind
+):
+    before = saved(state)
+    with Session(state["runtime"]) as session:
+        with session.begin():
+            assert consume(state, kind, session) is not None
+            assert (
+                session.scalar(
+                    select(func.count())
+                    .select_from(SecurityEvent)
+                    .where(SecurityEvent.user_id == state["user"])
+                )
+                == 1
+            )
+            assert security_events(state) == []
+            assert saved(state) == before
+        assert len(security_events(state)) == 1
+
+
+@pytest.mark.parametrize("kind", ["totp", "recovery"])
+def test_missing_audit_insert_privilege_rolls_back_the_code(state, kind):
+    before = saved(state)
+    with state["owner"].begin() as connection:
+        connection.execute(text("REVOKE INSERT ON security_events FROM carrillo_app"))
+    try:
+        with pytest.raises(DBAPIError) as caught:
+            committed(state, kind)
+        assert caught.value.orig.sqlstate == "42501"
+        assert saved(state) == before
+        assert security_events(state) == []
+    finally:
+        with state["owner"].begin() as connection:
+            connection.execute(text("GRANT INSERT ON security_events TO carrillo_app"))
+    assert committed(state, kind) is not None
+    assert len(security_events(state)) == 1
+
+
+@pytest.mark.parametrize(
+    "command_text",
+    [
+        "UPDATE security_events SET action = 'mfa_totp_consumed' WHERE id = :id",
+        "DELETE FROM security_events WHERE id = :id",
+        "TRUNCATE security_events",
+        "DROP TABLE security_events",
+    ],
+)
+def test_runtime_cannot_change_remove_or_drop_evidence(state, command_text):
+    assert committed(state, "totp") is not None
+    before = security_events(state)
+    with pytest.raises(DBAPIError) as caught, state["runtime"].begin() as connection:
+        connection.execute(text(command_text), {"id": before[0][0]})
+    assert caught.value.orig.sqlstate == "42501"
+    assert security_events(state) == before
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        dict(action="login_succeeded"),
+        dict(action="mfa_totp_consumed\n"),
+        dict(occurred_at=text("'1969-01-01 00:00:00+00'::timestamptz")),
+        dict(user_id=uuid4()),
+        dict(credential_id=uuid4()),
+    ],
+)
+def test_audit_rejects_unsupported_action_invalid_time_or_owner(state, changes):
+    values = dict(
+        user_id=state["user"],
+        credential_id=state["credential"],
+        action="mfa_totp_consumed",
+        occurred_at=state["now"],
+    )
+    with (
+        Session(state["runtime"]) as session,
+        pytest.raises(IntegrityError),
+        session.begin(),
+    ):
+        session.add(SecurityEvent(**(values | changes)))
+        session.flush()
+    assert security_events(state) == []
+
+
+@pytest.mark.parametrize("consume_first", [False, True])
+def test_audit_downgrade_refuses_factors_with_or_without_events(state, consume_first):
+    if consume_first:
+        assert committed(state, "recovery") is not None
+    before = security_events(state)
+    consumption = saved(state)
+    config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    with (
+        pytest.raises(DBAPIError, match="Downgrade refused"),
+        state["owner"].begin() as connection,
+    ):
+        config.attributes["connection"] = connection
+        command.downgrade(config, "0009_mfa_credentials")
+    with state["owner"].connect() as connection:
+        assert (
+            MigrationContext.configure(connection).get_current_revision()
+            == "0010_mfa_security_events"
+        )
+    assert security_events(state) == before
+    assert saved(state) == consumption
+
+
+@pytest.mark.parametrize("kind", ["totp", "recovery"])
+def test_commit_failure_discards_inserted_audit_evidence(state, kind):
+    def fail_commit(session):
+        raise RuntimeError("Synthetic commit failure with audit")
+
+    with (
+        Session(state["runtime"]) as session,
+        pytest.raises(RuntimeError, match="with audit"),
+    ):
+        event.listen(session, "before_commit", fail_commit, once=True)
+        with session.begin():
+            assert consume(state, kind, session) is not None
+    assert security_events(state) == []
+    assert saved(state) == (None, None, (None,) * 10)
+
+
+@pytest.mark.parametrize("kind", ["totp", "recovery"])
+def test_rejected_attempts_do_not_fabricate_success_events(state, kind):
+    changes = (
+        dict(code=SecretStr("invalid"))
+        if kind == "totp"
+        else dict(code=crypto.generate_recovery_codes()[0])
+    )
+    assert committed(state, kind, **changes) is None
+    assert security_events(state) == []
+    assert saved(state) == (None, None, (None,) * 10)

@@ -22,7 +22,8 @@ estado de seguridad global/revisión, factor cifrado, pendientes tipados, códig
 offline, evidencia de sesión/correo y eventos globales separados de auditoría
 comercial. 2.21 implementa primitivas. **2.22 agrega 0009**, solo tablas de
 credenciales cifradas, conjuntos y hashes offline; sin backfill o MFA en login.
-El resto del modelo lógico sigue pendiente. Detalles y límites físicos en
+2.23 agrega 0010: eventos globales tipados de consumo MFA, append-only para
+la app. El resto de auditoría y modelo lógico sigue pendiente. Límites físicos en
 `mfa-persistence-contract.md`; no reutilizar eventos comerciales con actor/tenant
 falsos para auditoría global.
 

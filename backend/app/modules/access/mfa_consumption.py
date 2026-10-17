@@ -1,7 +1,8 @@
 """Low-level transactional consumption, NOT a login/authorization service.
 
 Trusted callers supply IDs from server state and own begin/commit/rollback.
-Do not expose these helpers before pending proofs, quotas and audit are integrated.
+Do not expose these helpers before pending proofs, quotas and session guards
+are integrated.
 Lock order: user -> credential -> recovery set -> code. No tenant locks afterward.
 """
 
@@ -20,7 +21,12 @@ from app.modules.access.mfa_crypto import (
     match_totp,
     recovery_digest,
 )
-from app.modules.access.models import MfaCredential, MfaRecoveryCode, MfaRecoverySet
+from app.modules.access.models import (
+    MfaCredential,
+    MfaRecoveryCode,
+    MfaRecoverySet,
+    SecurityEvent,
+)
 from app.modules.access.sessions import _database_now, _lock_user
 
 
@@ -89,6 +95,14 @@ def consume_totp(
         return None
     record.last_counter = counter
     record.last_verified_at = now
+    session.add(
+        SecurityEvent(
+            user_id=user_id,
+            credential_id=record.id,
+            action="mfa_totp_consumed",
+            occurred_at=now,
+        )
+    )
     session.flush()
     return MfaConsumption(credential_id=record.id, verified_at=now)
 
@@ -139,5 +153,13 @@ def consume_recovery_code(
     ):
         return None
     stored.used_at = now
+    session.add(
+        SecurityEvent(
+            user_id=user_id,
+            credential_id=record.id,
+            action="mfa_recovery_consumed",
+            occurred_at=now,
+        )
+    )
     session.flush()
     return MfaConsumption(credential_id=record.id, verified_at=now)

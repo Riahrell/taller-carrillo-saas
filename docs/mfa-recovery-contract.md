@@ -1,9 +1,10 @@
 # MFA y recuperación: contrato de diseño 2.20
 
-Fecha: 2026-10-17. **Contrato 2.20 con primitivas 2.21 y persistencia interna 2.22.**
+Fecha: 2026-10-17. **Contrato 2.20 con primitivas 2.21, persistencia 2.22 y auditoría de consumo 2.23.**
 Login y confirmación administrativa siguen usando contraseña; no hay MFA activo,
 correo verificado, recuperación operativa o proveedor de correo. 0009 agrega
-solo tablas MFA vacías, sin habilitar factores en cuentas operativas.
+tablas MFA y 0010 evidencia global de consumo, vacías en desarrollo, sin
+habilitar factores en cuentas operativas.
 La biblioteca no se invoca desde rutas o servicios de autenticación. Ver
 [entrega 2.21](deliveries/access-2.21.md) para evidencia y límites ejecutados.
 
@@ -187,7 +188,8 @@ del flujo ordinario de olvido. Ver [recuperación por correo](email-recovery-des
 ## Persistencia, cifrado y transacciones futuras
 
 Modelo lógico objetivo, sin nombres/campos de API. 2.22 materializa solo
-credenciales y conjuntos/códigos en 0009; el resto sigue pendiente. Ver
+credenciales y conjuntos/códigos en 0009; 2.23 añade evidencia de consumo en
+0010. El resto de eventos y controles sigue pendiente. Ver
 [persistencia y consumo](mfa-persistence-contract.md).
 
 | Componente | Datos y restricciones que deberá representar |
@@ -244,7 +246,8 @@ antes de abrir tráfico. No declarar restauración segura por recuperar tablas.
 
 Criterios de integración pendientes. 2.21 prueba primitivas y 2.22 añade
 persistencia/consumo único concurrente y rollback, como operaciones internas.
-Cuotas, auditoría global, sesiones/pending/HTTP/UI y operación siguen pendientes:
+2.23 añade evidencia global de consumo en el mismo commit. Cuotas, otros eventos,
+sesiones/pending/HTTP/UI y operación siguen pendientes:
 
 1. Vectores RFC, ceros iniciales, tolerancia/límites exactos, reloj regresivo,
    coincidencia ambigua, repetición y dos verificaciones concurrentes.
@@ -271,8 +274,8 @@ Cuotas, auditoría global, sesiones/pending/HTTP/UI y operación siguen pendient
 
 ## Próxima tarea pequeña
 
-**2.23: auditoría global append-only para consumos MFA**, en el mismo commit,
-con privilegios y rollback probados. 2.22 ya persiste bajo locks el contador/hora
-y el uso de códigos; no autoriza sesiones o recuperación. Después: cuotas,
-pendientes, revisión global e integración de todos los caminos de autenticación
-y finalmente HTTP/UI/correo. Cada entrega declara la brecha restante.
+**2.24: cuotas MFA separadas de contraseña y compartidas entre propósitos**,
+con persistencia de fallos/contención y ventanas probadas. 2.22 persiste consumo
+y 2.23 su evidencia global en el mismo commit; no autorizan sesiones o
+recuperación. Después: pendientes, revisión global y todos los caminos de
+autenticación, finalmente HTTP/UI/correo. Cada entrega declara la brecha restante.

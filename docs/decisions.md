@@ -838,3 +838,22 @@ Referencias: [query models FastAPI](https://fastapi.tiangolo.com/tutorial/query-
 - Contrato físico/límites en `mfa-persistence-contract.md`. Siguiente 2.23:
   auditoría global append-only para consumo MFA en el mismo commit; después
   cuotas compartidas e integración de los restantes controles antes de activar MFA.
+
+## Acceso 2.23: evidencia global atómica de consumo MFA
+
+- 0010 añade `security_events` con sujeto global, factor, acción enumerada y hora
+  de servidor. Solo dos acciones de consumo; no confundir con login autorizado.
+  FK compuesta comprueba propietario. No tenant/actor comercial falso, códigos,
+  semillas, hashes de recuperación o payload libre. Sin backfill de éxitos previos.
+- Cada consumo y evento usan la misma transacción/flush, sin commit interno;
+  fallar la escritura de auditoría revierte el consumo. Replay o rechazo no
+  fabrican un éxito. El llamador sigue sin recibir prueba transferible de sesión.
+- Permisos SELECT/INSERT, sin UPDATE/DELETE/TRUNCATE para carrillo_app. Propietario
+  de migraciones separado y fuera de esa garantía; no se declara WORM o protección
+  contra SQL arbitrario capaz de insertar evidencia falsa.
+- Downgrade rechazado ante eventos o factores, incluso sin consumos, para no volver
+  a consumidores sin auditoría. Sin rutas globales de consulta/exportación para
+  administradores de empresa; eventos de rechazo y demás auditoría pendientes.
+- Siguiente 2.24: cuotas MFA compartidas entre propósitos, independientes de las
+  de contraseña, con fallos persistentes y contención probados. MFA sigue sin
+  activarse en autenticación, selección, reautenticación o recuperación.

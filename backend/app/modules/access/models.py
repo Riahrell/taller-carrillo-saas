@@ -305,3 +305,32 @@ class MfaRecoveryCode(Base):
     position: Mapped[int] = mapped_column(Integer, primary_key=True)
     code_hash: Mapped[bytes] = mapped_column(LargeBinary)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SecurityEvent(Base):
+    """Global typed MFA consumption evidence; no arbitrary payload or tenant actor."""
+
+    __tablename__ = "security_events"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["user_id", "credential_id"],
+            ["mfa_credentials.user_id", "mfa_credentials.id"],
+            ondelete="RESTRICT",
+            name="fk_security_events_credential_owner",
+        ),
+        CheckConstraint(
+            "action IN ('mfa_totp_consumed', 'mfa_recovery_consumed')",
+            name="action_allowed",
+        ),
+        CheckConstraint(
+            "occurred_at >= '1970-01-01 00:00:00+00'::timestamptz",
+            name="occurrence_window",
+        ),
+        Index("ix_security_events_user_time", "user_id", "occurred_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column()
+    credential_id: Mapped[UUID] = mapped_column()
+    action: Mapped[str] = mapped_column(String(32))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

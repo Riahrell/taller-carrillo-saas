@@ -1,7 +1,7 @@
 # Persistencia y consumo interno MFA: acceso 2.22
 
-Implementación parcial del [contrato MFA](mfa-recovery-contract.md). Migración
-`0009_mfa_credentials`, sin backfill, endpoints, configuración de claves ni
+Implementación parcial del [contrato MFA](mfa-recovery-contract.md). Migraciones
+`0009_mfa_credentials` y `0010_mfa_security_events`, sin backfill, endpoints, claves ni
 activación en login. Los únicos factores creados durante la validación pertenecen
 a identidades sintéticas en PostgreSQL efímero; no crear factores operativos por
 SQL o CLI mientras falten las comprobaciones de todos los caminos de sesión.
@@ -39,7 +39,8 @@ de bajo nivel, sin commit propio. El llamador confiable obtiene IDs de estado
 validado en el servidor, abre la transacción y confirma o revierte todo. No
 entregar `MfaConsumption` como prueba transferible ni publicar éxito antes del
 commit. Tampoco llamar estas funciones directamente desde una ruta nueva sin
-pendiente válido, contraseña, cuota y auditoría de seguridad.
+pendiente válido, contraseña y cuota. La evidencia de consumo se inserta
+ya en la misma transacción; no equivale a auditoría completa de autenticación.
 
 Orden: usuario con FOR UPDATE y actividad releída -> credencial de ese usuario
 con FOR UPDATE -> conjunto -> código, cuando corresponda. Todos los consumidores
@@ -85,18 +86,48 @@ hacia adelante y preparar un procedimiento explícito de recuperación/mantenimi
 
 ## Límites y siguiente paso
 
-Todavía faltan: auditoría global append-only, cuotas MFA compartidas, obligación
+Todavía faltan: otros eventos de seguridad/rechazos, cuotas MFA compartidas, obligación
 admin/revisión de seguridad, pendientes y prueba de buzón, activación/sustitución,
 recuperación restringida, revocación global, guardias de emisión/resolución y UI.
 Esta entrega tampoco configura custodia/rotación operativa de claves o monitoreo
 de reloj/restauración; preservar códigos en DB no prueba un backup seguro.
 
-Siguiente tarea pequeña **2.23**: registro global de seguridad append-only para
-consumos MFA, con evidencia en el mismo commit y pruebas de privilegios/rollback.
-Las cuotas y la integración completa siguen siendo necesarias antes de activarlo.
+Siguiente tarea pequeña **2.24**: cuotas MFA independientes de las de contraseña,
+compartidas entre propósitos y con contención/fallos persistentes probados.
+La integración completa sigue siendo necesaria antes de activarlo.
 
 Fuentes técnicas consultadas el 2026-10-17:
 [locks de PostgreSQL](https://www.postgresql.org/docs/18/explicit-locking.html#LOCKING-ROWS)
 y [refresco ORM de SQLAlchemy 2.0](https://docs.sqlalchemy.org/en/20/orm/queryguide/api.html#populate-existing).
 La decisión concreta de orden de locks y los criterios son del proyecto;
 consultar estas fuentes no equivale a certificar la integración completa.
+
+## Evidencia global de consumo (2.23)
+
+`security_events` registra UUID de evento, usuario sujeto, credencial, acción y
+hora de verificación del servidor. Solo admite `mfa_totp_consumed` y
+`mfa_recovery_consumed`; no significa login completo, recuperación autorizada o
+sesión emitida. La FK compuesta comprueba el propietario del factor. No hay
+actor admin de tenant ficticio, email/IP, código, semilla, hash de recuperación,
+ciphertext, payload libre o motivo suministrado por el cliente.
+
+Los consumidores insertan su evento antes del mismo flush, dentro de la misma
+transacción que marca contador/hora o uso offline. Un fallo al guardar evidencia
+impide confirmar el consumo; un rollback posterior descarta ambos. Otro lector
+no ve ninguno antes del commit. Replay/denegación no crean un evento de éxito;
+los eventos de rechazo y otros cambios de credencial requieren diseño/integración
+posterior. No hay rutas de consulta global o exportación para admins de empresa.
+
+La app tiene SELECT/INSERT en eventos, sin UPDATE/DELETE/TRUNCATE o propiedad DDL.
+Esto conserva filas frente a ese rol; no es almacenamiento WORM, cadena firmada o
+defensa frente al propietario de migraciones. SQL arbitrario con INSERT podría
+fabricar eventos: el contrato de aplicación limita la inserción a servicios del
+servidor. No hay aún envío a un almacén externo, retención o monitoreo/alertas.
+[Privilegios PostgreSQL](https://www.postgresql.org/docs/18/ddl-priv.html)
+explica la separación de estos permisos y los poderes del propietario; fuente
+consultada el 2026-10-17.
+
+0010 no inventa eventos históricos. Downgrade toma locks y se rechaza si existen
+eventos **o cualquier factor**, aun si no consumió códigos: volver a un consumidor
+sin auditoría no debe permitir continuar con esos factores. El recorrido vacío
+base/head/base/head se conserva; no eliminar evidencia para forzarlo.
