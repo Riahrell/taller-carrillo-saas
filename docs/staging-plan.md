@@ -1,9 +1,11 @@
-# Pruebas remotas: Contabo y dominio pendiente
+# Pruebas remotas: Contabo y dominio informado
 
 Contexto confirmado por el usuario el 2026-10-16: dispone de un VPS en Contabo
-que también aloja imágenes; prevé comprar el dominio en Namecheap. No se ha
-facilitado/registrado un nombre de dominio ni inspeccionado el VPS desde aquí.
-No se ha accedido por SSH, cambiado DNS, comprado servicios o publicado la app.
+que también aloja imágenes; inicialmente preveía comprar en Namecheap. Después
+informa que adquirió **taller-carrillo.com** y conectó el DNS a la IP del VPS.
+Es información del usuario: todavía no verificamos resolución, propagación,
+configuración del registrador ni servicio del dominio. No se inspeccionó el VPS.
+Desde aquí no se accedió por SSH, cambió DNS, compró servicios o publicó la app.
 No enviar credenciales del VPS/DB/DNS por chat ni incorporarlas al repositorio.
 
 ## Preparación antes de cambiar el VPS
@@ -23,8 +25,8 @@ No enviar credenciales del VPS/DB/DNS por chat ni incorporarlas al repositorio.
 
 ## Dominio y HTTPS
 
-Comprar el nombre no habilita TLS automáticamente. Cuando el usuario confirme
-el dominio, elegir un subdominio de pruebas, configurar su DNS al VPS y emitir
+Comprar el nombre no habilita TLS automáticamente. Con el dominio informado,
+verificar DNS y elegir un subdominio de pruebas; configurar su DNS y emitir
 un certificado válido con renovación automatizada. La integración concreta
 depende del proxy existente; no se ha decidido sustituirlo.
 
@@ -48,6 +50,8 @@ de despliegue TLS. El HTTP de localhost actual es exclusivamente desarrollo.
 - Smoke HTTPS, permisos entre empresas, rutas sensibles, logs sin secretos y
   recuperación del despliegue comprobados con resultados reales documentados.
 
-Siguiente preparación remota: inventario de solo lectura del VPS y elección de
-subdominio después de adquirir el nombre. No hay contraseñas, IPs públicas o
+Siguiente preparación remota: verificar DNS, inventario de solo lectura del VPS
+y elección de subdominio de pruebas. El dominio público es contexto documental,
+no un origen codificado en la aplicación: configurar el origen final por entorno.
+No hay contraseñas, IPs públicas o
 credenciales predeterminadas codificadas en este documento.

@@ -22,17 +22,34 @@ from app.modules.access.login_challenges import (
     _binding_digest,
     _close_pending,
     _issue_challenge,
+    _password_fingerprint,
     _select_membership,
     _token_digest,
 )
 from app.modules.access.membership import AccessDenied, resolve_membership
-from app.modules.access.models import LoginThrottle, User
+from app.modules.access.models import (
+    LoginThrottle,
+    MembershipRole,
+    SessionRecord,
+    Tenant,
+    TenantMembership,
+    User,
+)
 from app.modules.access.passwords import (
     hash_password,
     password_needs_rehash,
     verify_password,
 )
-from app.modules.access.sessions import IssuedSession, issue_session
+from app.modules.access.reauthentication import PasswordConfirmation
+from app.modules.access.sessions import (
+    IDLE_TIMEOUT,
+    IssuedSession,
+    _database_now,
+    _lock_user,
+    _token_hash,
+    issue_session,
+    resolve_session,
+)
 
 WINDOW = timedelta(minutes=15)
 ACCOUNT_LIMIT = 5
@@ -113,6 +130,16 @@ def _refresh(bucket: LoginThrottle, now: datetime) -> None:
         bucket.window_started_at = now
 
 
+def _record_failure(session: Session, *buckets: LoginThrottle) -> None:
+    now = _now(session)
+    for bucket in buckets:
+        _refresh(bucket, now)
+        if bucket.failures == 0:
+            bucket.window_started_at = now
+        bucket.failures += 1
+    session.flush()
+
+
 def _usable_hash(encoded: str) -> bool:
     try:
         params = extract_parameters(encoded)
@@ -132,6 +159,129 @@ class Authenticator:
     def __init__(self, engine: Engine) -> None:
         self._factory = create_session_factory(engine)
         self._dummy_hash = hash_password(SecretStr(secrets.token_urlsafe(32)))
+
+    def reauthenticate(
+        self,
+        token: SecretStr,
+        *,
+        data: PasswordConfirmation,
+        expected_actor: UUID,
+        client_ip: IPv4Address | IPv6Address,
+    ) -> IssuedSession | None:
+        """Internal only: adapter must enforce CSRF/origin and shared hash slots.
+
+        Password alone cannot pick a user, tenant or session. Rotation and proof
+        commit together; the old token immediately stops working. A lost response
+        requires login, never automatic replay. Original absolute expiry remains.
+        """
+        if not isinstance(data, PasswordConfirmation) or not isinstance(
+            expected_actor, UUID
+        ):
+            return None
+        ip_key = _ip_digest(client_ip)
+        try:
+            digest = _token_hash(token)
+        except AccessDenied:
+            return None
+        try:
+            with self._factory.begin() as session:
+                _limit_transaction(session)
+                result = self._reauthenticate(
+                    session, token, digest, data, expected_actor, ip_key
+                )
+            return result
+        except (SQLAlchemyError, HashingError):
+            raise AuthenticationUnavailable("Authentication unavailable") from None
+
+    def _reauthenticate(
+        self,
+        session: Session,
+        token: SecretStr,
+        digest: str,
+        data: PasswordConfirmation,
+        expected_actor: UUID,
+        ip_key: str,
+    ) -> IssuedSession | None:
+        # Shared limits and order: IP, account, tenant, user, session. Login has
+        # no tenant lock; administration never acquires throttle buckets.
+        ip = _lock_bucket(session, "ip", ip_key)
+        _refresh(ip, _now(session))
+        if ip.failures >= IP_LIMIT:
+            return None
+        hint = session.execute(
+            select(User.id, User.email, SessionRecord.tenant_id)
+            .join(TenantMembership, TenantMembership.user_id == User.id)
+            .join(SessionRecord, SessionRecord.membership_id == TenantMembership.id)
+            .where(SessionRecord.token_hash == digest)
+        ).one_or_none()
+        if hint is None:
+            _record_failure(session, ip)
+            return None
+        account = _lock_bucket(session, "account", _digest(hint.email))
+        now = _now(session)
+        _refresh(ip, now)
+        _refresh(account, now)
+        if account.failures >= ACCOUNT_LIMIT:
+            return None
+        try:
+            # A rejection must preserve the session/token/activity, while the
+            # outer transaction still commits failure counters across workers.
+            with session.begin_nested():
+                tenant = session.scalar(
+                    select(Tenant)
+                    .where(Tenant.id == hint.tenant_id)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+                user = _lock_user(session, hint.id)
+                if tenant is None or not tenant.is_active or user is None:
+                    raise AccessDenied("Access denied")
+                record = session.scalar(
+                    select(SessionRecord)
+                    .where(SessionRecord.token_hash == digest)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+                if record is None:
+                    raise AccessDenied("Access denied")
+                prior_activity = record.last_seen_at
+                actor = resolve_session(session, token)
+                if (
+                    actor.membership_id != expected_actor
+                    or actor.role != MembershipRole.ADMIN
+                    or actor.tenant_id != tenant.id
+                    or user.email != hint.email
+                ):
+                    raise AccessDenied("Access denied")
+                usable = _usable_hash(user.password_hash)
+                valid = verify_password(
+                    data.password, user.password_hash if usable else self._dummy_hash
+                )
+                if not usable or not valid:
+                    raise AccessDenied("Access denied")
+                # Hash verification may outlive idle/absolute expiry. Recheck
+                # against the original activity before a successful touch.
+                confirmed_at = _database_now(session)
+                if (
+                    confirmed_at < record.last_seen_at
+                    or confirmed_at >= record.expires_at
+                    or confirmed_at >= prior_activity + IDLE_TIMEOUT
+                ):
+                    raise AccessDenied("Access denied")
+                rotated = SecretStr(secrets.token_urlsafe(32))
+                record.token_hash = _token_hash(rotated)
+                record.reauthenticated_at = confirmed_at
+                record.reauthentication_fingerprint = _password_fingerprint(user)
+                record.last_seen_at = confirmed_at
+                session.flush()
+                result = IssuedSession(rotated, record.expires_at)
+        except AccessDenied:
+            _record_failure(session, ip, account)
+            return None
+        account.failures = 0
+        account.window_started_at = _now(session)
+        session.flush()
+        return result
 
     def authenticate(
         self,
@@ -201,14 +351,7 @@ class Authenticator:
             except AccessDenied:
                 allowed = False
         if not allowed:
-            now = _now(session)
-            for bucket in (ip, account):
-                _refresh(bucket, now)
-                # The first failure, rather than an earlier success, starts the window.
-                if bucket.failures == 0:
-                    bucket.window_started_at = now
-                bucket.failures += 1
-            session.flush()
+            _record_failure(session, ip, account)
             return None
 
         if password_needs_rehash(user.password_hash):

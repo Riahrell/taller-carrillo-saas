@@ -155,3 +155,13 @@ el formulario aunque entren por URL.
 Una sesión vigente todavía basta para crear/cambiar accesos; no hay step-up o
 MFA. La prioridad de seguridad del usuario exige cerrar esas brechas según
 `security-review.md` antes de inventario, sin afirmar que la UI las resuelve.
+
+## Confirmación interna 2.16
+
+El servicio de reautenticación exige sesión admin actual y membresía esperada;
+la contraseña no selecciona identidad o empresa. La guardia interna revalida
+sesión, perfil y prueba de cinco minutos ligada al token y hash de contraseña,
+dentro de la transacción sensible. Sin nueva autoridad desde el cliente.
+Ver `reauthentication-contract.md` para límites, rotación y revocación.
+Todavía no hay ruta HTTP ni llamadas a la guardia desde alta/cambio: la condición
+operativa del párrafo anterior sigue vigente hasta completar la integración.

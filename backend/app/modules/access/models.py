@@ -102,6 +102,14 @@ class SessionRecord(Base):
             name="activity_window",
         ),
         CheckConstraint("revoked_at >= created_at", name="revocation_window"),
+        CheckConstraint(
+            "(reauthenticated_at IS NULL AND reauthentication_fingerprint IS NULL) OR "
+            "(reauthenticated_at IS NOT NULL "
+            "AND reauthentication_fingerprint IS NOT NULL "
+            "AND reauthenticated_at >= created_at AND reauthenticated_at < expires_at "
+            "AND reauthentication_fingerprint ~ '^[0-9a-f]{64}$')",
+            name="reauthentication_state",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -112,6 +120,8 @@ class SessionRecord(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reauthenticated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reauthentication_fingerprint: Mapped[str | None] = mapped_column(String(64))
 
 
 class LoginThrottle(Base):

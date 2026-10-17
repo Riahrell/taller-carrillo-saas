@@ -24,7 +24,10 @@ CSRF/origen y contexto obligatorio, respuesta mínima tras commit y conflicto
 genérico; límites y login de la identidad nueva por proxy real. Acceso 2.15 añade
 formulario asistido, revisión/confirmación, retirada de contraseñas y validación
 de contexto posterior, con pruebas de componente y recorrido de navegador aislado.
-Resultados actuales en `deliveries/access-2.15.md`; entregas anteriores como
+Acceso 2.16 añade contrato y servicio interno de confirmación, rotación atómica,
+guardia transaccional y migración 0008. No añade HTTP/UI ni activa la guardia
+en administración: esa brecha continúa abierta.
+Resultados actuales en `deliveries/access-2.16.md`; entregas anteriores como
 registros históricos.
 El hito 2 sigue abierto: falta reautenticación reciente,
 gestión global de cuentas, permisos de otros módulos, consulta/ampliación de

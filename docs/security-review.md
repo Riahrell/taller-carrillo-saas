@@ -26,7 +26,7 @@ heredar estas comprobaciones; el frontend nunca determina autoridad.
 | --- | --- | --- |
 | Identidad y tenant del servidor | Probado en servicios y HTTP con PostgreSQL real; perfil/actividad se releen. | Aplicar y probar autorización en cada futuro módulo. No hay RLS ni defensa frente a SQL privilegiado. |
 | Cookies, sesión y CSRF | Cookies privadas, expiración, revocación, origen exacto y prueba firmada; tests por proxy. | Inventario de sesiones y cierre global operativos, reautenticación reciente y factores adicionales. |
-| Acciones administrativas | Admin de empresa, contexto esperado, transacción y último admin protegidos; no vincular cuenta existente por conocer correo. | Actualmente basta una sesión válida de hasta ocho horas; falta step-up/reautenticación reciente en servidor. Bloqueante antes de inventario. |
+| Acciones administrativas | Admin de empresa, contexto esperado, transacción y último admin protegidos; no vincular cuenta existente por conocer correo. Servicio interno y guardia reciente probados en 2.16, sin adaptador ni llamadas desde administración. | Actualmente basta una sesión válida de hasta ocho horas en las rutas; falta conectar reautenticación y activar la guardia en las transacciones administrativas. Bloqueante antes de inventario. |
 | Contraseñas | Argon2id, longitud Unicode 15–128, sin composición artificial, secretos fuera de logs/Storage. | Política de contraseñas comprometidas/comunes y cambios seguros; no evaluada resistencia a phishing solo con contraseña. |
 | Alta asistida | UI 2.15 sobre contrato 2.14, comprobación de contexto y secreto en campos no controlados. | Requiere confianza en equipo/admin. El navegador y sus extensiones/gestor de claves quedan fuera de la aplicación; no afirmar borrado criptográfico de strings JS. Evaluar incorporación por invitación de un solo uso en dispositivo propio. |
 | Recuperación y MFA | No implementados. No se sustituyen por una contraseña de reserva ni por email conocido. | Contrato, prueba de control de identidad, caducidad/uso único y revocación atómica; elección y recuperación de MFA/passkeys de administradores. Decisión y verificación antes de inventario. |
@@ -37,10 +37,12 @@ heredar estas comprobaciones; el frontend nunca determina autoridad.
 
 ## Orden de trabajo y bloqueo del inventario
 
-1. Terminar 2.15: formulario con pruebas de secreto/contexto, API y navegador aislado.
-2. 2.16: contrato y primer servicio de reautenticación reciente para administración;
-   protección en servidor, no solo un diálogo del frontend. Probar caducidad,
-   revocación, CSRF, límites, concurrencia y ausencia de efectos en rechazo.
+1. 2.15 completado: formulario con pruebas de secreto/contexto, API y navegador aislado.
+2. 2.16: contrato/servicio y guardia interna probados; ver `reauthentication-contract.md`.
+   Siguiente 2.17: adaptador HTTP con CSRF/origen, slots y rotación de cookies.
+   Después UI y activación de la guardia en las transacciones de administración,
+   con pruebas de denegación sin efectos y recorrido completo. Hasta entonces
+   no hay confirmación reciente obligatoria en las pantallas/rutas existentes.
 3. Cambio/recuperación de credenciales, cierre global y revisión de MFA, conservando
    las fronteras de identidad global/administración de empresa. No resetear una
    cuenta global desde otro tenant ni exponer un bypass de soporte.
@@ -57,10 +59,12 @@ No convertir una brecha marcada aquí en una función implementada por documenta
 
 ## Dominio y HTTPS acordados
 
-El usuario prevé comprar un dominio. Comprar/registrar el nombre no configura
+El usuario informa haber adquirido taller-carrillo.com y apuntado su DNS al VPS.
+Resolución y servicio todavía no verificados desde aquí. Comprar/registrar el nombre no configura
 HTTPS por sí solo: el despliegue requiere DNS al servidor y un certificado TLS
-válido administrado por el proxy. No se ha comprado, configurado o publicado un
-dominio en esta entrega. No codificar un dominio real o IP pública en el repo.
+válido administrado por el proxy. Desde aquí no se ha configurado o publicado
+el dominio. No codificar IP pública u origen de despliegue en la aplicación;
+el dominio informado queda solo como contexto documental y el origen va por entorno.
 
 Antes de exponer acceso público: definir origen canónico HTTPS, configurar DNS,
 automatizar emisión/renovación del certificado (ACME o servicio equivalente),

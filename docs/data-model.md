@@ -3,9 +3,18 @@
 Este documento distingue el modelo objetivo y los contratos implementados por
 entrega. Acceso 2.1 incorporó `tenants`, `users` y `tenant_memberships` mediante
 `0002_access`; las ampliaciones hasta 2.14 se detallan al final. La interfaz 2.15
-reutiliza ese esquema y contrato, sin tablas ni migraciones nuevas. Los atributos comerciales
+reutiliza ese esquema y contrato, sin tablas ni migraciones nuevas. Acceso 2.16
+agrega confirmación opcional de sesión mediante 0008, detallada al final.
+Los atributos comerciales
 se limitan a los requeridos por el plan y a las decisiones de `decisions.md`.
 La especificación de cada tarea cerrará contratos antes de generar código.
+
+Confirmación interna 2.16: `sessions.reauthenticated_at` y
+`reauthentication_fingerprint` nulos hasta verificar explícitamente contraseña y
+rotar token en un commit. No hay backfill. CHECK exige coherencia de ambas
+columnas y vida absoluta. La guardia de cinco minutos debe ejecutarse dentro
+de la transacción sensible; todavía no está conectada a administración.
+Contrato y downgrade con revocación: `reauthentication-contract.md`.
 
 ## Entidades
 

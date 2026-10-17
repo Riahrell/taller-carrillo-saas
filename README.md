@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.15
+## Estado: acceso 2.16
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -34,7 +34,9 @@ La fundación tiene validación integral local y workflow CI preparado. Su prime
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 2.15](docs/deliveries/access-2.15.md).
+- [Aceptación](docs/acceptance.md) y [entrega 2.16](docs/deliveries/access-2.16.md).
+- [Contrato de confirmación reciente](docs/reauthentication-contract.md): servicio
+  interno probado; todavía sin conexión a rutas o pantallas administrativas.
 - [Revisión de seguridad](docs/security-review.md) y [pruebas remotas](docs/staging-plan.md).
 - Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
   en 8080, y el arranque requiere DB.
@@ -606,12 +608,17 @@ esquema anterior no puede representar. No borrar registros para forzarlo.
 
 ## Siguiente tarea
 
-Acceso 2.16: reautenticación reciente para operaciones administrativas sensibles,
-comenzando por contrato/servicio y pruebas en servidor. Por prioridad explícita
+Acceso 2.17: contrato HTTP y adaptador de reautenticación con rotación de cookies,
+CSRF y slots compartidos. El contrato/servicio interno 2.16 ya permite verificar
+la contraseña y rotar token con prueba de cinco minutos, sin extender la vida
+absoluta. La migración 0008 no confirma sesiones existentes. La guardia aún no
+se invoca desde operaciones administrativas: integrar UI y activarla de forma
+completa después del adaptador. Por prioridad explícita
 del usuario, seguridad precede al inventario: cerrar la puerta descrita en
 `docs/security-review.md` antes de 3.1. No hay fecha prometida ni certificación ASVS.
-VPS previsto: Contabo, compartido con imágenes; dominio pendiente de compra en
-Namecheap. Preparar staging aislado/privado y HTTPS tras inspección del servidor,
+VPS previsto: Contabo, compartido con imágenes. El usuario informa haber adquirido
+taller-carrillo.com y apuntado el DNS al VPS; falta verificarlo desde aquí.
+Preparar staging aislado/privado y HTTPS tras inspección del servidor,
 sin usar la base operativa ni publicar con los riesgos de acceso abiertos.
 CI remota sigue
 pendiente hasta conectar un repositorio autorizado.

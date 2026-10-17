@@ -5,9 +5,11 @@ acceso 2.7. Probados con PostgreSQL, Nginx/Uvicorn y recorrido real de navegador
 con identidades sintéticas en una base efímera. No hay rutas comerciales ni
 registro público de usuarios. Acceso 2.10–2.12 añade listado/consulta/cambio de membresías
 existentes solo para administradores: [contrato específico](membership-http-contract.md).
-Acceso 2.13–2.14 añade [alta administrativa](user-provisioning-contract.md), servicio
-y POST de colección con sesión/admin, CSRF y contexto obligatorio. Sin formulario
-de alta ni registro público. Comparte slots Argon2 con login sin cambiar su contrato.
+Acceso 2.13–2.15 añade [alta administrativa](user-provisioning-contract.md), servicio,
+POST de colección con sesión/admin, CSRF y contexto obligatorio y formulario
+asistido. Sin registro público. Comparte slots Argon2 con login sin cambiar su contrato.
+Acceso 2.16 prepara [reautenticación interna](reauthentication-contract.md), sin
+ruta HTTP nueva ni requisito reciente activo en las rutas administrativas.
 
 ## Rutas y contratos
 

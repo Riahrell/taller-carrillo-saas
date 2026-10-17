@@ -655,3 +655,30 @@ Referencias: [query models FastAPI](https://fastapi.tiangolo.com/tutorial/query-
 - Dominio previsto en Namecheap y VPS Contabo que ya aloja imágenes. Registrar
   staging aislado y plan DNS/HTTPS/renovación, sin conectar una DB operativa,
   cambiar el VPS o publicar esta entrega. Ver `staging-plan.md`.
+
+## Acceso 2.16: confirmación interna y rotación
+
+- Ventana reciente de cinco minutos, reloj de PostgreSQL y huella del hash de
+  contraseña actual, por sesión/membresía. No se renueva con actividad ordinaria,
+  comparte prueba entre sesiones/empresas ni extiende las ocho horas absolutas.
+- Contraseña actual como único dato del comando, 1–128 puntos de código UTF-8,
+  sin transformación ni cambio de política retroactivo. Admin actual y contexto
+  esperado obtenidos/comparados con sesión; sin email, tenant o fecha del cliente.
+- Rotar token opaco en el mismo commit que la prueba, invalidar inmediatamente
+  el viejo y publicar el nuevo solo tras commit. Respuesta perdida requiere login,
+  sin replay automático. Repetir contraseña no es MFA ni defensa contra phishing.
+- Reutilizar límites persistentes de cuenta/IP del login. Savepoint revierte
+  cambios de sesión ante rechazo mientras se confirman contadores. Mantener
+  límites de locks y orden buckets -> empresa -> usuario -> sesión.
+- Migración 0008: columnas opcionales con CHECK, sin defaults/backfill. Downgrade
+  revoca sesiones confirmadas antes de retirar datos; no recupera confirmaciones
+  al subir de nuevo. No tocar identidades, membresías o auditoría comercial.
+- Entrega pequeña: contrato, servicio y guardia interna probados, sin HTTP/UI y
+  sin activar la guardia desde operaciones actuales. Siguiente 2.17 define y
+  conecta adaptador con CSRF/origen, slots compartidos y cookies rotadas;
+  posteriormente integrar UI y exigir guardia dentro de alta/cambio.
+- El VPS, imágenes y dominio permanecen fuera de esta entrega. No se necesitan
+  compras; confirmar requisitos/costos concretos al preparar despliegue y MFA.
+- Actualización del usuario: ya adquirió taller-carrillo.com y apuntó DNS a su
+  VPS. Registrar el nombre como contexto, sin IP pública ni origen hardcodeado.
+  DNS, proxy y TLS todavía sin verificar; no hubo cambios remotos desde aquí.
