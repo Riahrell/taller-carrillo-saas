@@ -93,5 +93,5 @@ de sesión. La fachada de verificación no emite sesiones. Sin HTTP o activació
 MFA pública. 2.29 conecta contraseña/política global a pendientes internos.
 2.30 implementa desafíos/permiso de buzón internos; no son login, factor o reset
 de contraseña. 2.31 añade cola cifrada/cuotas atómicas, sin enviar. Sigue
-consumidor/transporte simulado y revalidación antes de envío real. Ver
-`deliveries/access-2.31.md`.
+incorporación TOTP completa después del consumidor simulado 2.32, antes de
+SMTP/HTTP públicos. Ver `deliveries/access-2.32.md` y `access-security-closure.md`.

@@ -955,3 +955,24 @@ Descartar ciphertext al confirmar/revocar y con purga explícita acotada al cadu
 no equivale a borrado seguro de backups/WAL. Falta programar mantenimiento.
 Esta fase no implementa envío, leases/reintentos ni afirma entrega; sigue consumidor
 y transporte simulado. No introducir SMTP/HTTP antes de esos controles.
+
+## Acceso 2.32: entrega conservadora y prioridad de cierre
+
+Continuar seguridad antes de inventario, conforme aclaró el usuario. Criterios
+finitos y evidencia en access-security-closure.md; no medir avance solo por tests.
+
+Consumidor interno con transporte inyectado, sin SMTP ni worker programado.
+Lease máximo treinta segundos, nunca más allá de caducidad. Validar identidad,
+revisión, contraseña, dirección, propósito, estado y token bajo locks; confirmar
+lease y revalidación antes de llamar transporte fuera de la transacción.
+Reintentar solo NOT_SENT explícito, con sesenta segundos y máximo tres intentos,
+misma identidad del mensaje y sin gastar cuota nueva de solicitud. Unknown,
+excepción, respuesta tardía o lease abandonado: incierto terminal, sin reenvío.
+La recuperación conservadora puede perder un envío no comenzado si el proceso
+muere; nunca se interpreta timeout como prueba de ausencia de efecto.
+
+No hay exactamente-una-entrega entre PostgreSQL y un proveedor externo. La
+revocación entre última validación y envío puede permitir que salga un correo
+ya inválido: el consumo vuelve a exigir estado vigente, sin autoridad del envío.
+Los futuros adaptadores deben imponer deadline total y usar origen HTTPS canónico;
+no pueden mapear fallos genéricos a NOT_SENT ni registrar el payload.

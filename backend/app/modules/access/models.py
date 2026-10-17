@@ -337,6 +337,46 @@ class EnrollmentMailOutbox(Base):
     discarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class EnrollmentMailDelivery(Base):
+    """Latest delivery lease/result; provider acceptance is not authentication."""
+
+    __tablename__ = "enrollment_mail_deliveries"
+    __table_args__ = (
+        CheckConstraint("attempts BETWEEN 1 AND 3", name="attempt_bounds"),
+        CheckConstraint(
+            "lease_until > started_at AND lease_until <= started_at + "
+            "interval '30 seconds'",
+            name="lease_bounds",
+        ),
+        CheckConstraint(
+            "(state = 'leased' AND finished_at IS NULL AND next_attempt_at IS NULL) OR "
+            "(state = 'retry' AND attempts < 3 AND finished_at IS NOT NULL AND "
+            "finished_at >= started_at AND next_attempt_at IS NOT NULL AND "
+            "next_attempt_at >= finished_at + interval '60 seconds') OR "
+            "(state IN ('accepted', 'uncertain', 'rejected', 'cancelled') AND "
+            "finished_at IS NOT NULL AND finished_at >= started_at AND "
+            "next_attempt_at IS NULL)",
+            name="delivery_state",
+        ),
+    )
+
+    challenge_id: Mapped[UUID] = mapped_column(
+        ForeignKey(
+            "enrollment_mail_outbox.challenge_id",
+            ondelete="RESTRICT",
+            name="fk_mail_delivery_outbox",
+        ),
+        primary_key=True,
+    )
+    state: Mapped[str] = mapped_column(String(10))
+    attempts: Mapped[int] = mapped_column(Integer)
+    claim_id: Mapped[UUID] = mapped_column(unique=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    lease_until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class EnrollmentMailThrottle(Base):
     """Mail quotas independent of password/MFA verification failures."""
 

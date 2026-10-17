@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.31, correo MFA cifrado y cuotas internas; web sin segundo factor
+## Estado: acceso 2.32, consumidor de correo MFA con transporte simulado; web sin segundo factor
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -34,7 +34,7 @@ La fundación tiene validación integral local y workflow CI preparado. Su prime
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md), [última entrega 2.31](docs/deliveries/access-2.31.md)
+- [Aceptación](docs/acceptance.md), [última entrega 2.32](docs/deliveries/access-2.32.md)
   y [contrato de diseño 2.20](docs/deliveries/access-2.20.md).
 - [MFA y recuperación](docs/mfa-recovery-contract.md): TOTP, incorporación,
   códigos offline y separación de recuperación por correo. Primitivas internas
@@ -638,7 +638,9 @@ Cookies previas sin revisión dejan de servir, sin backfill. 2.29 inicia login
 MFA interno con política global y pendientes restringidos. 2.30 añade desafíos
 de buzón y permisos restringidos (0016), sin envíos. 2.31 compone desafío,
 cola cifrada y cuotas de correo en un commit (0017), con descarte del contenido.
-Sigue 2.32: consumidor/transporte simulado, revalidación y fallos de entrega. Faltan los caminos completos de autenticación/
+2.32 añade consumidor interno con leases, revalidación y transporte simulado (0018).
+Sigue incorporación TOTP completa con el permiso de buzón.
+[Criterios de cierre de seguridad antes de inventario](docs/access-security-closure.md). Faltan los caminos completos de autenticación/
 recuperación antes de HTTP/UI.
 El contrato 2.20 ya define incorporación con prueba fresca de buzón, obligatoriedad
 admin global, recuperación sin bypass y cambios futuros de sesión/confirmación.

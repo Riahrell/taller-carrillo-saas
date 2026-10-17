@@ -168,3 +168,9 @@ Probar ausencia de destinatario/token/IP en claro en las nuevas tablas, integrid
 y vinculación del cifrado, rotación, cuota/cooldown/caducidad, concurrencia real,
 rollback ante cifrado/DB/commit, descarte al confirmar/revocar y purga exacta.
 Sin worker/envío: reintentos, entrega ambigua y transporte simulado siguen 2.32.
+
+Acceso 2.32: transporte simulado fuera de transacciones; una llamada en concurrencia,
+revalidación antes de enviar, límites exactos de lease/reintento/caducidad, excepción
+y lease abandonado sin reenvío, rollback de claim/autorización y ACK fallido sin
+reintento. Confirmación de buzón/sesión no se deriva de aceptación de transporte.
+Seguridad sigue antes de inventario: criterios en access-security-closure.md.

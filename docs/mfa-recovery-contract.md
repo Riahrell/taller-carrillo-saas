@@ -286,7 +286,10 @@ histórica verificada ni activa factor/sesión. Ver [entrega 2.30](deliveries/ac
 2.31 implementa staging cifrado y cuotas atómicos (0017), no un emisor.
 Se divide la entrega para revisar primero persistencia, claves y rollback.
 Ver [entrega 2.31](deliveries/access-2.31.md).
-**2.32: consumidor y transporte simulado con revalidación y fallos**,
-antes de SMTP real/HTTP. Después incorporación TOTP completa, recuperación,
+2.32 implementa consumidor interno/leases con transporte simulado y revalidación,
+sin SMTP o worker operativo. Ver [entrega](deliveries/access-2.32.md).
+Sigue incorporación TOTP completa, recuperación,
 hooks de roles/factores y último admin, reautenticación MFA, UI y operación.
 Mantener el alcance de la puerta de seguridad previa al inventario.
+
+Prioridad y criterios de cierre: [seguridad de acceso](access-security-closure.md).

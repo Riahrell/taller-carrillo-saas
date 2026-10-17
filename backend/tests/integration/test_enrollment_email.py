@@ -21,6 +21,7 @@ from app.modules.access import (
     authentication,
     email_outbox,
     login_challenges,
+    mail_delivery,
     mfa_pending,
     security_state,
     sessions,
@@ -29,6 +30,7 @@ from app.modules.access import enrollment_email as service
 from app.modules.access.mfa_sessions import MfaSessionIssuer
 from app.modules.access.models import (
     EnrollmentEmailChallenge,
+    EnrollmentMailDelivery,
     EnrollmentMailOutbox,
     EnrollmentMailThrottle,
     LoginChallenge,
@@ -91,6 +93,7 @@ def state(mfa_state, monkeypatch):
         yield state
     finally:
         with state["owner"].begin() as connection:
+            connection.execute(delete(EnrollmentMailDelivery))
             connection.execute(
                 delete(EnrollmentMailOutbox).where(
                     EnrollmentMailOutbox.challenge_id.in_(
@@ -845,3 +848,302 @@ def test_concurrent_issuance_has_one_ciphertext_and_one_quota_reservation(
             release.set()
         assert first.result(timeout=5) is not None and second.result(timeout=5) is None
     assert len(outbox_rows(state)) == 1 and {r[2] for r in quota_rows(state)} == {1}
+
+
+class RecordingTransport:
+    """Memory only; never SMTP, URL construction or actual delivery."""
+
+    def __init__(self, state):
+        self.state = state
+        # db_session intentionally keeps its guard transaction checked out.
+        # The dispatcher must return every EXTRA connection before transport.
+        self.baseline_checkouts = state["runtime"].pool.checkedout()
+        self.calls = []
+        self.action = lambda: mail_delivery.TransportOutcome.ACCEPTED
+
+    def send(self, payload, *, message_id, expires_at, deadline):
+        assert self.state["runtime"].pool.checkedout() == self.baseline_checkouts
+        self.calls.append((payload, message_id, expires_at, deadline))
+        return self.action()
+
+
+@pytest.fixture
+def dispatch(state, monkeypatch):
+    monkeypatch.setattr(mail_delivery, "_database_now", lambda session: state["now"])
+    transport = RecordingTransport(state)
+    worker = mail_delivery.MailDispatcher(
+        state["runtime"], protection=state["protection"], transport=transport
+    )
+    return worker, transport
+
+
+def delivery_rows(state):
+    with Session(state["runtime"]) as session:
+        return list(session.scalars(select(EnrollmentMailDelivery)))
+
+
+@pytest.mark.parametrize(
+    "outcome,expected",
+    [
+        ("ACCEPTED", "accepted"),
+        ("NOT_SENT", "retry"),
+        ("REJECTED", "rejected"),
+        ("UNKNOWN", "uncertain"),
+    ],
+)
+def test_dispatch_settles_explicit_transport_outcomes_outside_transactions(
+    state, dispatch, outcome, expected
+):
+    worker, transport = dispatch
+    draft = issue(state)
+    transport.action = lambda: getattr(mail_delivery.TransportOutcome, outcome)
+    assert worker.run_one().value == expected
+    assert len(transport.calls) == 1
+    payload, message_id, expires_at, deadline = transport.calls[0]
+    assert payload.recipient == draft.recipient and payload.token == draft.token
+    assert expires_at == draft.expires_at and deadline == state["now"] + timedelta(
+        seconds=30
+    )
+    (row,) = delivery_rows(state)
+    assert (
+        row.challenge_id == message_id and row.attempts == 1 and row.state == expected
+    )
+    assert (outbox_rows(state)[0].ciphertext is not None) is (expected == "retry")
+    assert worker.run_one() == mail_delivery.DispatchResult.IDLE
+    assert len(transport.calls) == 1
+    # Even provider acceptance is not mailbox confirmation or session authority.
+    assert snapshot(state)[0] is None and snapshot(state)[1][0][3] is None
+
+
+@pytest.mark.parametrize("failure", ["timeout", "invalid_result"])
+def test_dispatch_never_retries_ambiguous_failure_or_publishes_provider_error(
+    state, dispatch, failure
+):
+    worker, transport = dispatch
+    issue(state)
+
+    def action():
+        if failure == "timeout":
+            raise TimeoutError("Synthetic sensitive provider details")
+        return "accepted"
+
+    transport.action = action
+    assert worker.run_one() == mail_delivery.DispatchResult.UNCERTAIN
+    state["now"] += timedelta(seconds=60)
+    assert worker.run_one() == mail_delivery.DispatchResult.IDLE
+    assert len(transport.calls) == 1 and outbox_rows(state)[0].ciphertext is None
+
+
+@pytest.mark.parametrize(
+    "change", ["inactive", "email", "password", "revision", "pending", "challenge"]
+)
+def test_dispatch_revalidates_source_before_sending(state, dispatch, change):
+    worker, transport = dispatch
+    issue(state)
+    with Session(state["runtime"]) as session, session.begin():
+        user = session.get(User, state["identity"])
+        if change == "inactive":
+            user.is_active = False
+        elif change == "email":
+            user.email = "changed-" + secrets.token_hex(4) + "@example.invalid"
+        elif change == "password":
+            user.password_hash = hash_password(SecretStr(secrets.token_urlsafe(32)))
+        elif change == "revision":
+            user.security_revision += 1
+        elif change == "pending":
+            session.execute(
+                update(MfaPending)
+                .where(MfaPending.user_id == user.id)
+                .values(finished_at=state["now"])
+            )
+        else:
+            session.execute(
+                update(EnrollmentEmailChallenge)
+                .where(EnrollmentEmailChallenge.user_id == user.id)
+                .values(closed_at=state["now"])
+            )
+    assert worker.run_one() == mail_delivery.DispatchResult.CANCELLED
+    assert not transport.calls and outbox_rows(state)[0].ciphertext is None
+
+
+def test_dispatch_exact_expiry_discards_without_calling_transport(state, dispatch):
+    worker, transport = dispatch
+    draft = issue(state)
+    state["now"] = draft.expires_at
+    assert worker.run_one() == mail_delivery.DispatchResult.CANCELLED
+    assert not transport.calls
+
+
+def test_dispatch_known_not_sent_retries_after_delay_at_most_three_attempts(
+    state, dispatch
+):
+    worker, transport = dispatch
+    issue(state)
+    before = quota_rows(state)
+    transport.action = lambda: mail_delivery.TransportOutcome.NOT_SENT
+    for attempt in range(1, 4):
+        expected = "retry" if attempt < 3 else "rejected"
+        assert worker.run_one().value == expected
+        assert delivery_rows(state)[0].attempts == attempt
+        assert worker.run_one() == mail_delivery.DispatchResult.IDLE
+        state["now"] += timedelta(seconds=59)
+        assert worker.run_one() == mail_delivery.DispatchResult.IDLE
+        state["now"] += timedelta(seconds=1)
+    assert worker.run_one() == mail_delivery.DispatchResult.IDLE
+    assert len(transport.calls) == 3 and len({r[1] for r in transport.calls}) == 1
+    assert quota_rows(state) == before
+
+
+def test_dispatch_crashed_lease_becomes_uncertain_and_stale_ack_cannot_reopen(
+    state, dispatch
+):
+    worker, transport = dispatch
+    issue(state)
+    claim = worker._claim()
+    assert delivery_rows(state)[0].state == "leased"
+    assert worker.run_one() == mail_delivery.DispatchResult.IDLE
+    state["now"] += timedelta(seconds=30)
+    assert worker.run_one() == mail_delivery.DispatchResult.UNCERTAIN
+    assert (
+        worker._finish(claim, mail_delivery.TransportOutcome.ACCEPTED)
+        == mail_delivery.DispatchResult.STALE
+    )
+    assert not transport.calls and delivery_rows(state)[0].state == "uncertain"
+
+
+def test_dispatch_revocation_between_claim_and_authorize_prevents_send(
+    state, dispatch, monkeypatch
+):
+    worker, transport = dispatch
+    issue(state)
+    original = worker._authorize
+
+    def revoke(claim):
+        with Session(state["runtime"]) as session, session.begin():
+            login_challenges.revoke_user_challenges(session, state["identity"])
+        return original(claim)
+
+    monkeypatch.setattr(worker, "_authorize", revoke)
+    assert worker.run_one() == mail_delivery.DispatchResult.CANCELLED
+    assert not transport.calls and delivery_rows(state)[0].state == "cancelled"
+
+
+def test_dispatch_revocation_during_transport_keeps_token_invalid_even_if_accepted(
+    state, dispatch
+):
+    worker, transport = dispatch
+    draft = issue(state)
+
+    def revoke():
+        with Session(state["runtime"]) as session, session.begin():
+            login_challenges.revoke_user_challenges(session, state["identity"])
+        return mail_delivery.TransportOutcome.ACCEPTED
+
+    transport.action = revoke
+    assert worker.run_one() == mail_delivery.DispatchResult.ACCEPTED
+    assert len(transport.calls) == 1 and confirm(state, draft, inspect=True) is False
+    assert outbox_rows(state)[0].ciphertext is None
+
+
+def test_dispatch_late_transport_answer_is_uncertain_without_retry(state, dispatch):
+    worker, transport = dispatch
+    issue(state)
+
+    def late():
+        state["now"] += timedelta(seconds=30)
+        return mail_delivery.TransportOutcome.ACCEPTED
+
+    transport.action = late
+    assert worker.run_one() == mail_delivery.DispatchResult.UNCERTAIN
+    assert worker.run_one() == mail_delivery.DispatchResult.IDLE
+    assert len(transport.calls) == 1
+
+
+@pytest.mark.parametrize("stage,calls", [(1, 0), (2, 0), (3, 1)])
+def test_dispatch_commit_failure_never_sends_before_claim_or_authorization_commit(
+    state, dispatch, stage, calls
+):
+    worker, transport = dispatch
+    issue(state)
+    count = 0
+
+    def fail(session):
+        nonlocal count
+        count += 1
+        if count == stage:
+            raise SQLAlchemyError("Synthetic dispatcher commit failure")
+
+    event.listen(worker._factory, "before_commit", fail)
+    with pytest.raises(
+        mail_delivery.MailDeliveryUnavailable, match="^Mail delivery unavailable$"
+    ):
+        worker.run_one()
+    assert len(transport.calls) == calls
+    event.remove(worker._factory, "before_commit", fail)
+    if stage == 1:
+        assert not delivery_rows(state)
+    else:
+        assert delivery_rows(state)[0].state == "leased"
+        state["now"] += timedelta(seconds=30)
+        assert worker.run_one() == mail_delivery.DispatchResult.UNCERTAIN
+        assert len(transport.calls) == calls
+
+
+def test_dispatch_ciphertext_tampering_fails_closed_without_transport_or_lease(
+    state, dispatch
+):
+    worker, transport = dispatch
+    issue(state)
+    (row,) = outbox_rows(state)
+    with state["runtime"].begin() as connection:
+        connection.execute(
+            update(EnrollmentMailOutbox).values(
+                ciphertext=bytes([row.ciphertext[0] ^ 1]) + row.ciphertext[1:]
+            )
+        )
+    with pytest.raises(mail_delivery.MailDeliveryUnavailable):
+        worker.run_one()
+    assert not transport.calls and not delivery_rows(state)
+
+
+def test_dispatch_concurrent_consumers_do_not_send_twice(state, dispatch):
+    worker, transport = dispatch
+    issue(state)
+    entered, release = Event(), Event()
+
+    def hold():
+        entered.set()
+        if not release.wait(10):
+            raise TimeoutError("Synthetic transport barrier")
+        return mail_delivery.TransportOutcome.ACCEPTED
+
+    transport.action = hold
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(worker.run_one)
+        try:
+            assert entered.wait(5)
+            second = pool.submit(worker.run_one)
+            assert second.result(timeout=5) == mail_delivery.DispatchResult.IDLE
+            assert delivery_rows(state)[0].state == "leased"
+        finally:
+            release.set()
+        assert first.result(timeout=5) == mail_delivery.DispatchResult.ACCEPTED
+    assert len(transport.calls) == 1 and delivery_rows(state)[0].attempts == 1
+
+
+def test_dispatch_delete_permissions_constraints_and_downgrade_guard(state, dispatch):
+    worker, _ = dispatch
+    issue(state)
+    assert worker.run_one() == mail_delivery.DispatchResult.ACCEPTED
+    with pytest.raises(DBAPIError), state["runtime"].begin() as connection:
+        connection.execute(delete(EnrollmentMailDelivery))
+    with pytest.raises(IntegrityError), state["runtime"].begin() as connection:
+        connection.execute(update(EnrollmentMailDelivery).values(attempts=4))
+    config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    with (
+        pytest.raises(DBAPIError, match="Downgrade refused"),
+        state["owner"].begin() as connection,
+    ):
+        config.attributes["connection"] = connection
+        command.downgrade(config, "0017_enrollment_mail_outbox")
+    assert delivery_rows(state)[0].state == "accepted"

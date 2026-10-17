@@ -321,3 +321,10 @@ Enrollment_mail_throttles guarda cuenta/IP con HMAC de clave externa independien
 ventana, cantidad y último envío reservado. No almacena IP o correo en claro.
 No cambia usuarios históricos ni encola desafíos anteriores. Downgrade rechaza
 cualquier fila nueva, incluso descartada/cuota cero. Ver deliveries/access-2.31.md.
+
+Acceso 2.32 (0018): enrollment_mail_deliveries referencia a outbox, conserva el
+último lease/claim, contador acotado, fechas y resultado. No guarda contenido,
+excepciones o respuesta del proveedor. Estados leased/retry/accepted/uncertain/
+rejected/cancelled; accepted significa aceptación del transporte, nunca buzón
+confirmado. DELETE runtime denegado y downgrade con cualquier fila rechazado.
+No es un historial por intento ni reemplaza eventos de seguridad.
