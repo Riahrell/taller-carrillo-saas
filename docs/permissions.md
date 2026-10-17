@@ -172,5 +172,8 @@ origen/CSRF, IP de proxy confiable y slots compartidos con login/alta. Contrase�
 único campo; no selecciona identidad. Cookies de sesión/CSRF solo tras commit,
 sin prolongar vida absoluta. Rechazo genérico sin borrar cookies ni publicar actor.
 No admite cookies mixtas de autenticación pendiente ni JSON ambiguo.
-Todavía no hay UI de confirmación ni llamadas a la guardia desde alta/cambio;
-una sesión válida sigue bastando para esas operaciones hasta completar 2.18.
+En 2.18, alta/cambio requieren confirmación vigente dentro de su transacción,
+incluso un no-op. Lecturas mantienen su permiso admin sin exigir contraseña
+reciente. La pantalla confirma identidad antes de montar listado/formulario;
+un 428 retira el borrador y exige nueva revisión sin replay. Ventana del servidor
+de cinco minutos; temporizador local conservador de hasta cuatro minutos y medio.

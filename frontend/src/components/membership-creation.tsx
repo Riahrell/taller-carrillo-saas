@@ -107,7 +107,11 @@ export default function MembershipCreation({
       }
     } catch (error) {
       if (current.signal.aborted) return;
-      if (error instanceof ApiError && error.status === 409) {
+      if (error instanceof ApiError && error.status === 428) {
+        onProblem(
+          "La confirmación de identidad venció. Comprueba el acceso y revisa el alta de nuevo.",
+        );
+      } else if (error instanceof ApiError && error.status === 409) {
         setMessage(
           "No se pudo crear este acceso con ese correo. Revisa el listado antes de intentar otra alta.",
         );

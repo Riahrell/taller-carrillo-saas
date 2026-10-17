@@ -7,6 +7,13 @@ El POST de alta administrativa añadido en 2.14 tiene su propio
 [contrato de alta](user-provisioning-contract.md), sin cambiar GET/PATCH de este documento.
 Los nombres de rutas y cabeceras son decisiones técnicas de este adaptador.
 
+Desde 2.18, PATCH exige además confirmación reciente de identidad dentro de la
+transacción, antes de comprobar ETag/aplicar el cambio, incluso para no-op.
+Admin válido sin prueba vigente obtiene 428 `Recent authentication required`,
+no-store y sin cookies/cabecera de actor/ETag. Rechazo revierte toda actividad,
+auditoría o cambio. GET no exige confirmación reciente. La pantalla pide contraseña
+actual antes de mostrar listado y controles; ver [contrato](reauthentication-contract.md).
+
 | Navegador | Entrada | Éxito |
 | --- | --- | --- |
 | GET /api/auth/memberships | Query opcional limit/after; cabeceras de lectura de acceso. | 200 con items y next_after, máximo 100 registros. |

@@ -26,6 +26,7 @@ from app.modules.access.http_middleware import HttpSecurityMiddleware
 from app.modules.access.http_security import HttpSecurity, RequestRejected
 from app.modules.access.http_service import HttpAccess
 from app.modules.access.membership import AccessDenied
+from app.modules.access.reauthentication import RecentAuthenticationRequired
 from app.modules.access.routes import router as access_router
 from app.modules.access.trusted_proxy import TrustedProxy
 
@@ -81,6 +82,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @application.exception_handler(AccessDenied)
     async def unauthenticated(_request: Request, _error: AccessDenied):
         return domain_error(401, "Access denied")
+
+    @application.exception_handler(RecentAuthenticationRequired)
+    async def recent_required(_request: Request, _error: RecentAuthenticationRequired):
+        return domain_error(428, "Recent authentication required")
 
     @application.exception_handler(LastAdministratorRequired)
     async def last_administrator(_request: Request, _error: LastAdministratorRequired):

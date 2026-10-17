@@ -28,11 +28,11 @@ Acceso 2.16 añade contrato y servicio interno de confirmación, rotación atóm
 guardia transaccional y migración 0008. No añade HTTP/UI ni activa la guardia
 en administración. Acceso 2.17 conecta POST de confirmación con contexto/CSRF,
 slots compartidos y cookies rotadas tras commit. El middleware rechaza claves
-JSON duplicadas. Falta formulario y guardia activa en alta/cambio; esa brecha
-continúa abierta.
-Resultados actuales en `deliveries/access-2.17.md`; entregas anteriores como
+JSON duplicadas. Acceso 2.18 añade formulario de identidad y guardia obligatoria
+en alta/cambio, con rollback ante confirmación ausente, vencida o invalidada.
+Resultados actuales en `deliveries/access-2.18.md`; entregas anteriores como
 registros históricos.
-El hito 2 sigue abierto: falta integrar y exigir la reautenticación reciente,
+El hito 2 sigue abierto: faltan MFA, escaneos automatizados,
 gestión global de cuentas, permisos de otros módulos, consulta/ampliación de
 auditoría, recuperación y limpieza de registros de acceso.
 Contrato actualizado en `auth-http-contract.md`, con límites y pendientes explícitos.

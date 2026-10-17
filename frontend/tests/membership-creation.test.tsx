@@ -10,6 +10,7 @@ import MembershipWorkspace from "@/components/membership-workspace";
 import { accessApi, type SessionContext } from "@/lib/access/api";
 import { ApiError } from "@/lib/api/client";
 import { membershipsApi, type Detail } from "@/lib/memberships/api";
+import { confirmIdentity } from "./confirm-identity";
 
 const actor = "00000000-0000-4000-8000-000000000001";
 const target = "00000000-0000-4000-8000-000000000002";
@@ -31,6 +32,7 @@ const password = " " + "🔧".repeat(15) + " ";
 beforeEach(() => {
   vi.stubGlobal("BroadcastChannel", undefined);
   vi.spyOn(accessApi, "session").mockResolvedValue(context);
+  vi.spyOn(accessApi, "reauthenticate").mockResolvedValue(undefined);
   vi.spyOn(membershipsApi, "create").mockResolvedValue(created);
   vi.spyOn(membershipsApi, "detail").mockResolvedValue(created);
   vi.spyOn(membershipsApi, "page").mockResolvedValue({
@@ -40,6 +42,7 @@ beforeEach(() => {
 });
 async function open() {
   render(<MembershipWorkspace mode="create" />);
+  await confirmIdentity();
   await screen.findByLabelText("Correo del nuevo usuario");
 }
 async function review() {
@@ -120,7 +123,7 @@ describe("alta asistida", () => {
       await screen.findByRole("heading", { name: "Acceso creado" }),
     ).toBeInTheDocument();
     expect(membershipsApi.create).toHaveBeenCalledOnce();
-    expect(accessApi.session).toHaveBeenCalledTimes(2);
+    expect(accessApi.session).toHaveBeenCalledTimes(3);
     expect(membershipsApi.detail).toHaveBeenCalledWith(
       actor,
       target,
@@ -194,7 +197,9 @@ describe("alta asistida", () => {
       fill();
       confirm();
       expect(await screen.findByRole("alert")).toHaveTextContent(
-        "No pudimos confirmar el resultado del alta",
+        status === 428
+          ? "La confirmación de identidad venció"
+          : "No pudimos confirmar el resultado del alta",
       );
       expect(screen.queryByText(email)).not.toBeInTheDocument();
       expect(
@@ -205,6 +210,7 @@ describe("alta asistida", () => {
   );
   it("si cambia contexto después del POST no muestra éxito", async () => {
     vi.mocked(accessApi.session)
+      .mockResolvedValueOnce(context)
       .mockResolvedValueOnce(context)
       .mockResolvedValue({ ...context, membership_id: target });
     await review();

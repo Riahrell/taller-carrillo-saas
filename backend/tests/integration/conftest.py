@@ -168,6 +168,41 @@ def http_identity(db_session, databases):
 
 
 @pytest.fixture
+def recent_session(databases):
+    """Arrange confirmed state for legacy business tests, never shipped at runtime.
+
+    The guarded databases fixture restricts this helper to ephemeral PostgreSQL.
+    New confirmation/HTTP tests exercise real password verification and rotation.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+
+    from app.modules.access.login_challenges import _password_fingerprint
+    from app.modules.access.models import SessionRecord, TenantMembership, User
+    from app.modules.access.sessions import _database_now, _token_hash
+
+    runtime, _, _ = databases
+
+    def mark(token):
+        with Session(runtime) as session, session.begin():
+            row = session.scalar(
+                select(SessionRecord).where(
+                    SessionRecord.token_hash == _token_hash(token)
+                )
+            )
+            assert row is not None
+            user = session.scalar(
+                select(User)
+                .join(TenantMembership, TenantMembership.user_id == User.id)
+                .where(TenantMembership.id == row.membership_id)
+            )
+            row.reauthenticated_at = _database_now(session)
+            row.reauthentication_fingerprint = _password_fingerprint(user)
+
+    return mark
+
+
+@pytest.fixture
 def new_identity_scope(http_identity):
     """Track HTTP-created synthetic users without changing operational accounts."""
     from uuid import uuid4

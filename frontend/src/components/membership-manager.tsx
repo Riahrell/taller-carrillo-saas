@@ -173,7 +173,14 @@ export default function MembershipManager({
       }
     } catch (error) {
       if (current.signal.aborted) return;
-      if (error instanceof ApiError && [409, 412].includes(error.status ?? 0)) {
+      if (error instanceof ApiError && error.status === 428) {
+        onProblem(
+          "La confirmación de identidad venció. Comprueba el acceso y revisa el cambio de nuevo.",
+        );
+      } else if (
+        error instanceof ApiError &&
+        [409, 412].includes(error.status ?? 0)
+      ) {
         setReview({
           ...original,
           stage: "blocked",

@@ -40,7 +40,7 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def administration(http_identity):
+def administration(http_identity, recent_session):
     state = dict(http_identity)
     runtime, owner = state["runtime"], state["owner"]
     with Session(runtime) as session, session.begin():
@@ -74,6 +74,8 @@ def administration(http_identity):
         state["pending_token"] = pending.token
         assert pending.token.get_secret_value() != state["challenge_hash"]
     state["service"] = MembershipAdministrator(runtime)
+    recent_session(state["actor_token"])
+    recent_session(state["other_token"])
     try:
         yield state
     finally:
@@ -221,6 +223,9 @@ def test_invalid_current_identity_denied_without_effects(administration, invalid
             }
             # clock_timestamp values differ: use one CTE timestamp for exact CHECK.
             clause = values[invalid].replace("clock_timestamp()", "ts.now")
+            clause = (
+                "reauthenticated_at=NULL, reauthentication_fingerprint=NULL, " + clause
+            )
             connection.execute(
                 text(
                     "WITH ts AS (SELECT clock_timestamp() AS now) "
@@ -377,7 +382,9 @@ def wait_blocked(owner, pid):
     pytest.fail("Contender did not actually wait on a PostgreSQL lock")
 
 
-def test_concurrent_self_demotions_retain_one_active_admin(administration):
+def test_concurrent_self_demotions_retain_one_active_admin(
+    administration, recent_session
+):
     state = administration
     with state["owner"].begin() as connection:
         connection.execute(
@@ -385,6 +392,7 @@ def test_concurrent_self_demotions_retain_one_active_admin(administration):
             .where(TenantMembership.id == state["target"])
             .values(role="admin")
         )
+    recent_session(state["target_tokens"][0])
     reached, release, second_started = Event(), Event(), Event()
     waiter = {}
 

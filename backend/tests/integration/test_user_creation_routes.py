@@ -35,7 +35,7 @@ CANARY = "carrillo-http-log-canary"
 
 
 @pytest.fixture
-def creation_web(new_identity_scope, monkeypatch):
+def creation_web(new_identity_scope, monkeypatch, recent_session):
     state = new_identity_scope
     monkeypatch.setattr(
         "app.modules.access.trusted_proxy._proxy_addresses",
@@ -63,6 +63,7 @@ def creation_web(new_identity_scope, monkeypatch):
             ).status_code
             == 200
         )
+        recent_session(SecretStr(client.cookies[policy.session_cookie]))
         yield client, state, policy
 
 
@@ -205,6 +206,7 @@ def test_session_required_even_with_signed_csrf(creation_web, invalid):
         if invalid == "revoked":
             record.revoked_at = record.created_at
         elif invalid == "expired":
+            record.reauthenticated_at = record.reauthentication_fingerprint = None
             record.created_at -= timedelta(hours=9)
             record.last_seen_at -= timedelta(hours=9)
             record.expires_at -= timedelta(hours=9)

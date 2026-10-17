@@ -702,3 +702,25 @@ Referencias: [query models FastAPI](https://fastapi.tiangolo.com/tutorial/query-
 - Nueva instrucción del usuario permite dejar limpia la VPS si es necesario.
   Sustituye preservar obligatoriamente el despliegue anterior; inventariar y
   respaldar recursos antes de retirarlos. No se ha accedido o borrado nada remoto.
+
+## Acceso 2.18: confirmación exigida en administración
+
+- Exigir la guardia de 2.16 dentro de alta/cambio, después de locks/autorización
+  y antes de ETag/cambio, también no-op. No introducir bypass de runtime.
+- Alta vuelve a comprobar vigencia después de hash/inserciones/auditoría, antes
+  de commit. Caducidad revierte todo. Cambio propio conserva revocación de sesión;
+  no ejecutar una guardia posterior que rechazaría esa revocación legítima.
+- 428 genérico sin cookies ni metadatos de éxito; lecturas siguen disponibles
+  con permiso admin sin exigir confirmación reciente en la API.
+- Formulario de contraseña actual antes de montar controles administrativos,
+  vaciado previo a red/desmontaje, contexto rereleído después de rotación. Cada
+  navegación/focus/visibilidad requiere nueva comprobación y confirmación.
+- Ventana local conservadora hasta 270s desde inicio del envío; servidor manda
+  con cinco minutos y reloj DB. Sin Storage, permiso persistido o replay automático.
+- Web Locks serializa peticiones entre pestañas cooperantes del mismo origen;
+  incluir GET por posibles respuestas que limpien cookies. Confirmación requiere
+  navegador compatible/HTTPS o localhost. AbortSignal acota cola/red; no promete
+  revertir efectos remotos ni eliminar carreras con clientes antiguos/manipulados.
+- Adoptar el orden de revisión v1.1: 2.19 escaneos de dependencias/secretos,
+  después MFA admin y recuperación, antes de inventario. Sin servicios adquiridos,
+  secretos nuevos, migraciones o trabajo en la VPS durante esta entrega.

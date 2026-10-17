@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.17
+## Estado: acceso 2.18
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -34,10 +34,10 @@ La fundación tiene validación integral local y workflow CI preparado. Su prime
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 2.17](docs/deliveries/access-2.17.md).
+- [Aceptación](docs/acceptance.md) y [entrega 2.18](docs/deliveries/access-2.18.md).
 - [Contrato de confirmación reciente](docs/reauthentication-contract.md): servicio
-  y POST `/api/auth/reauthenticate` disponibles; todavía sin formulario ni guardia
-  activada en las transacciones administrativas.
+  y POST `/api/auth/reauthenticate`, formulario y guardia obligatoria dentro de
+  las transacciones de alta/cambio administrativos. Sin prueba vigente: 428.
 - [Revisión de seguridad](docs/security-review.md) y [pruebas remotas](docs/staging-plan.md).
 - [Revisión del nuevo Plan Maestro v1.1](docs/reviews/plan-maestro-v1.1.md):
   diferencias, mejoras propuestas y adaptación de hitos; revisión documental,
@@ -612,13 +612,18 @@ esquema anterior no puede representar. No borrar registros para forzarlo.
 
 ## Siguiente tarea
 
-Acceso 2.18: integrar confirmación en frontend y activar la guardia en las
-transacciones administrativas, con recorrido completo. La API 2.17 verifica la
+Acceso 2.19: automatizar escaneos de dependencias y secretos, definiendo alcance,
+herramientas fijadas y tratamiento de hallazgos antes de incorporarlos a CI.
+Después, contrato de MFA obligatorio para administradores y recuperación segura,
+según la revisión del Plan Maestro v1.1. La API de confirmación verifica la
 contraseña y rota cookies de sesión/CSRF tras commit, con contexto obligatorio,
 no-store y slots compartidos. JSON ambiguo se rechaza en el middleware común.
 La prueba interna dura cinco minutos y no extiende la vida absoluta. Migración
-0008 sin cambios ni backfill. La guardia aún no se invoca desde las operaciones
-administrativas. Por prioridad explícita
+0008 sin cambios ni backfill. La guardia ya se exige en alta/cambio, incluyendo
+no-op; el alta vuelve a comprobarla antes del commit. La pantalla requiere
+contraseña actual, relee contexto tras rotar y retira controles al caducar o perder
+contexto. Web Locks coordina peticiones entre pestañas compatibles; no equivale
+a MFA ni elimina resultados inciertos por desconexión. Por prioridad explícita
 del usuario, seguridad precede al inventario: cerrar la puerta descrita en
 `docs/security-review.md` antes de 3.1. No hay fecha prometida ni certificación ASVS.
 VPS previsto: Contabo, compartido con imágenes. El usuario informa haber adquirido

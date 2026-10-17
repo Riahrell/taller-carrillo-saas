@@ -46,28 +46,39 @@ async function request<T>(
   options.signal?.addEventListener("abort", cancel, { once: true });
   const timeout = setTimeout(cancel, 15_000);
   try {
-    const response = await fetch(url, {
-      method: mutation ? (mutation.method ?? "POST") : "GET",
-      credentials: "same-origin",
-      cache: "no-store",
-      redirect: "error",
-      headers: {
-        Accept: "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-        ...(mutation
-          ? {
-              "Content-Type": "application/json",
-              "X-CSRF-Token": mutation.csrf,
-              ...(mutation.etag ? { "If-Match": mutation.etag } : {}),
-              ...(mutation.actor
-                ? { "X-Expected-Membership": mutation.actor }
-                : {}),
-            }
-          : {}),
-      },
-      body: mutation ? JSON.stringify(mutation.body) : undefined,
-      signal: controller.signal,
-    });
+    const perform = () =>
+      fetch(url, {
+        method: mutation ? (mutation.method ?? "POST") : "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+        redirect: "error",
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          ...(mutation
+            ? {
+                "Content-Type": "application/json",
+                "X-CSRF-Token": mutation.csrf,
+                ...(mutation.etag ? { "If-Match": mutation.etag } : {}),
+                ...(mutation.actor
+                  ? { "X-Expected-Membership": mutation.actor }
+                  : {}),
+              }
+            : {}),
+        },
+        body: mutation ? JSON.stringify(mutation.body) : undefined,
+        signal: controller.signal,
+      });
+    // Serialize requests (including reads that may clear stale cookies) across
+    // cooperating tabs. The timeout covers waiting for the lock too.
+    const response =
+      typeof navigator !== "undefined" && navigator.locks?.request
+        ? await navigator.locks.request(
+            "carrillo_access_http",
+            { signal: controller.signal },
+            perform,
+          )
+        : await perform();
     if (!response.ok) {
       throw new ApiError(
         "http",

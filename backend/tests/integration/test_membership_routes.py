@@ -31,7 +31,7 @@ READ = {"X-Requested-With": "XMLHttpRequest", "Sec-Fetch-Site": "same-origin"}
 
 
 @pytest.fixture
-def membership_web(http_identity, monkeypatch):
+def membership_web(http_identity, monkeypatch, recent_session):
     state = dict(http_identity)
     with Session(state["runtime"]) as session, session.begin():
         target = TenantMembership(
@@ -69,6 +69,7 @@ def membership_web(http_identity, monkeypatch):
             ).status_code
             == 200
         )
+        recent_session(SecretStr(client.cookies[policy.session_cookie]))
         yield client, state, policy
 
 
@@ -229,6 +230,7 @@ def test_invalid_session_cannot_administer(membership_web, invalid, method):
         if invalid == "revoked":
             record.revoked_at = record.created_at
         elif invalid == "expired":
+            record.reauthenticated_at = record.reauthentication_fingerprint = None
             record.created_at -= timedelta(hours=9)
             record.last_seen_at -= timedelta(hours=9)
             record.expires_at -= timedelta(hours=9)
@@ -782,6 +784,9 @@ def test_list_requires_live_identity(membership_web, invalid):
                 if invalid == "revoked":
                     record.revoked_at = record.created_at
                 else:
+                    record.reauthenticated_at = record.reauthentication_fingerprint = (
+                        None
+                    )
                     record.created_at -= timedelta(hours=9)
                     record.last_seen_at -= timedelta(hours=9)
                     record.expires_at -= timedelta(hours=9)

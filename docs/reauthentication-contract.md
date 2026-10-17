@@ -1,13 +1,17 @@
-# Confirmación reciente: servicio 2.16 y HTTP 2.17
+# Confirmación reciente: servicio, HTTP y administración 2.18
 
 ## Alcance y estado
 
 Servicio interno y guardia transaccional de 2.16; adaptador HTTP de 2.17 descrito
-al final. Todavía sin formulario.
-Las rutas administrativas actuales todavía no invocan esta guardia: **la brecha
-de confirmación reciente continúa abierta** hasta conectar UI y operaciones
-en la entrega siguiente. No activar un requisito imposible de satisfacer desde
-la aplicación actual ni confundir esta base con protección operativa terminada.
+al final, integrado con formulario en 2.18.
+En 2.18, alta y cambio invocan la guardia dentro de su transacción. Rechazo de
+admin sin confirmación vigente: 428 Recent authentication required, no-store,
+sin cookies, actor o metadatos de éxito y sin efectos. La creación comprueba
+al entrar y después de persistir/auditar, antes del commit: si caduca durante
+hashing o esperas se revierte el alta completa. Lecturas no exigen confirmación.
+El formulario del workspace administrativo confirma identidad antes de montar
+edición/listado y vuelve a leer el mismo contexto tras rotar token. Caducidad
+o 428 retiran borradores; se revisa otra vez sin repetir una escritura.
 
 La decisión responde a la prioridad de seguridad del usuario. OWASP recomienda
 reautenticar funciones sensibles y renovar tokens tras reautenticación; ver
@@ -108,7 +112,7 @@ Actualizar después no restaura pruebas ni revive sesiones revocadas. Respaldar
 antes de migrar datos operativos; nunca ejecutar el downgrade como reparación
 de login. No se elimina la protección de auditoría de la migración 0007.
 
-## Conexión pendiente y aceptación posterior
+## Contrato HTTP
 
 Contrato HTTP 2.17 definido antes de su implementación: POST
 `/api/auth/reauthenticate` por proxy, `/auth/reauthenticate` directo. JSON estricto
@@ -146,11 +150,39 @@ Una prueba CSRF previa no vale con token nuevo; un token previo no autentica.
 Ante respuesta perdida, iniciar sesión de nuevo; no repetir la confirmación.
 La protección del transporte debe probarse con PostgreSQL y proxy reales.
 
-Siguiente 2.18: confirmación en frontend con campos no persistentes, pérdida de
-visibilidad/contexto, rotación entre pestañas y resultado incierto sin replay;
-activar guardia en alta y cambios dentro de su transacción, con denegaciones
-sin efectos y recorrido completo. Mantener ejecutable cada entrega. No afirmar
-que CSRF/slots HTTP se probaron para un endpoint que aún no existe.
+## Formulario y coordinación 2.18
+
+Campo no controlado de contraseña actual, `autocomplete=current-password`, sin
+estado React, Storage, URL, logs ni vista de revelado. Se vacía el campo antes
+de esperar red y al desmontar. JavaScript no permite prometer borrado criptográfico
+del string transitorio ni controlar extensiones/gestores de contraseñas.
+Mutex bloquea doble envío. Tras 204/contexto esperado, se relee sesión y se exige
+el mismo usuario/tenant/membresía y perfil admin antes de montar los controles.
+
+La pantalla usa hasta 270 segundos desde el inicio del envío, descontando el
+tiempo de preparación/red, como margen conservador. El servidor decide vigencia
+en cada escritura con su reloj y ventana de cinco minutos. Cada navegación,
+focus/pageshow, retorno de visibilidad o aviso `changed` vuelve a comprobar
+contexto y solicita confirmación: no hay permiso persistente entre pantallas.
+Ocultar la pestaña retira los formularios. Cambiar contexto durante una escritura
+descarta su respuesta y exige revisar el estado; abortar no revierte un commit.
+428 retira borradores y exige revisión explícita; nunca reenvía alta/PATCH.
+
+Web Locks (`carrillo_access_http`) coordina todas las peticiones de esta versión
+entre pestañas del mismo origen, incluyendo lecturas que pueden retirar cookies.
+El límite de 15 segundos incluye espera en cola, con AbortSignal. La confirmación
+se rechaza localmente si el navegador no ofrece Web Locks; requiere navegador
+compatible y contexto seguro HTTPS o localhost. Otras funciones conservan su
+comportamiento anterior en navegadores sin esa API.
+[MDN Web Locks](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API).
+
+BroadcastChannel solo avisa que hay que releer contexto; nunca concede autoridad.
+Web Locks coordina clientes cooperantes, no clientes manipulados o versiones
+antiguas. Preparación CSRF y envío son peticiones separadas: una rotación intermedia
+puede causar un rechazo seguro. Cancelar una petición ya enviada o perder la red
+no garantiza deshacer cookies/servidor. Ante resultado incierto no hay replay;
+si se perdió la rotación, iniciar sesión de nuevo. No se afirma eliminación de
+todas las carreras entre navegadores ni revocación global desde un token antiguo.
 
 MFA/passkeys, recuperación, auditoría de eventos de autenticación, limpieza de
 throttles y revisión de seguridad general siguen pendientes en `security-review.md`.

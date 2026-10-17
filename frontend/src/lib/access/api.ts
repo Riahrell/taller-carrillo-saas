@@ -1,6 +1,7 @@
 import {
   ApiError,
   getJson,
+  createJson,
   sendJson,
   type RequestOptions,
 } from "@/lib/api/client";
@@ -115,6 +116,40 @@ async function mutate<T>(
   return sendJson(path, body, csrf, decode, options);
 }
 export const accessApi = {
+  reauthenticate: async (
+    actor: string,
+    password: string,
+    options: RequestOptions = {},
+  ) => {
+    id(actor);
+    if (!navigator.locks?.request)
+      throw new ApiError(
+        "csrf",
+        "La confirmación requiere coordinación del navegador.",
+      );
+    if (Array.from(password).length < 1 || Array.from(password).length > 128)
+      throw new TypeError("Invalid confirmation");
+    await getJson("/auth/csrf", empty, options);
+    const csrf = readCsrfCookie(
+      document.cookie,
+      window.location.protocol === "https:",
+    );
+    return createJson(
+      "/auth/reauthenticate",
+      { password },
+      csrf,
+      actor,
+      (value, status, headers) => {
+        if (
+          status !== 204 ||
+          value !== undefined ||
+          headers.get("X-Access-Membership") !== actor
+        )
+          throw new Error("Invalid confirmation response");
+      },
+      options,
+    );
+  },
   session: (options: RequestOptions = {}) =>
     getJson("/auth/session", decodeSession, options),
   prepare: (options: RequestOptions = {}) =>

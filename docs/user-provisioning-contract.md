@@ -139,6 +139,9 @@ Antes de mostrar éxito se confirma la misma sesión admin y se relee el detalle
 creado. 409/422 retiran contraseña y exigen otra revisión; 401/403/428/429/503 o
 fallo incierto retiran formulario/contexto. Focus/visibilidad/timer y señales
 entre pestañas reutilizan el control de workspace. Abort no revierte un commit.
-La confirmación reciente tiene servicio/API en 2.16–2.17, pero todavía no se exige
-en este formulario/transacción; MFA sigue pendiente. Brecha priorizada en
-`security-review.md`, no un control que este formulario sustituya.
+Desde 2.18, el workspace pide la contraseña actual del administrador antes de
+montar este formulario. Es distinta de la contraseña del nuevo acceso. La
+transacción exige confirmación reciente al entrar y de nuevo después de crear
+identidad/membresía/auditoría, antes de commit: 428 revierte todo si caducó.
+No vuelve a enviar el alta automáticamente. MFA sigue pendiente en
+`security-review.md`.

@@ -8,9 +8,9 @@ existentes solo para administradores: [contrato específico](membership-http-con
 Acceso 2.13–2.15 añade [alta administrativa](user-provisioning-contract.md), servicio,
 POST de colección con sesión/admin, CSRF y contexto obligatorio y formulario
 asistido. Sin registro público. Comparte slots Argon2 con login sin cambiar su contrato.
-Acceso 2.16–2.17 conecta [reautenticación](reauthentication-contract.md) con
-rotación de cookies tras commit; todavía sin formulario ni requisito reciente
-activo en las transacciones administrativas.
+Acceso 2.16–2.18 conecta [reautenticación](reauthentication-contract.md) con
+rotación de cookies tras commit, formulario y requisito reciente obligatorio
+dentro de las transacciones administrativas de alta/cambio (428 si falta).
 
 ## Rutas y contratos
 

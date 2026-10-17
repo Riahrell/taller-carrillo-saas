@@ -32,6 +32,7 @@ from app.modules.access.models import (
     User,
 )
 from app.modules.access.passwords import hash_password
+from app.modules.access.reauthentication import require_recent_administrator
 from app.modules.access.sessions import (
     _database_now,
     _lock_user,
@@ -166,6 +167,9 @@ class MembershipAdministrator:
                 actor = self._administrator(session, token, tenant.id)
                 if actor.membership_id != expected_actor:
                     raise AdministrationDenied("Access denied")
+                require_recent_administrator(
+                    session, token, expected_actor=expected_actor
+                )
                 # No existing identity is locked, attached, reactivated or reset.
                 if session.scalar(select(User.id).where(User.email == str(data.email))):
                     raise UserCreationConflict("User creation unavailable")
@@ -203,6 +207,9 @@ class MembershipAdministrator:
                     )
                 )
                 session.flush()
+                require_recent_administrator(
+                    session, token, expected_actor=expected_actor
+                )
                 result = self._view(member).model_copy(
                     update={"actor_membership_id": actor.membership_id}
                 )
@@ -232,6 +239,9 @@ class MembershipAdministrator:
                 )
                 if expected_actor is not None and actor.membership_id != expected_actor:
                     raise AdministrationDenied("Access denied")
+                require_recent_administrator(
+                    session, token, expected_actor=actor.membership_id
+                )
                 if (
                     expected_etag is not None
                     and expected_etag != self._view(target).etag

@@ -10,6 +10,7 @@ import MembershipWorkspace from "@/components/membership-workspace";
 import { accessApi, type SessionContext } from "@/lib/access/api";
 import { ApiError } from "@/lib/api/client";
 import { membershipsApi, type Page, type Detail } from "@/lib/memberships/api";
+import { confirmIdentity } from "./confirm-identity";
 
 const actor = "00000000-0000-4000-8000-000000000001";
 const target = "00000000-0000-4000-8000-000000000002";
@@ -38,6 +39,7 @@ const detail: Detail = {
 beforeEach(() => {
   vi.stubGlobal("BroadcastChannel", undefined);
   vi.spyOn(accessApi, "session").mockResolvedValue(context);
+  vi.spyOn(accessApi, "reauthenticate").mockResolvedValue(undefined);
   vi.spyOn(membershipsApi, "page").mockResolvedValue(page);
   vi.spyOn(membershipsApi, "detail").mockResolvedValue(detail);
   vi.spyOn(membershipsApi, "change").mockResolvedValue({
@@ -48,6 +50,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 async function open() {
   render(<MembershipWorkspace />);
+  await confirmIdentity();
   await screen.findByText(member.email);
 }
 async function edit() {
@@ -63,6 +66,52 @@ function propose() {
   fireEvent.click(screen.getByRole("button", { name: "Revisar cambio" }));
 }
 describe("administración de membresías", () => {
+  it("espera confirmación antes de consultar o montar controles administrativos", async () => {
+    render(<MembershipWorkspace />);
+    await screen.findByLabelText("Tu contraseña actual");
+    expect(membershipsApi.page).not.toHaveBeenCalled();
+    expect(membershipsApi.detail).not.toHaveBeenCalled();
+    expect(membershipsApi.change).not.toHaveBeenCalled();
+    await confirmIdentity();
+    await screen.findByText(member.email);
+  });
+  it("perder contexto mientras confirma descarta la respuesta tardía", async () => {
+    let finish!: () => void;
+    vi.mocked(accessApi.reauthenticate).mockReturnValue(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    render(<MembershipWorkspace />);
+    await confirmIdentity();
+    fireEvent.focus(window);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No pudimos confirmar el resultado",
+    );
+    await act(async () => finish());
+    expect(membershipsApi.page).not.toHaveBeenCalled();
+    expect(accessApi.reauthenticate).toHaveBeenCalledOnce();
+    expect(
+      screen.queryByLabelText("Tu contraseña actual"),
+    ).not.toBeInTheDocument();
+  });
+  it("428 retira el borrador y exige nueva confirmación sin reenviar PATCH", async () => {
+    vi.mocked(membershipsApi.change).mockRejectedValue(
+      new ApiError("http", "private", 428),
+    );
+    await open();
+    await edit();
+    propose();
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar cambio" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "confirmación de identidad venció",
+    );
+    expect(screen.queryByLabelText("Perfil")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Comprobar acceso" }));
+    await screen.findByLabelText("Tu contraseña actual");
+    expect(membershipsApi.change).toHaveBeenCalledOnce();
+    expect(accessApi.reauthenticate).toHaveBeenCalledOnce();
+  });
   it("al perder el foco durante un guardado retira datos y descarta el resultado tardío", async () => {
     let finish!: (value: Detail) => void;
     vi.mocked(membershipsApi.change).mockReturnValue(
@@ -104,7 +153,7 @@ describe("administración de membresías", () => {
         new MessageEvent("message", { data: { role: "admin" } }),
       ),
     );
-    expect(accessApi.session).toHaveBeenCalledOnce();
+    expect(accessApi.session).toHaveBeenCalledTimes(2);
     vi.mocked(accessApi.session).mockResolvedValue({
       ...context,
       role: "read_only",
@@ -251,6 +300,7 @@ describe("administración de membresías", () => {
       expect(screen.queryByText(member.email)).not.toBeInTheDocument();
       expect(screen.queryByText("Empresa A")).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: "Comprobar acceso" }));
+      await confirmIdentity();
       await screen.findByText(member.email);
       expect(membershipsApi.change).toHaveBeenCalledOnce();
     },
@@ -279,6 +329,7 @@ describe("administración de membresías", () => {
       }),
     );
     render(<MembershipWorkspace />);
+    await confirmIdentity();
     await waitFor(() => expect(membershipsApi.page).toHaveBeenCalledOnce());
     vi.mocked(accessApi.session).mockRejectedValue(
       new ApiError("http", "private", 401),
@@ -322,10 +373,20 @@ describe("administración de membresías", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    await act(async () => vi.advanceTimersByTime(30 * 60_000));
+    fireEvent.change(screen.getByLabelText("Tu contraseña actual"), {
+      target: { value: "synthetic current password" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirmar identidad" }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => vi.advanceTimersByTime(270_000));
     expect(screen.queryByText(member.email)).not.toBeInTheDocument();
     expect(read).not.toHaveBeenCalled();
     expect(write).not.toHaveBeenCalled();
-    expect(accessApi.session).toHaveBeenCalledTimes(2);
+    expect(accessApi.session).toHaveBeenCalledTimes(4);
   });
 });

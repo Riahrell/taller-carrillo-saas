@@ -223,6 +223,23 @@ def test_membership_read_patch_stale_and_foreign_rejection_through_real_proxy(
         "is_active": True,
     }
     old_tag = headers["ETag"]
+    assert (
+        browser.request(
+            target_path,
+            method="PATCH",
+            body={"role": "mechanic", "is_active": True},
+            headers={"If-Match": old_tag},
+        )[0]
+        == 428
+    )
+    assert (
+        browser.request(
+            "/auth/reauthenticate",
+            body={"password": state["password"].get_secret_value()},
+            headers={"X-Expected-Membership": str(state["membership"])},
+        )[0]
+        == 204
+    )
     status, data, headers = browser.request(
         target_path,
         method="PATCH",
@@ -282,6 +299,15 @@ def test_administrative_creation_and_new_user_login_through_real_proxy(
         "role": "mechanic",
     }
     context = {"X-Expected-Membership": str(state["membership"])}
+    assert browser.request("/auth/memberships", body=value, headers=context)[0] == 428
+    assert (
+        browser.request(
+            "/auth/reauthenticate",
+            body={"password": state["password"].get_secret_value()},
+            headers=context,
+        )[0]
+        == 204
+    )
     before = list(browser.cookies)
     status, data, headers = browser.request(
         "/auth/memberships", body=value, headers=context

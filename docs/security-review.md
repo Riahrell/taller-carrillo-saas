@@ -25,8 +25,8 @@ heredar estas comprobaciones; el frontend nunca determina autoridad.
 | Control | Estado y evidencia | Trabajo pendiente |
 | --- | --- | --- |
 | Identidad y tenant del servidor | Probado en servicios y HTTP con PostgreSQL real; perfil/actividad se releen. | Aplicar y probar autorización en cada futuro módulo. No hay RLS ni defensa frente a SQL privilegiado. |
-| Cookies, sesión y CSRF | Cookies privadas, expiración, revocación, origen exacto y prueba firmada; tests por proxy. | Inventario de sesiones y cierre global operativos, reautenticación reciente y factores adicionales. |
-| Acciones administrativas | Admin de empresa, contexto esperado, transacción y último admin protegidos; no vincular cuenta existente por conocer correo. Servicio/guardia 2.16 y API 2.17 con sesión/CSRF, contexto y rotación; sin llamadas a guardia desde administración. | Actualmente basta una sesión válida de hasta ocho horas en alta/cambio; falta UI de confirmación y activar la guardia en sus transacciones. Bloqueante antes de inventario. |
+| Cookies, sesión y CSRF | Cookies privadas, expiración, revocación, origen exacto y prueba firmada; tests por proxy. Confirmación reciente integrada en 2.18. | Inventario de sesiones y cierre global operativos, factores adicionales. |
+| Acciones administrativas | Admin de empresa, contexto esperado, transacción y último admin protegidos; no vincular cuenta existente por conocer correo. En 2.18, UI y confirmación reciente obligatoria en alta/cambio (incluso no-op); 428 revierte efectos. Alta comprueba nuevamente antes del commit. | Confirmación por contraseña no es MFA. Web Locks/BroadcastChannel coordinan clientes cooperantes, sin garantizar cancelación de efectos tras desconexión. MFA/recuperación siguen bloqueantes antes de inventario. |
 | Contraseñas | Argon2id, longitud Unicode 15–128, sin composición artificial, secretos fuera de logs/Storage. | Política de contraseñas comprometidas/comunes y cambios seguros; no evaluada resistencia a phishing solo con contraseña. |
 | Alta asistida | UI 2.15 sobre contrato 2.14, comprobación de contexto y secreto en campos no controlados. | Requiere confianza en equipo/admin. El navegador y sus extensiones/gestor de claves quedan fuera de la aplicación; no afirmar borrado criptográfico de strings JS. Evaluar incorporación por invitación de un solo uso en dispositivo propio. |
 | Recuperación y MFA | No implementados. No se sustituyen por una contraseña de reserva ni por email conocido. | Contrato, prueba de control de identidad, caducidad/uso único y revocación atómica; elección y recuperación de MFA/passkeys de administradores. Decisión y verificación antes de inventario. |
@@ -40,10 +40,12 @@ heredar estas comprobaciones; el frontend nunca determina autoridad.
 1. 2.15 completado: formulario con pruebas de secreto/contexto, API y navegador aislado.
 2. 2.16: contrato/servicio y guardia interna probados; ver `reauthentication-contract.md`.
    2.17 agrega adaptador HTTP con CSRF/origen, slots y rotación de cookies.
-   Siguiente 2.18: UI y activación de la guardia en las transacciones de administración,
-   con pruebas de denegación sin efectos y recorrido completo. Hasta entonces
-   no hay confirmación reciente obligatoria en las pantallas/rutas existentes.
-3. Cambio/recuperación de credenciales, cierre global y revisión de MFA, conservando
+   2.18 agrega UI y guardia obligatoria dentro de alta/cambio, con pruebas de
+   denegación/rollback y recorrido de navegador aislado. Detalles y límites en
+   `deliveries/access-2.18.md`.
+3. 2.19: escaneos automatizados de dependencias/secretos conforme a la revisión
+   v1.1; después MFA obligatorio admin y recuperación. Cambio/recuperación de
+   credenciales y cierre global, conservando
    las fronteras de identidad global/administración de empresa. No resetear una
    cuenta global desde otro tenant ni exponer un bypass de soporte.
 4. Ampliar evidencia de seguridad: auditoría consultable/denegaciones, revisión de

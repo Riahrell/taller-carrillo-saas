@@ -6,10 +6,12 @@ import { accessApi, type SessionContext } from "@/lib/access/api";
 import { ApiError } from "@/lib/api/client";
 import MembershipManager from "@/components/membership-manager";
 import MembershipCreation from "@/components/membership-creation";
+import IdentityConfirmation from "@/components/identity-confirmation";
 
 type View =
   | { kind: "checking" }
-  | { kind: "active"; session: SessionContext }
+  | { kind: "confirm"; session: SessionContext }
+  | { kind: "active"; session: SessionContext; remaining: number }
   | { kind: "blocked"; message: string };
 export const uncertainChange =
   "No pudimos confirmar el resultado del cambio. Comprueba el acceso y revisa la membresía antes de volver a modificarla.";
@@ -17,7 +19,7 @@ async function load(signal: AbortSignal): Promise<View> {
   try {
     const session = await accessApi.session({ signal });
     return session.role === "admin"
-      ? { kind: "active", session }
+      ? { kind: "confirm", session }
       : {
           kind: "blocked",
           message: "Tu perfil no permite administrar membresías.",
@@ -113,7 +115,7 @@ export default function MembershipWorkspace({
             ? uncertainChange
             : "Vuelve a comprobar tu acceso para continuar.",
         ),
-      30 * 60_000,
+      view.remaining,
     );
     return () => clearTimeout(timer);
   }, [view, problem]);
@@ -140,12 +142,22 @@ export default function MembershipWorkspace({
           </button>
         </section>
       )}
-      {view.kind === "active" && (
+      {(view.kind === "active" || view.kind === "confirm") && (
         <>
           <p className="membership-company">
             {view.session.tenant_name} <span>· Administrador</span>
           </p>
-          {mode === "create" ? (
+          {view.kind === "confirm" ? (
+            <IdentityConfirmation
+              session={view.session}
+              onWriting={onWriting}
+              onChanged={announce}
+              onProblem={problem}
+              onConfirmed={(remaining) =>
+                setView({ kind: "active", session: view.session, remaining })
+              }
+            />
+          ) : mode === "create" ? (
             <MembershipCreation
               key={`${view.session.user_id}:${view.session.tenant_id}:${view.session.membership_id}`}
               session={view.session}

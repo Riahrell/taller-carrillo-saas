@@ -45,7 +45,7 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def provisioning(http_identity):
+def provisioning(http_identity, recent_session):
     state = dict(http_identity)
     state["prefix"] = "new-" + uuid4().hex + "-"
     state["service"] = MembershipAdministrator(state["runtime"])
@@ -67,6 +67,8 @@ def provisioning(http_identity):
         session.add(target)
         session.flush()
         state["target"] = target.id
+    recent_session(state["token"])
+    recent_session(state["other_token"])
     try:
         yield state
     finally:
@@ -255,6 +257,7 @@ def test_current_identity_and_context_required(provisioning, monkeypatch, invali
             connection.execute(
                 text(
                     "WITH ts AS (SELECT clock_timestamp() AS now) UPDATE sessions SET "
+                    "reauthenticated_at=NULL, reauthentication_fingerprint=NULL, "
                     + clause
                     + " FROM ts WHERE membership_id=:id"
                 ),
@@ -441,7 +444,7 @@ def test_permission_rechecked_after_waiting_for_actor(provisioning):
     assert counts(state) == before
 
 
-def test_created_admin_counts_for_last_admin_protection(provisioning):
+def test_created_admin_counts_for_last_admin_protection(provisioning, recent_session):
     state = provisioning
     value = data(state, role="admin")
     new = create(state, value)
@@ -455,6 +458,7 @@ def test_created_admin_counts_for_last_admin_protection(provisioning):
         token = issue_session(
             session, user_id=member.user_id, tenant_id=state["tenant"]
         ).token
+    recent_session(token)
     with pytest.raises(LastAdministratorRequired):
         state["service"].change_membership(
             token,
