@@ -334,3 +334,25 @@ class SecurityEvent(Base):
     credential_id: Mapped[UUID] = mapped_column()
     action: Mapped[str] = mapped_column(String(32))
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class MfaThrottle(Base):
+    """Independent shared failure quota; no password-success reset or raw IP."""
+
+    __tablename__ = "mfa_throttles"
+    __table_args__ = (
+        CheckConstraint("scope IN ('account', 'ip')", name="scope_allowed"),
+        CheckConstraint("key_hash ~ '^[0-9a-f]{64}$'", name="key_hash_sha256"),
+        CheckConstraint(
+            "failures >= 0 AND failures <= "
+            "CASE WHEN scope = 'account' THEN 5 ELSE 30 END",
+            name="failure_bounds",
+        ),
+    )
+
+    scope: Mapped[str] = mapped_column(String(7), primary_key=True)
+    key_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    failures: Mapped[int] = mapped_column(Integer)

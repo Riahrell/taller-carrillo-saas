@@ -41,7 +41,10 @@ MFA activo en esa entrega. 2.22 agrega 0009 y consumo interno transaccional,
 probando concurrencia, rollback y reversión protegida; evidencia y límites en
 `deliveries/access-2.22.md`. 2.23 añade 0010 y eventos globales de consumo en
 el mismo commit, sin UPDATE/DELETE/TRUNCATE para la app; evidencia y límites en
-`deliveries/access-2.23.md`. Login sigue sin MFA. Entregas anteriores son históricas.
+`deliveries/access-2.23.md`. 2.24 agrega 0011 y fachada interna con cuotas
+separadas de contraseña y compartidas por TOTP/recuperación: ventanas,
+concurrencia, fallos persistentes y errores cerrados. Evidencia y límites en
+`deliveries/access-2.24.md`. Login sigue sin MFA. Entregas anteriores son históricas.
 El hito 2 sigue abierto: faltan MFA, resolver/revisar el aviso dev-only vigente,
 gestión global de cuentas, permisos de otros módulos, consulta/ampliación de
 auditoría, recuperación y limpieza de registros de acceso.

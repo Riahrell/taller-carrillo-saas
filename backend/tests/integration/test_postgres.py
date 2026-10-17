@@ -33,7 +33,7 @@ def test_migrations_upgrade_check_downgrade_upgrade(databases) -> None:
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
         assert MigrationContext.configure(connection).get_current_revision() == (
-            "0010_mfa_security_events"
+            "0011_mfa_throttles"
         )
         command.check(config)
         command.downgrade(config, "base")

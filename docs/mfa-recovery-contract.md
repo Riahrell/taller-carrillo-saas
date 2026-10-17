@@ -1,10 +1,11 @@
 # MFA y recuperación: contrato de diseño 2.20
 
-Fecha: 2026-10-17. **Contrato 2.20 con primitivas 2.21, persistencia 2.22 y auditoría de consumo 2.23.**
+Fecha: 2026-10-17. **Contrato 2.20 con primitivas 2.21, persistencia 2.22, auditoría 2.23 y cuotas 2.24.**
 Login y confirmación administrativa siguen usando contraseña; no hay MFA activo,
 correo verificado, recuperación operativa o proveedor de correo. 0009 agrega
 tablas MFA y 0010 evidencia global de consumo, vacías en desarrollo, sin
-habilitar factores en cuentas operativas.
+habilitar factores en cuentas operativas. 0011 añade cuotas MFA internas
+separadas de contraseña, sin integración de login.
 La biblioteca no se invoca desde rutas o servicios de autenticación. Ver
 [entrega 2.21](deliveries/access-2.21.md) para evidencia y límites ejecutados.
 
@@ -99,6 +100,8 @@ sustitución y recuperación del factor. No obtener intentos nuevos al recrear
 pendiente, acertar contraseña o cambiar de propósito. Mantener cuotas separadas
 para solicitudes de correo y protección de volumen del proxy. El éxito completo
 puede limpiar fallos de cuenta de su cuota MFA, sin borrar historial de IP.
+La implementación interna 2.24 elige conservar ambos hasta vencer la ventana: un
+acierto de factor aislado no es éxito completo. Sin método de reset en esta fase.
 No bloquear permanentemente al titular ni dormir workers para simular backoff.
 
 En operaciones sensibles, exigir contraseña y TOTP recientes del mismo titular,
@@ -246,7 +249,8 @@ antes de abrir tráfico. No declarar restauración segura por recuperar tablas.
 
 Criterios de integración pendientes. 2.21 prueba primitivas y 2.22 añade
 persistencia/consumo único concurrente y rollback, como operaciones internas.
-2.23 añade evidencia global de consumo en el mismo commit. Cuotas, otros eventos,
+2.23 añade evidencia global en el mismo commit y 2.24 cuotas internas compartidas,
+con fallos persistentes y ventanas probadas. Otros eventos, integración de
 sesiones/pending/HTTP/UI y operación siguen pendientes:
 
 1. Vectores RFC, ceros iniciales, tolerancia/límites exactos, reloj regresivo,
@@ -274,8 +278,8 @@ sesiones/pending/HTTP/UI y operación siguen pendientes:
 
 ## Próxima tarea pequeña
 
-**2.24: cuotas MFA separadas de contraseña y compartidas entre propósitos**,
-con persistencia de fallos/contención y ventanas probadas. 2.22 persiste consumo
-y 2.23 su evidencia global en el mismo commit; no autorizan sesiones o
-recuperación. Después: pendientes, revisión global y todos los caminos de
-autenticación, finalmente HTTP/UI/correo. Cada entrega declara la brecha restante.
+**2.25: estado global/revisión de seguridad del usuario**, como base de pendientes
+tipados y revocación consistente. 2.22–2.24 implementan consumo/auditoría/cuotas
+internas; no autorizan sesión o recuperación por sí solos. Después: pendientes
+y todos los caminos de autenticación, finalmente HTTP/UI/correo. Cada entrega
+declara la brecha restante.

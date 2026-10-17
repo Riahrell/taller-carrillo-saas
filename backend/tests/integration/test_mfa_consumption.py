@@ -14,7 +14,7 @@ from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from pydantic import SecretBytes, SecretStr
-from sqlalchemy import delete, event, func, select, text, update
+from sqlalchemy import event, func, select, text, update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
@@ -32,101 +32,8 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def state(db_session, databases, monkeypatch):
-    runtime, owner, _ = databases
-    keyring = crypto.SeedKeyring(
-        {"test-only": SecretBytes(secrets.token_bytes(32))}, active_key_id="test-only"
-    )
-    with Session(runtime) as session, session.begin():
-        now = session.scalar(select(func.clock_timestamp()))
-        users = [
-            User(email=f"mfa-{uuid4().hex}@example.com", password_hash="synthetic")
-            for _ in range(2)
-        ]
-        session.add_all(users)
-        session.flush()
-        user_ids = [u.id for u in users]
-        credential_id, set_id = uuid4(), uuid4()
-        # Avoid probabilistic collisions in success tests; dedicated crypto tests
-        # already force ambiguous counters and verify their rejection.
-        while True:
-            seed = crypto.generate_totp_seed()
-            otp = pyotp.TOTP(seed.base32().get_secret_value())
-            counter = int(now.timestamp()) // 30
-            if (
-                len({otp.generate_otp(counter + offset) for offset in range(-4, 6)})
-                == 10
-            ):
-                break
-        envelope = keyring.encrypt(
-            seed, user_id=user_ids[0], credential_id=credential_id
-        )
-        session.add(
-            MfaCredential(
-                id=credential_id,
-                user_id=user_ids[0],
-                encryption_version=envelope.version,
-                key_id=envelope.key_id,
-                nonce=envelope.nonce,
-                ciphertext=envelope.ciphertext,
-                created_at=now - timedelta(minutes=2),
-            )
-        )
-        session.flush()
-        session.add(
-            MfaRecoverySet(
-                id=set_id,
-                user_id=user_ids[0],
-                credential_id=credential_id,
-                created_at=now - timedelta(minutes=1),
-            )
-        )
-        session.flush()
-        codes = crypto.generate_recovery_codes()
-        session.add_all(
-            [
-                MfaRecoveryCode(
-                    set_id=set_id,
-                    position=i,
-                    code_hash=crypto.recovery_digest(
-                        code, user_id=user_ids[0], set_id=set_id
-                    ),
-                )
-                for i, code in enumerate(codes)
-            ]
-        )
-    result = dict(
-        runtime=runtime,
-        owner=owner,
-        user=user_ids[0],
-        other=user_ids[1],
-        credential=credential_id,
-        set=set_id,
-        keyring=keyring,
-        seed=seed,
-        codes=codes,
-        now=now,
-    )
-    monkeypatch.setattr(service, "_database_now", lambda session: result["now"])
-    try:
-        yield result
-    finally:
-        with owner.begin() as connection:
-            connection.execute(
-                delete(SecurityEvent).where(SecurityEvent.user_id.in_(user_ids))
-            )
-            connection.execute(
-                delete(MfaRecoveryCode).where(MfaRecoveryCode.set_id == set_id)
-            )
-            connection.execute(
-                delete(MfaRecoverySet).where(
-                    MfaRecoverySet.credential_id == credential_id
-                )
-            )
-            connection.execute(
-                delete(MfaCredential).where(MfaCredential.user_id.in_(user_ids))
-            )
-            connection.execute(delete(User).where(User.id.in_(user_ids)))
+def state(mfa_state):
+    return mfa_state
 
 
 def totp_code(state, offset=0):
@@ -400,7 +307,7 @@ def test_migration_refuses_downgrade_with_mfa_state_even_revoked(state):
     with state["owner"].connect() as connection:
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0010_mfa_security_events"
+            == "0011_mfa_throttles"
         )
     assert saved(state) == before
 
@@ -682,7 +589,7 @@ def test_audit_downgrade_refuses_factors_with_or_without_events(state, consume_f
     with state["owner"].connect() as connection:
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0010_mfa_security_events"
+            == "0011_mfa_throttles"
         )
     assert security_events(state) == before
     assert saved(state) == consumption

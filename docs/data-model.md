@@ -23,7 +23,9 @@ offline, evidencia de sesión/correo y eventos globales separados de auditoría
 comercial. 2.21 implementa primitivas. **2.22 agrega 0009**, solo tablas de
 credenciales cifradas, conjuntos y hashes offline; sin backfill o MFA en login.
 2.23 agrega 0010: eventos globales tipados de consumo MFA, append-only para
-la app. El resto de auditoría y modelo lógico sigue pendiente. Límites físicos en
+la app. 2.24 añade 0011, cuotas MFA por UUID de usuario/IP, independientes de
+contraseña; ver `mfa-verification-contract.md`. El resto de auditoría y modelo
+lógico sigue pendiente. Límites físicos en
 `mfa-persistence-contract.md`; no reutilizar eventos comerciales con actor/tenant
 falsos para auditoría global.
 

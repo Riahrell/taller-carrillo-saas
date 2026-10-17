@@ -239,3 +239,125 @@ def new_identity_scope(http_identity):
                 delete(TenantMembership).where(TenantMembership.user_id.in_(users))
             )
             connection.execute(delete(User).where(User.id.in_(users)))
+
+
+@pytest.fixture
+def mfa_state(db_session, databases, monkeypatch):
+    """Committed synthetic factors only in the guarded ephemeral PostgreSQL DB."""
+    import secrets
+    from datetime import timedelta
+    from uuid import uuid4
+
+    import pyotp
+    from pydantic import SecretBytes
+    from sqlalchemy import delete, func, select
+    from sqlalchemy.orm import Session
+
+    from app.modules.access import mfa_consumption as service
+    from app.modules.access import mfa_crypto as crypto
+    from app.modules.access import mfa_verification as verification
+    from app.modules.access.models import (
+        MfaCredential,
+        MfaRecoveryCode,
+        MfaRecoverySet,
+        MfaThrottle,
+        SecurityEvent,
+        User,
+    )
+
+    runtime, owner, _ = databases
+    keyring = crypto.SeedKeyring(
+        {"test-only": SecretBytes(secrets.token_bytes(32))}, active_key_id="test-only"
+    )
+    with Session(runtime) as session, session.begin():
+        now = session.scalar(select(func.clock_timestamp()))
+        users = [
+            User(email=f"mfa-{uuid4().hex}@example.com", password_hash="synthetic")
+            for _ in range(2)
+        ]
+        session.add_all(users)
+        session.flush()
+        user_ids = [u.id for u in users]
+        credential_id, set_id = uuid4(), uuid4()
+        # Avoid probabilistic collisions in success tests; dedicated crypto tests
+        # already force ambiguous counters and verify their rejection.
+        while True:
+            seed = crypto.generate_totp_seed()
+            otp = pyotp.TOTP(seed.base32().get_secret_value())
+            counter = int(now.timestamp()) // 30
+            if (
+                len({otp.generate_otp(counter + offset) for offset in range(-4, 40)})
+                == 44
+            ):
+                break
+        envelope = keyring.encrypt(
+            seed, user_id=user_ids[0], credential_id=credential_id
+        )
+        session.add(
+            MfaCredential(
+                id=credential_id,
+                user_id=user_ids[0],
+                encryption_version=envelope.version,
+                key_id=envelope.key_id,
+                nonce=envelope.nonce,
+                ciphertext=envelope.ciphertext,
+                created_at=now - timedelta(minutes=2),
+            )
+        )
+        session.flush()
+        session.add(
+            MfaRecoverySet(
+                id=set_id,
+                user_id=user_ids[0],
+                credential_id=credential_id,
+                created_at=now - timedelta(minutes=1),
+            )
+        )
+        session.flush()
+        codes = crypto.generate_recovery_codes()
+        session.add_all(
+            [
+                MfaRecoveryCode(
+                    set_id=set_id,
+                    position=i,
+                    code_hash=crypto.recovery_digest(
+                        code, user_id=user_ids[0], set_id=set_id
+                    ),
+                )
+                for i, code in enumerate(codes)
+            ]
+        )
+    result = dict(
+        runtime=runtime,
+        owner=owner,
+        user=user_ids[0],
+        other=user_ids[1],
+        credential=credential_id,
+        set=set_id,
+        keyring=keyring,
+        seed=seed,
+        codes=codes,
+        now=now,
+    )
+    monkeypatch.setattr(service, "_database_now", lambda session: result["now"])
+    monkeypatch.setattr(verification, "_now", lambda session: result["now"])
+    try:
+        yield result
+    finally:
+        with owner.begin() as connection:
+            connection.execute(delete(MfaThrottle))
+            connection.execute(
+                delete(SecurityEvent).where(SecurityEvent.user_id.in_(user_ids))
+            )
+            connection.execute(
+                delete(MfaRecoveryCode).where(MfaRecoveryCode.set_id == set_id)
+            )
+            connection.execute(
+                delete(MfaRecoverySet).where(
+                    MfaRecoverySet.credential_id == credential_id
+                )
+            )
+            connection.execute(
+                delete(MfaCredential).where(MfaCredential.user_id.in_(user_ids))
+            )
+            connection.execute(delete(User).where(User.id.in_(user_ids)))

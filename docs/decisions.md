@@ -857,3 +857,26 @@ Referencias: [query models FastAPI](https://fastapi.tiangolo.com/tutorial/query-
 - Siguiente 2.24: cuotas MFA compartidas entre propósitos, independientes de las
   de contraseña, con fallos persistentes y contención probados. MFA sigue sin
   activarse en autenticación, selección, reautenticación o recuperación.
+
+## Acceso 2.24: cuotas MFA persistentes e independientes
+
+- 0011 crea mfa_throttles separada de login_throttles. Cuenta ligada al UUID global
+  del servidor, IP normalizada (IPv4 mapped comparte clave), hashes con dominios
+  por scope. Ni empresa, correo, propósito, pendiente o flags del cliente eligen
+  presupuesto/límites. Cinco fallos por cuenta, treinta por IP, quince minutos.
+- MfaVerifier posee la transacción: confirma rechazos como fallos persistentes;
+  acepta consumo/auditoría en el mismo commit. No sesión/pendiente/autorización
+  por devolver resultado. Futura transición de autenticación debe integrarse en
+  esa transacción, no confiar en un resultado entre transacciones.
+- Orden IP -> cuenta -> usuario -> factor/hijos. UPSERT/locks/refresco evitan
+  pérdidas de incrementos. Ventana desde primer fallo y renovación exacta al
+  alcanzar quince minutos. Bloqueados no evalúan ni alargan ventana. No sleeps.
+- Éxito del factor conserva **ambos** historiales: no equivale a autenticación
+  completa. Es una elección conservadora dentro de la opción 2.20, sin reset.
+  Contraseña exitosa y pendientes nuevos tampoco limpian contadores MFA.
+- Errores de DB, protección de claves, escritura de auditoría y reloj fallan
+  cerrados con mensaje genérico, sin cobrar código incorrecto o publicar éxito.
+  App sin DELETE; downgrade rechaza cuotas/factores, incluso filas en cero.
+- Contrato en mfa-verification-contract.md. Faltan retención, volumen/observabilidad,
+  revisión/obligación, pendientes, guardias de sesión y UI/correo antes de activar
+  MFA. Siguiente 2.25: estado global/revisión de seguridad del usuario.

@@ -39,7 +39,8 @@ de bajo nivel, sin commit propio. El llamador confiable obtiene IDs de estado
 validado en el servidor, abre la transacción y confirma o revierte todo. No
 entregar `MfaConsumption` como prueba transferible ni publicar éxito antes del
 commit. Tampoco llamar estas funciones directamente desde una ruta nueva sin
-pendiente válido, contraseña y cuota. La evidencia de consumo se inserta
+pendiente válido y contraseña. Para cuota/consumo, 2.24 proporciona la fachada
+`MfaVerifier`; no llamar estos consumidores directamente desde HTTP. La evidencia se inserta
 ya en la misma transacción; no equivale a auditoría completa de autenticación.
 
 Orden: usuario con FOR UPDATE y actividad releída -> credencial de ese usuario
@@ -86,15 +87,16 @@ hacia adelante y preparar un procedimiento explícito de recuperación/mantenimi
 
 ## Límites y siguiente paso
 
-Todavía faltan: otros eventos de seguridad/rechazos, cuotas MFA compartidas, obligación
+2.24 implementa [cuotas compartidas internas](mfa-verification-contract.md).
+Todavía faltan: otros eventos de seguridad/rechazos, obligación
 admin/revisión de seguridad, pendientes y prueba de buzón, activación/sustitución,
 recuperación restringida, revocación global, guardias de emisión/resolución y UI.
 Esta entrega tampoco configura custodia/rotación operativa de claves o monitoreo
 de reloj/restauración; preservar códigos en DB no prueba un backup seguro.
 
-Siguiente tarea pequeña **2.24**: cuotas MFA independientes de las de contraseña,
-compartidas entre propósitos y con contención/fallos persistentes probados.
-La integración completa sigue siendo necesaria antes de activarlo.
+Siguiente tarea pequeña **2.25**: estado global/revisión de seguridad del usuario,
+base para pendientes tipados y revocación consistente. La integración completa
+sigue siendo necesaria antes de activarlo.
 
 Fuentes técnicas consultadas el 2026-10-17:
 [locks de PostgreSQL](https://www.postgresql.org/docs/18/explicit-locking.html#LOCKING-ROWS)

@@ -203,7 +203,8 @@ SEC-2026-001 conserva un aviso dev-only visible hasta su revisión/vencimiento.
 2.20 define el contrato MFA/recuperación en `../mfa-recovery-contract.md`.
 2.21 implementa solo primitivas internas TOTP/cifrado/códigos offline.
 2.22 agrega persistencia/consumo en 0009 y 2.23 evidencia global atómica en
-0010. Siguiente 2.24: cuotas MFA compartidas. Integrar pendientes y todos los
+0010; 2.24 añade cuotas compartidas en 0011. Siguiente 2.25: estado global/
+revisión de seguridad. Integrar pendientes y todos los
 caminos de autenticación antes del inventario; MFA todavía no está activo.
 
 1. Completar 2.18: UI de confirmación y guardia dentro de alta/cambio; impedir
