@@ -2,6 +2,7 @@
 
 import hashlib
 import secrets
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from ipaddress import IPv4Address, IPv6Address
 from uuid import UUID
@@ -9,12 +10,13 @@ from uuid import UUID
 from argon2 import Type, extract_parameters
 from argon2.exceptions import HashingError, InvalidHashError
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr, field_validator
-from sqlalchemy import Engine, func, select, text
+from sqlalchemy import Engine, exists, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.database import create_session_factory
+from app.modules.access import mfa_pending, security_state
 from app.modules.access.login_challenges import (
     MembershipChoice,
     PendingLogin,
@@ -30,6 +32,7 @@ from app.modules.access.membership import AccessDenied, resolve_membership
 from app.modules.access.models import (
     LoginThrottle,
     MembershipRole,
+    MfaCredential,
     SessionRecord,
     Tenant,
     TenantMembership,
@@ -85,6 +88,15 @@ class Credentials(BaseModel):
 
 class AuthenticationUnavailable(RuntimeError):
     """Infrastructure failure distinct from a generic credential rejection."""
+
+
+@dataclass(frozen=True)
+class PendingMfaLogin:
+    """Restricted internal outcome; no companies, session or mailbox authority."""
+
+    token: SecretStr
+    purpose: mfa_pending.PendingPurpose
+    expires_at: datetime
 
 
 def _limit_transaction(session: Session) -> None:
@@ -317,7 +329,8 @@ class Authenticator:
         ip_key: str,
         tenant_id: UUID | None,
         binding_hash: str | None = None,
-    ) -> IssuedSession | PendingLogin | None:
+        mfa_browser_binding: SecretStr | None = None,
+    ) -> IssuedSession | PendingLogin | PendingMfaLogin | None:
         # Global order: IP bucket, account bucket, user, challenges, session rows.
         ip = _lock_bucket(session, "ip", ip_key)
         now = _now(session)
@@ -343,8 +356,11 @@ class Authenticator:
         valid = verify_password(
             credentials.password, encoded if usable else self._dummy_hash
         )
+        password_verified_at = (
+            _database_now(session) if mfa_browser_binding is not None else None
+        )
         allowed = valid and usable and user is not None and user.is_active
-        if allowed and _requires_mfa(session, user):
+        if allowed and mfa_browser_binding is None and _requires_mfa(session, user):
             # Public MFA login is not integrated yet. Never expose tenant choices
             # or a password-only session for an account requiring a second factor.
             return None
@@ -363,6 +379,50 @@ class Authenticator:
 
         if password_needs_rehash(user.password_hash):
             user.password_hash = hash_password(credentials.password)
+        if mfa_browser_binding is not None:
+            # The internal MFA entry point applies global policy, never a role or
+            # tenant chosen by the browser. Legacy HTTP does not call this yet.
+            state = security_state.synchronize_mfa_requirement(
+                session, user_id=user.id, expected_revision=user.security_revision
+            )
+            current_factor = bool(
+                session.scalar(
+                    select(
+                        exists().where(
+                            MfaCredential.user_id == user.id,
+                            MfaCredential.revoked_at.is_(None),
+                        )
+                    )
+                )
+            )
+            if not current_factor and session.scalar(
+                select(exists().where(MfaCredential.user_id == user.id))
+            ):
+                # History is not permission to enroll using mail alone.
+                # Replacement/recovery need their own restricted flow.
+                return None
+            if state.mfa_required:
+                purpose = (
+                    mfa_pending.PendingPurpose.LOGIN_TOTP
+                    if current_factor
+                    else mfa_pending.PendingPurpose.ENROLLMENT
+                )
+                _close_pending(session, user.id)
+                mfa_pending._close_browser_pendings(
+                    session, user_id=user.id, binding=mfa_browser_binding
+                )
+                pending = mfa_pending._issue_after_password(
+                    session,
+                    user_id=user.id,
+                    binding=mfa_browser_binding,
+                    purpose=purpose,
+                    expected_revision=state.revision,
+                    password_verified_at=password_verified_at,
+                )
+                account.failures = 0
+                account.window_started_at = _now(session)
+                session.flush()
+                return PendingMfaLogin(pending.token, purpose, pending.expires_at)
         _close_pending(session, user.id)
         if tenant_id is not None or len(memberships) == 1:
             selected_tenant = (
@@ -383,6 +443,46 @@ class Authenticator:
         account.window_started_at = _now(session)
         session.flush()
         return issued
+
+    def begin_mfa_login(
+        self,
+        credentials: Credentials,
+        *,
+        client_ip: IPv4Address | IPv6Address,
+        browser_binding: SecretStr,
+    ) -> IssuedSession | PendingLogin | PendingMfaLogin | None:
+        """Internal entry only: same password quotas, global MFA policy and commit.
+
+        Binding must be a fresh verified server cookie, not a body value. MFA
+        pending never grants mailbox/seed/session access. Do not expose until
+        enrollment/recovery and the HTTP/UI adapter are ready.
+        """
+        if not isinstance(credentials, Credentials) or not isinstance(
+            browser_binding, SecretStr
+        ):
+            raise ValueError("Invalid internal login input")
+        ip_key = _ip_digest(client_ip)
+        try:
+            mfa_pending._hash(browser_binding, "mfa-pending-browser-v1:")
+            binding_hash = _binding_digest(browser_binding)
+        except AccessDenied:
+            return None
+        try:
+            with self._factory.begin() as session:
+                _limit_transaction(session)
+                result = self._authenticate(
+                    session,
+                    credentials,
+                    ip_key=ip_key,
+                    tenant_id=None,
+                    binding_hash=binding_hash,
+                    mfa_browser_binding=browser_binding,
+                )
+            return result
+        except AccessDenied:
+            return None
+        except (SQLAlchemyError, HashingError):
+            raise AuthenticationUnavailable("Authentication unavailable") from None
 
     def begin_login(
         self,

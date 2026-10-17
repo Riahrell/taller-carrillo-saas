@@ -153,3 +153,7 @@ en PostgreSQL aislado; resultados y límites en `deliveries/access-2.27.md`.
 Acceso 2.28: consumo de prueba/emisión atómicos, contexto actual, guardias
 centrales sin bypass por contraseña, resolución con revisión/factor y ventana
 reciente original. Evidencia, comandos y límites en `deliveries/access-2.28.md`.
+
+Acceso 2.29: inicio interno con cuotas compartidas, resultado restringido, política
+global y revocación/auditoría/pending atómicos, plazo original, concurrencia y
+fallos de infraestructura. Comandos/resultados en `deliveries/access-2.29.md`.

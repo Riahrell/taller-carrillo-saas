@@ -100,6 +100,7 @@ def _issue_after_password(
     binding: SecretStr,
     purpose: PendingPurpose,
     expected_revision: int,
+    password_verified_at: datetime | None = None,
 ) -> PendingToken:
     """Only directly after checking password under this user's lock.
 
@@ -124,8 +125,40 @@ def _issue_after_password(
     ):
         raise AccessDenied("Access denied")
     now = _database_now(session)
+    if password_verified_at is not None and (
+        not isinstance(password_verified_at, datetime)
+        or password_verified_at.utcoffset() is None
+    ):
+        raise ValueError("Invalid internal password time")
+    verified_at = now if password_verified_at is None else password_verified_at
     lifetime = timedelta(minutes=5 if purpose is PendingPurpose.LOGIN_TOTP else 15)
-    return _insert(session, user, binding_hash, purpose, now, now + lifetime, now)
+    expires_at = verified_at + lifetime
+    if not verified_at <= now < expires_at:
+        raise AccessDenied("Access denied")
+    return _insert(session, user, binding_hash, purpose, verified_at, expires_at, now)
+
+
+def _close_browser_pendings(
+    session: Session, *, user_id: UUID, binding: SecretStr
+) -> None:
+    """Trusted caller already holds the user lock; never acquire it after children."""
+    binding_hash = _hash(binding, "mfa-pending-browser-v1:")
+    rows = session.scalars(
+        select(MfaPending)
+        .where(
+            MfaPending.user_id == user_id,
+            MfaPending.binding_hash == binding_hash,
+            MfaPending.finished_at.is_(None),
+        )
+        .order_by(MfaPending.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).all()
+    if rows:
+        now = _database_now(session)
+        for row in rows:
+            row.finished_at = max(now, row.created_at)
+        session.flush()
 
 
 def _lock_pending(

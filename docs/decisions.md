@@ -910,3 +910,10 @@ revisión NULL exige login nuevo. Factor vigente o mfa_required bloquean la vía
 heredada; obligación admin por rol espera hooks/incorporación completos. La
 confirmación reciente MFA usa la prueba más antigua, sin renovación por selección
 o actividad; endpoint de contraseña no la renueva. Sin activación pública.
+
+Acceso 2.29: begin_mfa_login es una entrada interna separada del adaptador web
+actual. Comparte verificadores/cuotas de contraseña; aplica política global y
+conserva las cuotas MFA. No acepta tenant/rol/propósito. Incorporación pendiente
+no prueba buzón ni permite fijar semilla. Historial de factor sin factor actual
+no abre una incorporación por correo; requiere recuperación/sustitución aparte.
+Se toma la hora al verificar contraseña y no se renueva al esperar otros locks.

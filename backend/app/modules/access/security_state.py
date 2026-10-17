@@ -1,7 +1,8 @@
 """Global security revision kernel. Trusted callers own authorization and transaction.
 
-Not connected to login, role changes or factor activation yet. Never expose state
-mutations as a client-controlled flag. This result alone is not a session proof.
+Used by internal MFA login; public login and role/factor hooks are pending.
+Never expose state mutations as a client-controlled flag. This result alone is
+not a session proof.
 """
 
 from dataclasses import dataclass

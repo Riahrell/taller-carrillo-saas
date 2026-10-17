@@ -6,7 +6,8 @@ correo verificado, recuperación operativa o proveedor de correo. 0009 agrega
 tablas MFA y 0010 evidencia global de consumo, vacías en desarrollo, sin
 habilitar factores en cuentas operativas. 0011 añade cuotas MFA internas
 separadas de contraseña, sin integración de login.
-La biblioteca no se invoca desde rutas o servicios de autenticación. Ver
+La biblioteca no se invoca desde rutas públicas; 2.29 añade entrada interna de
+autenticación con pendientes MFA, aún sin adaptación HTTP/UI. Ver
 [entrega 2.21](deliveries/access-2.21.md) para evidencia y límites ejecutados.
 
 ## Decisiones y autoridad
@@ -278,14 +279,12 @@ sesiones/pending/HTTP/UI y operación siguen pendientes:
 
 ## Próxima tarea pequeña
 
-2.28 consume login_verified ligado al navegador al seleccionar membresía y emite
-sesión en ese commit. Emisión/resolución centrales comprueban revisión/evidencia;
-cuentas con factor activo u obligación persistida no obtienen sesión por contraseña.
-La prueba reciente MFA deriva de la verificación más antigua. Cookies históricas
-sin revisión dejan de servir; no se acredita MFA por backfill. Ver
-[entrega 2.28](deliveries/access-2.28.md).
+2.29 añade begin_mfa_login interno: contraseña bajo cuotas compartidas, requisito
+global, revocación atómica al endurecer y pendiente TOTP/incorporación. No entrega
+empresas/sesión antes del segundo factor ni autoriza buzón o semilla por contraseña.
+La entrada web actual no lo invoca. Ver [entrega 2.29](deliveries/access-2.29.md).
 
-**2.29: iniciar login interno con pendientes MFA**, sin emitir sesión o revelar
-empresas antes de la prueba requerida. Reautenticación MFA, hooks de roles/factores,
-obligación admin por rol, incorporación/recuperación, cancelación por navegador,
-HTTP/UI/correo y operación siguen pendientes antes de activar MFA público.
+**2.30: desafíos de correo para incorporación MFA restringida**. SMTP/proveedor,
+incorporación/recuperación completas, hooks de roles/factores y último admin,
+reautenticación MFA, cancelación HTTP, UI y operación siguen pendientes antes de
+activar el flujo público. Sin incorporar controles nuevos fuera de esos criterios.
