@@ -2,7 +2,7 @@
 
 Este documento distingue el modelo objetivo y los contratos implementados por
 entrega. Acceso 2.1 incorporó `tenants`, `users` y `tenant_memberships` mediante
-`0002_access`; las ampliaciones hasta 2.13 se detallan al final. Los atributos comerciales
+`0002_access`; las ampliaciones hasta 2.14 se detallan al final. Los atributos comerciales
 se limitan a los requeridos por el plan y a las decisiones de `decisions.md`.
 La especificación de cada tarea cerrará contratos antes de generar código.
 
@@ -251,3 +251,13 @@ activas, rol objetivo explícito y tenant del actor autorizado. Unicidad global 
 users.email arbitra colisiones entre empresas, sin adjuntar ni actualizar al
 usuario existente. El resultado solo expone ID de membresía/rol/estado; sin ID
 global, hash o contraseña. No emite sesiones ni crea empresas nuevas.
+
+## Transporte de alta 2.14
+
+Sin migración nueva: POST administrativo usa el servicio 2.13 y la auditoría 0007.
+Entrada email/password/role; empresa, actor y estados activos se resuelven en
+servidor. X-Expected-Membership obligatorio es una comparación del contexto, sin
+persistencia ni selección de identidad. Respuesta 201 mínima después de commit,
+sin modificar las identidades globales existentes ni emitir sesión al nuevo usuario.
+Duplicados siguen arbitrados por unicidad global de correo, sin crear membresía
+en otra empresa por conocer el email. No se agregan campos de invitación o recuperación.

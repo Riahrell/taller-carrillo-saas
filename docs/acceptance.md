@@ -19,10 +19,12 @@ actual, confirmación explícita, CSRF/If-Match, vínculo al contexto autenticad
 limpieza ante pérdida de acceso. Recorrido visual aislado de cambio y último admin.
 Acceso 2.13 añade alta interna de cuenta global nueva/membresía/auditoría atómicas,
 sin vincular correos existentes; permiso actual, duplicados y concurrencia probados.
-El alta todavía no tiene endpoint ni formulario. Migración de auditoría 0007.
-Resultados actuales en `deliveries/access-2.13.md`; entregas anteriores como
+Migración de auditoría 0007. Acceso 2.14 conecta POST administrativo con sesión,
+CSRF/origen y contexto obligatorio, respuesta mínima tras commit y conflicto
+genérico; límites y login de la identidad nueva por proxy real. Falta formulario.
+Resultados actuales en `deliveries/access-2.14.md`; entregas anteriores como
 registros históricos.
-El hito 2 sigue abierto: falta conectar altas a HTTP/UI,
+El hito 2 sigue abierto: falta el formulario de alta,
 gestión global de cuentas, permisos de otros módulos, consulta/ampliación de
 auditoría, recuperación y limpieza de registros de acceso.
 Contrato actualizado en `auth-http-contract.md`, con límites y pendientes explícitos.

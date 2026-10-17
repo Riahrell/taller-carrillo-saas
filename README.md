@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.13
+## Estado: acceso 2.14
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -25,15 +25,15 @@ por HTTP con sesión/CSRF y precondición If-Match. El listado paginado ya limit
 resultados a la empresa autorizada y al perfil admin. La pantalla `/membresias`
 permite revisar y confirmar cambios sobre accesos existentes. Las operaciones
 comerciales siguen pendientes. El servicio interno ya puede crear una cuenta
-nueva y su membresía con autorización y auditoría atómicas; la conexión de altas
-a API/formulario queda para tareas posteriores.
+nueva y su membresía con autorización y auditoría atómicas. Ya está conectado a
+POST administrativo con sesión/CSRF y contexto obligatorio; falta el formulario.
 Bootstrap CLI atómico y hashing Argon2id
 disponibles; no se creó una cuenta real automáticamente.
 La fundación tiene validación integral local y workflow CI preparado. Su primera
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 2.13](docs/deliveries/access-2.13.md).
+- [Aceptación](docs/acceptance.md) y [entrega 2.14](docs/deliveries/access-2.14.md).
 - Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
   en 8080, y el arranque requiere DB.
 
@@ -509,7 +509,7 @@ el repositorio de destino y publicar los commits con autorización; no se hizo p
 Referencias: [sintaxis de GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax),
 [checkout](https://github.com/actions/checkout) y [actionlint](https://github.com/rhysd/actionlint).
 
-## Administración de membresías (2.9–2.13)
+## Administración de membresías (2.9–2.14)
 
 `MembershipAdministrator.change_membership` recibe el token privado de sesión,
 el UUID objetivo y un `MembershipChange` explícito de rol/estado. El servidor
@@ -555,7 +555,7 @@ incluyen X-Access-Membership para descartar resultados de otro contexto de sesi�
 Ante acceso perdido, respuesta incierta, cambio de visibilidad o señal entre
 pestañas se retira el contexto y se comprueba de nuevo. Sin reintentos de PATCH,
 almacenamiento persistente de datos o polling. Las comprobaciones del navegador
-no sustituyen la autorización del servidor. Sin altas por HTTP/UI, cambios de usuario global
+no sustituyen la autorización del servidor. Sin formulario de alta, cambios de usuario global
 ni consulta HTTP de auditoría en esta fase. No se necesitan usuarios reales nuevos
 para ejecutar el pipeline.
 
@@ -571,9 +571,23 @@ Alta interna 2.13: `MembershipAdministrator.create_user` acepta `UserCreation`
 permiso y estados activos se resuelven en servidor. Solo cuentas nuevas: correo
 global ya registrado produce el mismo conflicto, sin vincular ni resetear esa
 identidad. Usuario, membresía y evento `membership_created` se confirman juntos.
-No emite sesión ni entrega contraseña. Antes de exponerlo por HTTP se concretará
-la elección/entrega de contraseña mediante un canal controlado. Ver
-[contrato interno de alta](docs/user-provisioning-contract.md).
+No emite sesión ni entrega contraseña. Ver
+[contrato de alta](docs/user-provisioning-contract.md).
+
+POST `/api/auth/memberships` crea la cuenta nueva y su membresía. Exige sesión
+admin actual, CSRF/origen y X-Expected-Membership obligatorio. JSON email/password/
+role, sin query ni campos extra. Devuelve 201 tras commit con ID de membresía,
+rol/estado, ETag, X-Access-Membership y Location relativo al detalle. Sin cookies
+nuevas, hash o contraseña en la respuesta. Correo existente: 409 genérico, sin
+vincular ni resetear. Comparte los dos slots de hashing por proceso con login,
+los límites del proxy y no-store. No reintentar POST automáticamente.
+
+Canal previsto para el formulario: alta presencial/asistida en un equipo
+controlado por el administrador, donde la persona nueva escribe la contraseña
+que elige en un campo oculto. Sin envío de claves por chat/correo/URL ni contraseña
+predeterminada. HTTPS fuera de loopback según configuración. Este canal requiere
+confianza en el equipo y administrador; no implementa invitaciones remotas,
+verificación de correo ni recuperación. El formulario sigue pendiente.
 
 La migración 0007 conserva eventos anteriores y privilegios de auditoría. Si hay
 eventos de alta, un downgrade a 0006 se rechaza para conservar evidencia que el
@@ -581,9 +595,9 @@ esquema anterior no puede representar. No borrar registros para forzarlo.
 
 ## Siguiente tarea
 
-Acceso 2.14: adaptador HTTP de alta administrativa sobre el servicio probado,
-con sesión/admin, CSRF/origen, contexto, conflicto genérico y límites. Concretar
-el canal controlado para elección/entrega de contraseña antes de habilitar la UI;
-sin registro público ni credenciales predeterminadas.
+Acceso 2.15: formulario administrativo de alta asistida sobre la API probada,
+con confirmación, contraseña fuera de estado persistente, limpieza de contexto,
+conflictos y resultado incierto sin reintentos. Validar con cuentas sintéticas
+aisladas antes de habilitarlo. Sin registro público ni credenciales predeterminadas.
 CI remota sigue
 pendiente hasta conectar un repositorio autorizado.

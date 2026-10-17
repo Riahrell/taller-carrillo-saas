@@ -612,3 +612,24 @@ Referencias: [query models FastAPI](https://fastapi.tiangolo.com/tutorial/query-
 - Detalles y límites: `user-provisioning-contract.md`. El adaptador posterior debe
   concretar CSRF, límites y elección/entrega segura de contraseña antes de exponer
   altas a usuarios. No declarar el hito de acceso completo con este servicio.
+
+## Acceso 2.14: adaptador HTTP de alta administrativa
+
+- POST de la colección `/api/auth/memberships`, sin nueva API global de usuarios.
+  Usar UserCreation del servicio, sin query ni campos de autoridad extra. Sesión
+  admin vigente y CSRF/origen obligatorios; X-Expected-Membership requerido como
+  precondición de contexto. GET/PATCH mantienen su contrato anterior.
+- 201 tras commit con representación mínima de membresía, ETag y actor. Location
+  relativo `./memberships/{id}` resuelve tanto con `/api` como en acceso directo,
+  sin tomar origen de Host. Sin emitir cookies, sesión o credenciales del usuario.
+- 409 User creation unavailable para correo global existente, sin información de
+  otras empresas. Validación/errores sin eco ni metadatos de éxito, siempre
+  no-store. POST repetido no reasigna ni resetea; resultado perdido exige revisar.
+- Compartir los dos slots Argon2 por proceso con login, sin cola al saturar (503).
+  Reutilizar límites de cuerpo, conexiones y volumen del proxy de acceso y logs
+  sin query/cookies/cuerpo. Sin nueva dependencia, migración o configuración.
+- Canal definido para el formulario posterior: alta presencial/asistida en equipo
+  controlado, donde la persona nueva elige/escribe su clave en un campo oculto.
+  Requiere confianza en el administrador y equipo. Sin enviar claves por chat,
+  correo o URL. HTTPS fuera de loopback. No afirmar invitación remota, verificación
+  de correo, cambio inicial forzoso o recuperación; esos mecanismos siguen pendientes.

@@ -1,4 +1,4 @@
-"""Thin HTTP adapter for existing memberships; no registration or tenant input."""
+"""Session/admin membership adapter; no public registration or tenant input."""
 
 import re
 from typing import Annotated
@@ -12,6 +12,7 @@ from app.modules.access.administration import (
     MembershipChange,
     MembershipListQuery,
     MembershipView,
+    UserCreation,
 )
 from app.modules.access.http_security import RequestRejected
 from app.modules.access.membership import AccessDenied
@@ -53,15 +54,32 @@ def _expected_actor(request: Request) -> UUID | None:
         raise RequestRejected("Request rejected") from None
 
 
-def _representation(view: MembershipView) -> JSONResponse:
+def _representation(view: MembershipView, *, status_code: int = 200) -> JSONResponse:
     return JSONResponse(
         view.model_dump(mode="json"),
+        status_code=status_code,
         headers=_NO_STORE
         | {
             "ETag": view.etag,
             "X-Access-Membership": str(view.actor_membership_id),
         },
     )
+
+
+@router.post("", status_code=201)
+def create_user(payload: UserCreation, request: Request) -> JSONResponse:
+    # Middleware validates origin/CSRF and bounds JSON before routing.
+    token, expected = _token(request), _expected_actor(request)
+    if expected is None:
+        raise HTTPException(428, "Precondition required", headers=_NO_STORE)
+    with request.app.state.access.password_slot():
+        result = request.app.state.membership_administrator.create_user(
+            token, data=payload, expected_actor=expected
+        )
+    response = _representation(result, status_code=201)
+    # Resolve under both direct /auth/ and public /api/auth/, without trusting Host.
+    response.headers["Location"] = f"./memberships/{result.membership_id}"
+    return response
 
 
 @router.get("")

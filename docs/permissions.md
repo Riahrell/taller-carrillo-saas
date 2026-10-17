@@ -122,6 +122,22 @@ otorga autoridad al llamador. El lock de empresa coordina altas con último admi
 Conocer un correo existente no permite crear otra membresía, reactivar la cuenta
 o cambiar su contraseña. Conflicto genérico para cuenta propia/ajena/inactiva;
 sin IDs ni información de su empresa. El alta se audita en el mismo commit.
-No hay adaptador HTTP/UI todavía, ni permisos comerciales, invitaciones,
+La entrega 2.13 no añadió HTTP/UI, permisos comerciales, invitaciones,
 verificación de correo o recuperación implícitas. El contrato interno está en
 `user-provisioning-contract.md`; bootstrap se mantiene como acción del operador.
+
+## Alta HTTP en acceso 2.14
+
+POST `/api/auth/memberships` exige sesión/admin actuales dentro del servicio,
+origen/CSRF en middleware y X-Expected-Membership obligatorio antes del alta.
+Ni preautenticación ni selección pendiente autorizan crear usuarios. El estado
+role solicitado pertenece al objetivo, sin elevar la autoridad del actor. No
+admite empresa, cuenta global, hash o estado activo del cliente.
+
+El conflicto genérico no publica empresa/estado/ID de una cuenta global existente.
+Los errores no devuelven payload, ETag, Location, actor ni cookies. Saturación de
+los slots compartidos con login devuelve 503 sin crear registros. El proxy
+mantiene sus límites y logs sin cuerpo/query/cookies. Solo un 201 tras commit
+permite mostrar éxito; respuesta perdida requiere revisar estado, sin reintento.
+El formulario de alta asistida sigue pendiente, al igual que recuperación,
+invitación remota, verificación de correo y permisos de módulos comerciales.

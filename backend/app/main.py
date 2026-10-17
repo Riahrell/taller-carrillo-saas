@@ -18,6 +18,7 @@ from app.modules.access.administration import (
     LastAdministratorRequired,
     MembershipAdministrator,
     MembershipStateChanged,
+    UserCreationConflict,
 )
 from app.modules.access.administration_routes import router as administration_router
 from app.modules.access.authentication import AuthenticationUnavailable
@@ -88,6 +89,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @application.exception_handler(MembershipStateChanged)
     async def stale_membership(_request: Request, _error: MembershipStateChanged):
         return domain_error(412, "Membership state changed")
+
+    @application.exception_handler(UserCreationConflict)
+    async def user_creation_conflict(_request: Request, _error: UserCreationConflict):
+        return domain_error(409, "User creation unavailable")
 
     @application.exception_handler(AdministrationUnavailable)
     async def administration_unavailable(

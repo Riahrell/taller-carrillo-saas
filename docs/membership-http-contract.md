@@ -1,8 +1,10 @@
 # Administración HTTP de membresías existentes
 
-Contrato de acceso 2.10–2.12. Extiende la operación interna 2.9 y sus reglas; sin altas,
-registro público, cambios globales de usuario ni exportación masiva. La pantalla
+Contrato de consulta/cambio de acceso 2.10–2.12. Extiende la operación interna 2.9
+y sus reglas; sin registro público, cambios globales de usuario ni exportación masiva. La pantalla
 de administración existente está disponible en `/membresias` desde 2.12.
+El POST de alta administrativa añadido en 2.14 tiene su propio
+[contrato de alta](user-provisioning-contract.md), sin cambiar GET/PATCH de este documento.
 Los nombres de rutas y cabeceras son decisiones técnicas de este adaptador.
 
 | Navegador | Entrada | Éxito |

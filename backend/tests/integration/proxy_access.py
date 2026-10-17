@@ -4,9 +4,11 @@ import hashlib
 import json
 import os
 import socket
+import time
 from http.client import HTTPResponse
 from http.cookiejar import CookieJar
 from urllib.error import HTTPError
+from urllib.parse import urljoin
 from urllib.request import HTTPCookieProcessor, ProxyHandler, Request, build_opener
 
 import pytest
@@ -27,12 +29,20 @@ CANARY = "carrillo-http-log-canary"
 
 
 class Browser:
+    _next_request = 0.0
+
     def __init__(self, state, base="http://proxy:8080/api"):
         self.cookies = CookieJar()
         self.opener = build_opener(ProxyHandler({}), HTTPCookieProcessor(self.cookies))
         self.origin, self.base = state["settings"].public_origin, base
 
     def request(self, path, *, body=None, headers=None, method=None):
+        # Ordinary flows stay below Nginx's shared 10r/s budget across browsers.
+        # The final raw-socket test deliberately bypasses this pacing to test limits.
+        delay = Browser._next_request - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)
+        Browser._next_request = time.monotonic() + 0.12
         request = Request(
             self.base + path,
             data=json.dumps(body).encode() if body is not None else None,
@@ -239,6 +249,79 @@ def test_membership_read_patch_stale_and_foreign_rejection_through_real_proxy(
     assert headers["Cache-Control"] == "no-store"
     with Session(state["runtime"]) as session:
         assert len(list(session.scalars(select(AuditEvent)))) == 1
+
+
+def test_administrative_creation_and_new_user_login_through_real_proxy(
+    new_identity_scope,
+):
+    state = new_identity_scope
+    browser = Browser(state)
+    assert browser.request("/auth/csrf", headers=READ)[0] == 204
+    assert (
+        browser.request(
+            "/auth/login",
+            body={
+                "email": state["email"],
+                "password": state["password"].get_secret_value(),
+            },
+        )[0]
+        == 200
+    )
+    assert browser.request("/auth/csrf", headers=READ)[0] == 204
+    value = {
+        "email": state["prefix"] + CANARY + "@example.com",
+        "password": CANARY,
+        "role": "mechanic",
+    }
+    context = {"X-Expected-Membership": str(state["membership"])}
+    before = list(browser.cookies)
+    status, data, headers = browser.request(
+        "/auth/memberships", body=value, headers=context
+    )
+    assert status == 201 and data["role"] == "mechanic" and data["is_active"] is True
+    assert set(data) == {"membership_id", "role", "is_active"}
+    assert headers["X-Access-Membership"] == str(state["membership"])
+    assert headers["Cache-Control"] == "no-store" and headers.get("Set-Cookie") is None
+    assert list(browser.cookies) == before
+    resolved = urljoin(browser.base + "/auth/memberships", headers["Location"])
+    assert resolved == browser.base + "/auth/memberships/" + data["membership_id"]
+    status, detail, detail_headers = browser.request(
+        "/auth/memberships/" + data["membership_id"], headers=READ
+    )
+    assert (
+        status == 200 and detail == data and detail_headers["ETag"] == headers["ETag"]
+    )
+    status, conflict, error_headers = browser.request(
+        "/auth/memberships", body=value, headers=context
+    )
+    assert status == 409 and conflict == {"detail": "User creation unavailable"}
+    assert (
+        error_headers["Cache-Control"] == "no-store"
+        and error_headers.get("Location") is None
+    )
+    status, invalid, _ = browser.request(
+        "/auth/memberships?probe=" + CANARY, body=value, headers=context
+    )
+    assert status == 422 and CANARY not in json.dumps(invalid)
+    assert browser.request("/auth/logout", body={})[0] == 204
+    staff = Browser(state)
+    assert staff.request("/auth/csrf", headers=READ)[0] == 204
+    assert (
+        staff.request(
+            "/auth/login", body={"email": value["email"], "password": value["password"]}
+        )[0]
+        == 200
+    )
+    status, current, _ = staff.request("/auth/session", headers=READ)
+    assert status == 200 and current["membership_id"] == data["membership_id"]
+    assert (
+        current["tenant_id"] == str(state["tenant"]) and current["role"] == "mechanic"
+    )
+    assert staff.request("/auth/memberships", headers=READ)[0] == 403
+    assert staff.request("/auth/logout", body={})[0] == 204
+    with Session(state["runtime"]) as session:
+        records = list(session.scalars(select(AuditEvent)))
+        assert len(records) == 1 and records[0].action == "membership_created"
 
 
 def test_proxy_rejects_excess_body_uploads_without_reaching_authentication(

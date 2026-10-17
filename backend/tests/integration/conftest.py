@@ -165,3 +165,42 @@ def http_identity(db_session, databases):
                 delete(Tenant).where(Tenant.id.in_([state["tenant"], state["other"]]))
             )
             connection.execute(delete(LoginThrottle))
+
+
+@pytest.fixture
+def new_identity_scope(http_identity):
+    """Track HTTP-created synthetic users without changing operational accounts."""
+    from uuid import uuid4
+
+    from sqlalchemy import delete, select
+
+    from app.modules.access.models import (
+        AuditEvent,
+        LoginChallenge,
+        SessionRecord,
+        TenantMembership,
+        User,
+    )
+
+    state = dict(http_identity, prefix="web-" + uuid4().hex + "-")
+    try:
+        yield state
+    finally:
+        with state["owner"].begin() as connection:
+            users = select(User.id).where(User.email.startswith(state["prefix"]))
+            members = select(TenantMembership.id).where(
+                TenantMembership.user_id.in_(users)
+            )
+            connection.execute(
+                delete(AuditEvent).where(AuditEvent.target_membership_id.in_(members))
+            )
+            connection.execute(
+                delete(SessionRecord).where(SessionRecord.membership_id.in_(members))
+            )
+            connection.execute(
+                delete(LoginChallenge).where(LoginChallenge.user_id.in_(users))
+            )
+            connection.execute(
+                delete(TenantMembership).where(TenantMembership.user_id.in_(users))
+            )
+            connection.execute(delete(User).where(User.id.in_(users)))

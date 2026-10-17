@@ -1,7 +1,7 @@
-# Alta administrativa interna (acceso 2.13)
+# Alta administrativa (acceso 2.13–2.14)
 
-Esta entrega añade un servicio interno, sin endpoint, formulario ni registro
-público. El operador inicial sigue usando bootstrap. No ejecutarlo sobre cuentas
+La entrega 2.13 añadió el servicio interno y 2.14 lo conecta a HTTP. Todavía sin
+formulario ni registro público. El operador inicial sigue usando bootstrap. No ejecutarlo sobre cuentas
 reales como parte de pruebas o desde otra transacción.
 
 ## Entrada y autoridad
@@ -49,9 +49,9 @@ y estado distinto. No se guardan correo ni credenciales en el evento.
 Fallo de hash/DB/commit: `AdministrationUnavailable` saneado y rollback íntegro.
 Sin reintentos automáticos ni idempotencia general. Una respuesta perdida puede
 ocultar un commit: revisar el listado antes de otra alta; nunca resetear la cuenta
-existente por un reintento. El futuro adaptador debe aplicar CSRF/origen, límites
-de cuerpo/volumen y evitar logs/cache de entrada. Debe resolver entrega/elección
-de contraseña mediante un canal controlado; este servicio no envía credenciales
+existente por un reintento. El adaptador 2.14 aplica CSRF/origen, límites
+de cuerpo/volumen y evita logs/cache de entrada. El canal asistido del futuro
+formulario se define abajo; este servicio no envía credenciales
 ni afirma invitaciones, correo verificado, cambio inicial obligatorio o recuperación.
 
 ## Esquema y aceptación
@@ -67,3 +67,57 @@ inactivos, hash/login del nuevo usuario, auditoría y permisos DB, rollback de h
 inserción/auditoría/commit, dos altas simultáneas con mismo correo (incluyendo
 empresas distintas), permiso revocado durante espera, último admin y migración
 con evidencia anterior/de alta. Todo solo en PostgreSQL efímero protegido.
+
+## Adaptador HTTP 2.14
+
+POST `/api/auth/memberships` (FastAPI `/auth/memberships`), sin barra final ni
+query params. Es una ampliación de la colección administrativa existente, sin
+nueva colección de identidades globales. JSON con email/password/role obligatorios,
+sin campos extra. Misma política de validación/secreto del servicio 2.13.
+
+Exige cookie privada de sesión vigente, permiso admin actual, Origin exacto,
+CSRF firmado ligado a sesión y `X-Expected-Membership` obligatorio (UUID canónico
+en minúsculas de la sesión verificada). Sin cabecera: 428 Precondition required;
+inválida/duplicada: 403 Request rejected; contexto diferente: 403 Access denied.
+La cabecera solo compara contexto, no elige actor/tenant ni concede autoridad.
+Una preautenticación o selección pendiente no autoriza alta. CSRF no sustituye
+autorización. El cliente debe renovar CSRF antes de escribir.
+
+201 solo después del commit, JSON membership_id/role/is_active. Cabeceras ETag
+y X-Access-Membership igual que detalle; Location relativo
+`./memberships/{membership_id}` para resolver correctamente desde colección con
+o sin prefijo `/api`, sin confiar en Host o construir un origen absoluto.
+No devuelve correo, ID global, contraseña, hash ni token. No emite/borra cookies
+ni inicia sesión como la persona nueva. Actor conserva su sesión.
+
+Errores saneados: 400 JSON inválido; 401 sesión ausente/inválida; 403 permiso,
+contexto, origen o CSRF; 409 `User creation unavailable` para correo global ya
+registrado; 415 tipo de contenido; 422 cuerpo/query inválidos; 428 contexto
+requerido; 503 `Authentication unavailable` ante fallo DB/hash/commit o saturación.
+Siempre no-store, sin ETag/Location/cabecera de actor en errores. Sin cambios de
+cookies por alta o fallo; recuperación de sesión mediante rutas existentes.
+
+JSON UTF-8 hasta 8192 bytes en middleware y proxy; límites existentes de
+conexiones/volumen de `/api/auth/` (429) y dos slots Argon2 por proceso compartidos
+con login, sin espera en cola al saturar. Logs sin cuerpo/cookies/query de acceso.
+No añade throttles persistentes por alta ni cambia los del login. El lock de
+empresa y la unicidad global siguen arbitrando concurrencia. POST repetido del
+mismo correo da conflicto y no resetea la cuenta; no es idempotencia general ni
+permiso de reintento automático. Ante respuesta perdida consultar listado/sesión.
+
+## Canal de contraseña y límites del alta asistida
+
+Decisión para el siguiente formulario: alta presencial/asistida en un equipo
+controlado, con administrador autenticado. La persona nueva elige/escribe su
+contraseña en un campo oculto sin estado persistente; el formulario debe borrarla
+al enviar/cancelar y retirarla de memoria al perder contexto. Sin generar o
+enviar claves por correo, chat, URL, archivos o argumentos de terminal. El dato
+viaja solo al backend del mismo origen. HTTPS es obligatorio fuera del desarrollo
+loopback, según la validación de configuración vigente.
+
+Este canal requiere confianza en el equipo y en el administrador; ocultar el campo
+no protege contra quien controla ese navegador/equipo. No promete invitación
+remota, verificación de correo, contraseña temporal/cambio forzoso, recuperación
+ni MFA. No adjunta cuentas existentes. El formulario todavía no se implementa en
+2.14 y las pruebas HTTP usan únicamente credenciales sintéticas en DB efímera.
+La recuperación de acceso debe completarse antes de declarar listo para producción.
