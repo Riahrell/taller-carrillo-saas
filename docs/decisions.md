@@ -815,3 +815,26 @@ Referencias: [query models FastAPI](https://fastapi.tiangolo.com/tutorial/query-
 - No env vars nuevas, claves operativas, rutas, tablas, QR o cambios de login.
   Los resultados son candidatos; no prueban posesión para emitir sesión ni consumen
   nada. 2.22 añadirá persistencia y consumo atómico antes de integrar autenticación.
+
+## Acceso 2.22: consumo MFA transaccional interno
+
+- 0009 crea solo credenciales globales cifradas, conjuntos de recuperación y hashes
+  de códigos. Un factor no revocado por usuario y un conjunto vigente por factor,
+  con índices únicos parciales. FK compuesta impide conjuntos con propietario ajeno.
+- La credencial representa confirmación ya completada; el alta pendiente futura
+  necesita otra persistencia cifrada. No backfill, cuentas reales con factor nuevo
+  ni cambios de emisión/resolución de sesión en esta entrega.
+- Orden usuario -> credencial -> conjunto -> código, refresh ORM y hora de DB tras
+  locks. Consumo global del contador TOTP, independiente del propósito del llamador;
+  códigos offline con marca individual. La transacción pertenece al caso de uso,
+  sin commit o sesión desde la biblioteca, y todo se revierte si falla trabajo posterior.
+- No confundir consumo con prueba autorizada de sesión/recuperación: faltan
+  contraseña/pendientes, cuotas, auditoría global, revisión y revocación integradas.
+  El hash offline conserva el vínculo a usuario/conjunto y no a la contraseña.
+- Sin DELETE para la app en tablas MFA; ciclo de vida por revocación/invalidez.
+  Downgrade bloqueado ante cualquier factor, incluso revocado, para no olvidar
+  evidencia. No eliminar filas para forzarlo. Roles propietarios/SQL arbitrario
+  siguen fuera de esta garantía de aplicación.
+- Contrato físico/límites en `mfa-persistence-contract.md`. Siguiente 2.23:
+  auditoría global append-only para consumo MFA en el mismo commit; después
+  cuotas compartidas e integración de los restantes controles antes de activar MFA.

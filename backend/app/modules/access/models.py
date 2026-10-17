@@ -5,15 +5,19 @@ from enum import StrEnum
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
+    LargeBinary,
     String,
     UniqueConstraint,
     func,
+    text,
     true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, validates
@@ -220,3 +224,84 @@ class AuditEvent(Base):
     before_active: Mapped[bool | None] = mapped_column(Boolean)
     after_active: Mapped[bool] = mapped_column(Boolean)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class MfaCredential(Base):
+    """Confirmed global credential; staged enrollment will live in typed pendings."""
+
+    __tablename__ = "mfa_credentials"
+    __table_args__ = (
+        UniqueConstraint("user_id", "id"),
+        Index(
+            "uq_mfa_credentials_current_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("revoked_at IS NULL"),
+        ),
+        CheckConstraint("encryption_version = 1", name="encryption_version"),
+        CheckConstraint("key_id ~ '^[A-Za-z0-9_-]{1,64}$'", name="key_id_format"),
+        CheckConstraint("octet_length(nonce) = 12", name="nonce_length"),
+        CheckConstraint("octet_length(ciphertext) = 36", name="ciphertext_length"),
+        CheckConstraint("revoked_at >= created_at", name="revocation_window"),
+        CheckConstraint(
+            "(last_counter IS NULL AND last_verified_at IS NULL) OR "
+            "(last_counter IS NOT NULL AND last_verified_at IS NOT NULL "
+            "AND last_counter >= 0 AND last_verified_at >= created_at)",
+            name="consumption_state",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    encryption_version: Mapped[int] = mapped_column(Integer)
+    key_id: Mapped[str] = mapped_column(String(64))
+    nonce: Mapped[bytes] = mapped_column(LargeBinary)
+    ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_counter: Mapped[int | None] = mapped_column(BigInteger)
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MfaRecoverySet(Base):
+    __tablename__ = "mfa_recovery_sets"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["user_id", "credential_id"],
+            ["mfa_credentials.user_id", "mfa_credentials.id"],
+            ondelete="RESTRICT",
+            name="fk_mfa_recovery_sets_credential_owner",
+        ),
+        Index(
+            "uq_mfa_recovery_sets_current_credential",
+            "credential_id",
+            unique=True,
+            postgresql_where=text("invalidated_at IS NULL"),
+        ),
+        CheckConstraint("invalidated_at >= created_at", name="invalidation_window"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column()
+    credential_id: Mapped[UUID] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MfaRecoveryCode(Base):
+    __tablename__ = "mfa_recovery_codes"
+    __table_args__ = (
+        UniqueConstraint("set_id", "code_hash"),
+        CheckConstraint("position >= 0 AND position < 10", name="position_bounds"),
+        CheckConstraint("octet_length(code_hash) = 32", name="hash_length"),
+        CheckConstraint(
+            "used_at >= '1970-01-01 00:00:00+00'::timestamptz", name="use_window"
+        ),
+    )
+
+    set_id: Mapped[UUID] = mapped_column(
+        ForeignKey("mfa_recovery_sets.id", ondelete="RESTRICT"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code_hash: Mapped[bytes] = mapped_column(LargeBinary)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

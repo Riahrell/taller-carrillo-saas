@@ -37,7 +37,9 @@ sigue abierto y visible; no se registra como corregido.
 `mfa-recovery-contract.md`; no cambia runtime o DB. Registro documental en
 `deliveries/access-2.20.md`. 2.21 implementa primitivas TOTP, AEAD y códigos
 offline con pruebas aisladas: `deliveries/access-2.21.md`. Sin migración, rutas o
-MFA activo. Entregas anteriores son registros históricos.
+MFA activo en esa entrega. 2.22 agrega 0009 y consumo interno transaccional,
+probando concurrencia, rollback y reversión protegida; evidencia y límites en
+`deliveries/access-2.22.md`. Login sigue sin MFA. Entregas anteriores son históricas.
 El hito 2 sigue abierto: faltan MFA, resolver/revisar el aviso dev-only vigente,
 gestión global de cuentas, permisos de otros módulos, consulta/ampliación de
 auditoría, recuperación y limpieza de registros de acceso.

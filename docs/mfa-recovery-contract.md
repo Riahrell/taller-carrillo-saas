@@ -1,8 +1,9 @@
 # MFA y recuperación: contrato de diseño 2.20
 
-Fecha: 2026-10-17. **Contrato 2.20 con primitivas internas implementadas en 2.21.**
+Fecha: 2026-10-17. **Contrato 2.20 con primitivas 2.21 y persistencia interna 2.22.**
 Login y confirmación administrativa siguen usando contraseña; no hay MFA activo,
-correo verificado, recuperación operativa, tablas nuevas o proveedor de correo.
+correo verificado, recuperación operativa o proveedor de correo. 0009 agrega
+solo tablas MFA vacías, sin habilitar factores en cuentas operativas.
 La biblioteca no se invoca desde rutas o servicios de autenticación. Ver
 [entrega 2.21](deliveries/access-2.21.md) para evidencia y límites ejecutados.
 
@@ -185,7 +186,9 @@ del flujo ordinario de olvido. Ver [recuperación por correo](email-recovery-des
 
 ## Persistencia, cifrado y transacciones futuras
 
-Modelo lógico propuesto; todavía no es una migración ni nombres/campos de API:
+Modelo lógico objetivo, sin nombres/campos de API. 2.22 materializa solo
+credenciales y conjuntos/códigos en 0009; el resto sigue pendiente. Ver
+[persistencia y consumo](mfa-persistence-contract.md).
 
 | Componente | Datos y restricciones que deberá representar |
 | --- | --- |
@@ -239,9 +242,9 @@ Restaurar backup puede resucitar códigos consumidos: el runbook deberá invalid
 sesiones/pendientes/conjuntos offline restaurados y restablecer un acceso seguro
 antes de abrir tráfico. No declarar restauración segura por recuperar tablas.
 
-Criterios de integración pendientes. En 2.21 se prueban solo las primitivas de
-los puntos 1–2 y hashes del 7; concurrencia, persistencia, logs/HTTP/UI y operación
-siguen pendientes:
+Criterios de integración pendientes. 2.21 prueba primitivas y 2.22 añade
+persistencia/consumo único concurrente y rollback, como operaciones internas.
+Cuotas, auditoría global, sesiones/pending/HTTP/UI y operación siguen pendientes:
 
 1. Vectores RFC, ceros iniciales, tolerancia/límites exactos, reloj regresivo,
    coincidencia ambigua, repetición y dos verificaciones concurrentes.
@@ -268,11 +271,8 @@ siguen pendientes:
 
 ## Próxima tarea pequeña
 
-**2.22: persistencia de credenciales/consumo MFA y servicios transaccionales**.
-Partir de la biblioteca 2.21 y probar consumo único entre procesos/propósitos,
-concurrencia y rollback en PostgreSQL aislado. La comprobación interna devuelve
-un contador candidato, nunca una prueba de autorización; persistir bajo bloqueo
-el contador y la hora de servidor aceptados. La comparación de hora incluye
-fracciones de segundo para rechazar regresión incluso dentro del mismo paso.
-Después: integración de todos los caminos de autenticación y finalmente HTTP/UI/
-correo. Cada entrega declara la brecha restante hasta la integración completa.
+**2.23: auditoría global append-only para consumos MFA**, en el mismo commit,
+con privilegios y rollback probados. 2.22 ya persiste bajo locks el contador/hora
+y el uso de códigos; no autoriza sesiones o recuperación. Después: cuotas,
+pendientes, revisión global e integración de todos los caminos de autenticación
+y finalmente HTTP/UI/correo. Cada entrega declara la brecha restante.

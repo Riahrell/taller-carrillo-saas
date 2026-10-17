@@ -20,9 +20,11 @@ Contrato y downgrade con revocación: `reauthentication-contract.md`.
 2.20 propone el modelo lógico MFA/recuperación en `mfa-recovery-contract.md`:
 estado de seguridad global/revisión, factor cifrado, pendientes tipados, códigos
 offline, evidencia de sesión/correo y eventos globales separados de auditoría
-comercial. **No son tablas existentes o una migración nueva**. La entrega 2.21
-implementa primitivas sin persistencia; el esquema permanece en 0008. Cerrar
-esquema/migración al implementar los servicios en 2.22. No reutilizar un evento comercial con actor/tenant falsos.
+comercial. 2.21 implementa primitivas. **2.22 agrega 0009**, solo tablas de
+credenciales cifradas, conjuntos y hashes offline; sin backfill o MFA en login.
+El resto del modelo lógico sigue pendiente. Detalles y límites físicos en
+`mfa-persistence-contract.md`; no reutilizar eventos comerciales con actor/tenant
+falsos para auditoría global.
 
 ## Entidades
 
