@@ -1,9 +1,10 @@
 # MFA y recuperación: contrato de diseño 2.20
 
-Fecha: 2026-10-17. **Diseño, todavía sin implementación.** La aplicación ejecutable
-sigue en 2.19: login y confirmación administrativa usan contraseña; no hay TOTP,
-correo verificado, recuperación, tablas nuevas o proveedor de correo activo.
-Este documento define decisiones técnicas y aceptación antes de programarlos.
+Fecha: 2026-10-17. **Contrato 2.20 con primitivas internas implementadas en 2.21.**
+Login y confirmación administrativa siguen usando contraseña; no hay MFA activo,
+correo verificado, recuperación operativa, tablas nuevas o proveedor de correo.
+La biblioteca no se invoca desde rutas o servicios de autenticación. Ver
+[entrega 2.21](deliveries/access-2.21.md) para evidencia y límites ejecutados.
 
 ## Decisiones y autoridad
 
@@ -238,7 +239,9 @@ Restaurar backup puede resucitar códigos consumidos: el runbook deberá invalid
 sesiones/pendientes/conjuntos offline restaurados y restablecer un acceso seguro
 antes de abrir tráfico. No declarar restauración segura por recuperar tablas.
 
-Criterios futuros, **aún no ejecutados**:
+Criterios de integración pendientes. En 2.21 se prueban solo las primitivas de
+los puntos 1–2 y hashes del 7; concurrencia, persistencia, logs/HTTP/UI y operación
+siguen pendientes:
 
 1. Vectores RFC, ceros iniciales, tolerancia/límites exactos, reloj regresivo,
    coincidencia ambigua, repetición y dos verificaciones concurrentes.
@@ -265,10 +268,11 @@ Criterios futuros, **aún no ejecutados**:
 
 ## Próxima tarea pequeña
 
-**2.21: biblioteca interna para TOTP y protección de semillas/códigos offline**:
-elegir dependencias mantenidas y auditadas, envolverlas con contratos sin secretos
-en repr/serialización, verificar vectores y cifrado/AAD, y probar errores y límites.
-Solo primitivas internas, sin rutas, migración, cambios de login o cuentas reales.
-Después: persistencia/servicios transaccionales, integración de todos los caminos
-de autenticación y finalmente HTTP/UI/correo. Cada entrega conserva la aplicación
-ejecutable y declara la brecha restante hasta la integración completa.
+**2.22: persistencia de credenciales/consumo MFA y servicios transaccionales**.
+Partir de la biblioteca 2.21 y probar consumo único entre procesos/propósitos,
+concurrencia y rollback en PostgreSQL aislado. La comprobación interna devuelve
+un contador candidato, nunca una prueba de autorización; persistir bajo bloqueo
+el contador y la hora de servidor aceptados. La comparación de hora incluye
+fracciones de segundo para rechazar regresión incluso dentro del mismo paso.
+Después: integración de todos los caminos de autenticación y finalmente HTTP/UI/
+correo. Cada entrega declara la brecha restante hasta la integración completa.

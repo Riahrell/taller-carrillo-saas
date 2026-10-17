@@ -200,9 +200,10 @@ Actualización 2026-10-17: 2.18 implementa el primer punto y 2.19 integra escane
 evidencia en `../deliveries/access-2.18.md` y `../deliveries/access-2.19.md`.
 La revisión anterior describe el estado de 2.17 en que se recibió el PDF.
 SEC-2026-001 conserva un aviso dev-only visible hasta su revisión/vencimiento.
-2.20 define el contrato MFA/recuperación en `../mfa-recovery-contract.md`, todavía
-sin implementación. Siguiente 2.21: primitivas TOTP/cifrado/códigos offline;
-integrar todos los caminos de autenticación antes del inventario.
+2.20 define el contrato MFA/recuperación en `../mfa-recovery-contract.md`.
+2.21 implementa solo primitivas internas TOTP/cifrado/códigos offline. Siguiente
+2.22: persistencia/consumo transaccional; integrar todos los caminos de
+autenticación antes del inventario. MFA todavía no está activo.
 
 1. Completar 2.18: UI de confirmación y guardia dentro de alta/cambio; impedir
    escritura sin prueba reciente y probar pérdida de contexto/rotación entre pestañas.

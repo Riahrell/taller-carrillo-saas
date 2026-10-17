@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.19 ejecutable y contrato MFA 2.20
+## Estado: acceso 2.21, primitivas internas MFA; login sin segundo factor
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -37,7 +37,8 @@ ejecución en GitHub está pendiente: no hay remoto configurado. No usar en prod
 - [Aceptación](docs/acceptance.md), [entrega ejecutable 2.19](docs/deliveries/access-2.19.md)
   y [contrato de diseño 2.20](docs/deliveries/access-2.20.md).
 - [MFA y recuperación](docs/mfa-recovery-contract.md): TOTP, incorporación,
-  códigos offline y separación de recuperación por correo. Todavía sin implementar.
+  códigos offline y separación de recuperación por correo. Primitivas internas
+  implementadas en [2.21](docs/deliveries/access-2.21.md); integración pendiente.
 - [Escaneos de seguridad](docs/security-scanning.md): secretos en archivos/historial,
   dependencias Python/npm y excepción temporal dev-only visible hasta 2026-10-31.
 - [Contrato de confirmación reciente](docs/reauthentication-contract.md): servicio
@@ -619,8 +620,10 @@ esquema anterior no puede representar. No borrar registros para forzarlo.
 
 ## Siguiente tarea
 
-Acceso 2.21: biblioteca interna para TOTP, cifrado de semillas y códigos offline,
-con dependencias auditadas y vectores/pruebas criptográficas. No habilitar login
+Acceso 2.21 agrega la biblioteca interna TOTP, cifrado de semillas y códigos offline,
+con dependencias fijadas y pruebas. Detalles en `docs/deliveries/access-2.21.md`.
+Siguiente 2.22: persistencia de credenciales/consumo MFA y servicios transaccionales
+con concurrencia y rollback, todavía sin habilitar login MFA. No habilitar login
 MFA hasta integrar persistencia, todos los caminos de autenticación y HTTP/UI.
 El contrato 2.20 ya define incorporación con prueba fresca de buzón, obligatoriedad
 admin global, recuperación sin bypass y cambios futuros de sesión/confirmación.

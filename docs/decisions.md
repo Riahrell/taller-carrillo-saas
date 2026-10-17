@@ -790,3 +790,28 @@ Referencias: [query models FastAPI](https://fastapi.tiangolo.com/tutorial/query-
 - Siguiente 2.21: primitivas TOTP/cifrado/códigos offline con dependencias auditadas
   y pruebas. Después persistencia/servicios y HTTP/UI/correo. Sin claves operativas,
   migración, endpoints, compras, envíos o cambios de VPS en esta entrega documental.
+
+## Acceso 2.21: primitivas MFA sin autoridad de sesión
+
+- PyOTP 2.10.0 implementa TOTP; cryptography 50.0.2 aporta AES-256-GCM.
+  Locks con hashes conservan las otras versiones existentes. Perfil fijo SHA-1,
+  seis dígitos ASCII, semilla CSPRNG de 20 bytes, pasos de 30 segundos, ±1 paso.
+- Se evalúan todos los candidatos y se rechaza coincidencia ambigua antes de
+  filtrar contadores consumidos. Estado aceptado exige contador y hora de servidor
+  juntos; una hora regresiva se rechaza incluso dentro del mismo paso. El reloj
+  de primer uso necesita supervisión operativa; esta biblioteca no la proporciona.
+- AEAD v1: nonce aleatorio de 12 bytes, clave de 32 bytes externa/injectada,
+  AAD con dominio/versión, UUID de usuario/credencial y key id. Rotación lee claves
+  anteriores y escribe solo con la activa. Desprotección falla cerrada con mensaje
+  genérico ante versión, clave, etiqueta, nonce o identidad incorrectos.
+- Diez códigos independientes de 16 bytes, Base32 canónico sin padding; rechazar
+  variantes en vez de normalizar Unicode/espacios/case. Hash SHA-256 separado por
+  propósito, usuario y conjunto. No depende de contraseña. Comparación constante.
+- Semillas/códigos usan SecretBytes/SecretStr, campos congelados y excluidos de
+  repr/dumps. No equivale a borrado seguro de memoria. Nunca registrar excepciones
+  Pydantic con inputs (`errors()`/`json()` predeterminados) o acceder al secreto
+  salvo operación criptográfica/entrega restringida futura. No hay serializador
+  para entregar códigos en HTTP todavía.
+- No env vars nuevas, claves operativas, rutas, tablas, QR o cambios de login.
+  Los resultados son candidatos; no prueban posesión para emitir sesión ni consumen
+  nada. 2.22 añadirá persistencia y consumo atómico antes de integrar autenticación.

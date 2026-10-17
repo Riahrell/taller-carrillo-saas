@@ -21,8 +21,8 @@ Contrato y downgrade con revocación: `reauthentication-contract.md`.
 estado de seguridad global/revisión, factor cifrado, pendientes tipados, códigos
 offline, evidencia de sesión/correo y eventos globales separados de auditoría
 comercial. **No son tablas existentes o una migración nueva**. La entrega 2.21
-comenzará por primitivas sin persistencia; cerrar esquema/migración al implementar
-los servicios. No reutilizar un evento comercial con actor/tenant falsos.
+implementa primitivas sin persistencia; el esquema permanece en 0008. Cerrar
+esquema/migración al implementar los servicios en 2.22. No reutilizar un evento comercial con actor/tenant falsos.
 
 ## Entidades
 
