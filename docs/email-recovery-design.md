@@ -2,7 +2,8 @@
 
 Decisión solicitada por el usuario el 2026-10-17. Diseño pendiente de implementar;
 no hay formulario, endpoint, migración, proveedor conectado o envío activo.
-Se conserva el orden de trabajo: escaneos 2.19 y diseño conjunto con MFA.
+Se conserva el orden de trabajo: escaneos integrados en 2.19; siguiente 2.20,
+contrato conjunto con MFA. Este documento no implementa recuperación.
 
 ## Alcance acordado
 

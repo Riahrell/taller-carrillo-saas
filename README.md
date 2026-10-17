@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.18
+## Estado: acceso 2.19
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -34,7 +34,9 @@ La fundación tiene validación integral local y workflow CI preparado. Su prime
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md) y [entrega 2.18](docs/deliveries/access-2.18.md).
+- [Aceptación](docs/acceptance.md) y [entrega 2.19](docs/deliveries/access-2.19.md).
+- [Escaneos de seguridad](docs/security-scanning.md): secretos en archivos/historial,
+  dependencias Python/npm y excepción temporal dev-only visible hasta 2026-10-31.
 - [Contrato de confirmación reciente](docs/reauthentication-contract.md): servicio
   y POST `/api/auth/reauthenticate`, formulario y guardia obligatoria dentro de
   las transacciones de alta/cambio administrativos. Sin prueba vigente: 428.
@@ -614,10 +616,12 @@ esquema anterior no puede representar. No borrar registros para forzarlo.
 
 ## Siguiente tarea
 
-Acceso 2.19: automatizar escaneos de dependencias y secretos, definiendo alcance,
-herramientas fijadas y tratamiento de hallazgos antes de incorporarlos a CI.
-Después, contrato de MFA obligatorio para administradores y recuperación segura,
-según la revisión del Plan Maestro v1.1. La API de confirmación verifica la
+Acceso 2.20: contrato de MFA obligatorio para administradores y recuperación segura,
+con verificación de buzón y diseño de recuperación por correo ya documentado.
+2.19 incorpora escaneos obligatorios de secretos/dependencias en CI; el hallazgo
+dev-only SEC-2026-001 permanece visible con vencimiento 2026-10-31. Detalles en
+`docs/security-scanning.md`. La prioridad conserva el orden de seguridad
+de la revisión del Plan Maestro v1.1. La API de confirmación verifica la
 contraseña y rota cookies de sesión/CSRF tras commit, con contexto obligatorio,
 no-store y slots compartidos. JSON ambiguo se rechaza en el middleware común.
 La prueba interna dura cinco minutos y no extiende la vida absoluta. Migración

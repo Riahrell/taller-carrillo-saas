@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "npm": [
+    {
+      "id": "SEC-2026-001",
+      "advisory": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+      "created": "2026-10-17",
+      "expires": "2026-10-31",
+      "owner": "Taller Carrillo - mantenimiento de seguridad",
+      "reason": "Sin version corregida publicada. Cadena exclusiva de ESLint/desarrollo; patrones de rootDir provienen de configuracion del repositorio, no de peticiones de usuarios. Mantener aislamiento de CI y todas las reglas de Next.js. No aplicar el downgrade mayor propuesto por npm audit fix.",
+      "packages": {
+        "@next/eslint-plugin-next": "16.4.2",
+        "fast-glob": "3.3.1",
+        "micromatch": "4.0.8",
+        "braces": "3.0.3"
+      }
+    }
+  ]
+}

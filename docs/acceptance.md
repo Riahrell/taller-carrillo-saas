@@ -30,9 +30,12 @@ en administración. Acceso 2.17 conecta POST de confirmación con contexto/CSRF,
 slots compartidos y cookies rotadas tras commit. El middleware rechaza claves
 JSON duplicadas. Acceso 2.18 añade formulario de identidad y guardia obligatoria
 en alta/cambio, con rollback ante confirmación ausente, vencida o invalidada.
-Resultados actuales en `deliveries/access-2.18.md`; entregas anteriores como
+Acceso 2.19 integra escaneos obligatorios de secretos/historial y dependencias,
+fallos cerrados y una excepción dev-only temporal documentada. Ese aviso
+sigue abierto y visible; no se registra como corregido.
+Resultados actuales en `deliveries/access-2.19.md`; entregas anteriores como
 registros históricos.
-El hito 2 sigue abierto: faltan MFA, escaneos automatizados,
+El hito 2 sigue abierto: faltan MFA, resolver/revisar el aviso dev-only vigente,
 gestión global de cuentas, permisos de otros módulos, consulta/ampliación de
 auditoría, recuperación y limpieza de registros de acceso.
 Contrato actualizado en `auth-http-contract.md`, con límites y pendientes explícitos.

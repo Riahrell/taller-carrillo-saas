@@ -196,10 +196,11 @@ adicionales a las propuestas: cada tarea cierra su contrato primero.
 
 ## Orden de trabajo recomendado y aceptación
 
-Actualización 2026-10-17: la entrega 2.18 implementa el primer punto; evidencia
-y límites en `../deliveries/access-2.18.md`. La revisión anterior describe el
-estado de 2.17 en que se recibió el PDF. Próxima tarea pequeña: escaneos de
-dependencias/secretos; después MFA y recuperación antes del inventario.
+Actualización 2026-10-17: 2.18 implementa el primer punto y 2.19 integra escaneos;
+evidencia en `../deliveries/access-2.18.md` y `../deliveries/access-2.19.md`.
+La revisión anterior describe el estado de 2.17 en que se recibió el PDF.
+SEC-2026-001 conserva un aviso dev-only visible hasta su revisión/vencimiento.
+Siguiente 2.20: contrato de MFA admin y recuperación antes del inventario.
 
 1. Completar 2.18: UI de confirmación y guardia dentro de alta/cambio; impedir
    escritura sin prueba reciente y probar pérdida de contexto/rotación entre pestañas.

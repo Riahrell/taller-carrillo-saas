@@ -12,8 +12,9 @@ La especificación de cada tarea cerrará contratos antes de generar código.
 Confirmación interna 2.16: `sessions.reauthenticated_at` y
 `reauthentication_fingerprint` nulos hasta verificar explícitamente contraseña y
 rotar token en un commit. No hay backfill. CHECK exige coherencia de ambas
-columnas y vida absoluta. La guardia de cinco minutos debe ejecutarse dentro
-de la transacción sensible; todavía no está conectada a administración.
+columnas y vida absoluta. Desde 2.18, la guardia de cinco minutos se exige dentro
+de las transacciones de alta/cambio administrativos; alta la comprueba de nuevo
+antes del commit. 2.19 agrega tooling de seguridad sin modificar ese esquema.
 Contrato y downgrade con revocación: `reauthentication-contract.md`.
 
 ## Entidades

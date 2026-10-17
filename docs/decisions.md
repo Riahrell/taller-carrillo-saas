@@ -737,3 +737,28 @@ Referencias: [query models FastAPI](https://fastapi.tiangolo.com/tutorial/query-
 - Detalle y aceptación en `email-recovery-design.md`. Solo diseño documental,
   sin rutas, migración, credenciales, cambios de cuenta o envíos reales. No altera
   la siguiente tarea 2.19 de escaneos ni requiere comprar servicios ahora.
+
+## Acceso 2.19: escaneos de seguridad obligatorios
+
+- Ejecutar Gitleaks de archivos/historial, pip-audit de locks runtime/dev/tools y
+  npm audit de lock completo antes de construir/arrancar las pruebas de aplicación.
+  Herramientas fijadas; historial completo; sin audit fix, paquetes de aplicación
+  ejecutados por el auditor o acceso a credenciales operativas.
+- Secretos sin red sobre snapshot/mirror privados. Herramientas con red reciben
+  solo manifiestos/locks y consultan registros públicos. Fallo de escáner de
+  secretos bloquea esas consultas. No montar Docker socket en contenedores.
+- Canary sintético demuestra detección/redacción incluso después de borrar el
+  archivo del último commit. Guardar solo informe saneado, con hashes de entradas.
+  Dependencias omitidas, error/red y resultados inconsistentes bloquean; no dar
+  por limpio un escaneo incompleto ni permitir omitirlo desde scripts.ci.
+- Un aviso raíz sin parche de braces afecta cuatro entradas dev-only de ESLint.
+  SEC-2026-001 lo acepta técnicamente hasta 2026-10-31 00:00 UTC, sin ocultarlo.
+  Fijar versiones/ubicación/dev=true/advisory exactos; máximo 14 días. No cubrir
+  nuevos avisos, dependencias runtime, apariciones anidadas o severidad crítica.
+  No retirar reglas Next o hacer downgrade 16 → 14 para limpiar el informe.
+- La excepción permite validar desarrollo; no declara preparación productiva.
+  Revisar al actualizar el proveedor y antes de vencer, sin extensión automática.
+  Detalles y evidencia en `security-scanning.md` y `deliveries/access-2.19.md`.
+- Siguiente 2.20: contrato de MFA admin/recuperación, incluyendo buzón verificado.
+  Recuperación por correo sigue como diseño. Sin cambios de VPS/DNS/TLS, compras,
+  credenciales operativas, migraciones o frontend en esta entrega.

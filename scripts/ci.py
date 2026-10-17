@@ -120,6 +120,7 @@ class Pipeline:
     def steps(self) -> None:
         self.validate_isolation()
         self.run([sys.executable, "-m", "unittest", "discover", "-s", "scripts/tests"])
+        self.run([sys.executable, "-m", "scripts.security"], timeout=900)
         self.run(["sh", "-n", "ops/postgres/init.sh"])
         self.compose(
             "build", "backend", "tests", "frontend", "frontend-tests", timeout=1200
@@ -214,7 +215,10 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    print("CI passed: workflow, lint, format, types, tests, builds and HTTP smoke.")
+    print(
+        "CI passed: security scans, workflow, lint, format, types, tests, "
+        "builds and HTTP smoke."
+    )
     return 0
 
 
