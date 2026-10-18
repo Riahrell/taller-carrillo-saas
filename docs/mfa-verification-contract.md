@@ -93,7 +93,7 @@ de sesión. La fachada de verificación no emite sesiones. Sin HTTP o activació
 MFA pública. 2.29 conecta contraseña/política global a pendientes internos.
 2.30 implementa desafíos/permiso de buzón internos; no son login, factor o reset
 de contraseña. 2.31 añade cola cifrada/cuotas atómicas, sin enviar. Sigue
-reemplazo del factor después de la entrada de recuperación offline 2.34.
-Incorporación y recuperación usan las mismas cuotas MFA antes de locks de usuario;
+regeneración segura de códigos después del reemplazo offline 2.35.
+Incorporación, recuperación y reemplazo usan las mismas cuotas MFA antes de locks de usuario;
 acertar OTP/código o contraseña no las reinicia.
-Ver `deliveries/access-2.34.md` y `access-security-closure.md`.
+Ver `deliveries/access-2.35.md` y `access-security-closure.md`.

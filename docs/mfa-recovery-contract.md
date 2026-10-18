@@ -295,7 +295,10 @@ original y conserva la caducidad. Sin sesión automática, HTTP o claves operati
 2.34 añade inicio offline restringido: contraseña verificada, consumo/auditoría
 de código, revocación y permiso de quince minutos desde emisión, con factor/conjunto
 anteriores activos. Sesión MFA normal confirmada cancela permisos.
-Sigue setup/reemplazo con nuevo TOTP y conjunto offline,
+2.35 intercambia permiso por setup cifrado y confirma reemplazo con nuevo TOTP:
+invalida factor/conjunto anteriores, crea diez códigos, avanza revisión/revoca
+y audita juntos; sin sesión automática. Ver deliveries/access-2.35.md.
+Sigue regeneración segura de códigos con contraseña/TOTP frescos,
 hooks de roles/factores y último admin, reautenticación MFA, UI y operación.
 Mantener el alcance de la puerta de seguridad previa al inventario.
 

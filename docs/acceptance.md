@@ -188,3 +188,10 @@ Probar cuotas/formatos, relectura de origen, caducidad original/emisión, fallos
 commit, concurrencia real y exclusión de sesión/alta inicial. Sesión MFA normal
 cancela permiso solo al confirmar; rollback conserva permiso y no devuelve código.
 Sustitución nueva con TOTP y avisos de seguridad siguen pendientes.
+
+Acceso 2.35: setup limitado al permiso offline y navegador, sin extender plazo.
+TOTP nuevo confirma cambio de factor/conjunto, códigos, revisión y auditoría
+atómicos. Probar rollback SQL/commit/clave/plazo, cuotas, revalidación/cancelación,
+semilla/códigos de entrega única, primer OTP no reutilizable, código viejo inválido
+y login completo posterior con el nuevo factor, más carrera realmente bloqueada.
+No se atribuye regeneración voluntaria, UI o recuperación excepcional completadas.

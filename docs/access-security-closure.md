@@ -5,19 +5,20 @@ Este documento organiza el alcance ya acordado en MFA/recuperación, revisión d
 seguridad y staging; no añade certificaciones ni módulos nuevos. No equivale a
 «seguridad terminada» porque pasen pruebas de componentes internos.
 
-| Bloque | Criterio de cierre comprobable | Estado al 2.34 |
+| Bloque | Criterio de cierre comprobable | Estado al 2.35 |
 | --- | --- | --- |
 | Correo transaccional | Persistencia cifrada/cuotas, consumidor con revalidación, fallos/reintentos; adaptador real con deadline, remitente verificado y entrega probada sin filtrar secretos | Cola y consumidor internos; transporte solo simulado, proveedor pendiente |
 | Incorporación y login MFA | Prueba fresca de buzón, primer TOTP activado atómicamente, códigos offline entregados una vez; login y selección exigen evidencia vigente | Incorporación, activación/códigos y login internos; HTTP/UI y claves operativas pendientes |
-| Ciclo de identidad y recuperación | Correo verificado explícito, reset de contraseña sin desactivar MFA; códigos offline, reemplazo de factor y último administrador sin bypass; cambios de rol/factor y reautenticación coherentes | Entrada offline restringida 2.34; reemplazo, reset/hook completos pendientes |
+| Ciclo de identidad y recuperación | Correo verificado explícito, reset de contraseña sin desactivar MFA; códigos offline, reemplazo de factor y último administrador sin bypass; cambios de rol/factor y reautenticación coherentes | Entrada/reemplazo offline internos 2.34–2.35; regeneración, reset/hook pendientes |
 | Integración HTTP e interfaz | Recorridos completos en navegador, CSRF/origen/cookies/proxy, ningún GET consume pruebas; contraseñas/TOTP/códigos fuera de URL/log/almacenamiento persistente y enlaces de correo sin filtraciones; aislamiento de empresas en cada operación | Login actual funciona; integración MFA/recuperación pendiente |
 | Operación y revisión final | HTTPS, claves externas/rotación, cuotas/purga/retención programadas, restauración real de copia, auditoría y regresión de seguridad; hallazgos resueltos o excepción vigente revisada según alcance | Desarrollo local; staging público y aceptación operacional pendientes |
 
 Cada entrega debe indicar qué criterio avanza y qué prueba lo demuestra. El
 bloque de incorporación avanzó con activación/códigos atómicos en 2.33. El
 inicio de recuperación offline quedó implementado en 2.34, sin sesión de negocio.
-El siguiente trabajo es **setup y reemplazo del factor con TOTP nuevo**, invalidando
-el conjunto anterior y entregando nuevos códigos en la misma transacción. No publicar
+2.35 confirmó el reemplazo/códigos de manera atómica. El siguiente trabajo es
+**regeneración segura de códigos offline con contraseña y TOTP actuales frescos**,
+sin reemplazar el factor ni ofrecer relectura de códigos ya entregados. No publicar
 HTTP antes del flujo completo. El proveedor/DNS se concretará al integrar el adaptador real;
 no pedir credenciales por chat ni contratar servicios por este documento.
 

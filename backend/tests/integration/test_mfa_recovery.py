@@ -23,12 +23,18 @@ from app.modules.access import (
     mfa_consumption,
     mfa_pending,
     mfa_recovery,
+    mfa_replacement,
     mfa_verification,
     recovery_state,
     security_state,
     sessions,
 )
-from app.modules.access.mfa_crypto import generate_recovery_codes
+from app.modules.access.mfa_crypto import (
+    SeedKeyring,
+    generate_recovery_codes,
+    generate_totp_seed,
+    match_recovery_code,
+)
 from app.modules.access.mfa_enrollment import MfaEnrollmentService
 from app.modules.access.mfa_sessions import MfaSessionIssuer, MfaSessionUnavailable
 from app.modules.access.models import (
@@ -39,6 +45,7 @@ from app.modules.access.models import (
     MfaRecoveryCode,
     MfaRecoveryPermit,
     MfaRecoverySet,
+    MfaReplacement,
     MfaThrottle,
     SecurityEvent,
     SessionRecord,
@@ -90,6 +97,7 @@ def state(mfa_state, monkeypatch):
         yield state
     finally:
         with state["owner"].begin() as connection:
+            connection.execute(delete(MfaReplacement))
             connection.execute(
                 delete(MfaRecoveryPermit).where(
                     MfaRecoveryPermit.user_id == state["user"]
@@ -105,6 +113,24 @@ def state(mfa_state, monkeypatch):
             )
             connection.execute(
                 delete(LoginChallenge).where(LoginChallenge.user_id == state["user"])
+            )
+            connection.execute(
+                delete(SecurityEvent).where(SecurityEvent.user_id == state["user"])
+            )
+            connection.execute(
+                delete(MfaRecoveryCode).where(
+                    MfaRecoveryCode.set_id.in_(
+                        select(MfaRecoverySet.id).where(
+                            MfaRecoverySet.user_id == state["user"]
+                        )
+                    )
+                )
+            )
+            connection.execute(
+                delete(MfaRecoverySet).where(MfaRecoverySet.user_id == state["user"])
+            )
+            connection.execute(
+                delete(MfaCredential).where(MfaCredential.user_id == state["user"])
             )
             connection.execute(
                 delete(TenantMembership).where(TenantMembership.id == state["member"])
@@ -566,3 +592,486 @@ def test_permissions_checks_and_downgrade_preserve_recovery_evidence(state):
     ):
         config.attributes["connection"] = connection
         command.downgrade(config, "0019_mfa_enrollment")
+
+
+@pytest.fixture
+def replacement(state, monkeypatch):
+    monkeypatch.setattr(mfa_replacement, "_database_now", lambda session: state["now"])
+    old = pyotp.TOTP(state["seed"].base32().get_secret_value())
+    old_window = {
+        old.at(state["now"] + timedelta(seconds=offset)) for offset in (-30, 0, 30)
+    }
+    while True:
+        seed = generate_totp_seed()
+        otp = pyotp.TOTP(seed.base32().get_secret_value())
+        counter = int(state["now"].timestamp()) // 30
+        if len(
+            {otp.generate_otp(counter + offset) for offset in range(-4, 40)}
+        ) == 44 and not (
+            old_window & {otp.generate_otp(counter + offset) for offset in (-1, 0, 1)}
+        ):
+            break
+    monkeypatch.setattr(mfa_replacement, "generate_totp_seed", lambda: seed)
+    worker = mfa_replacement.MfaReplacementService(
+        state["runtime"], keyring=state["keyring"]
+    )
+    return worker, begin(state)
+
+
+def replacement_setup(state, replacement):
+    return replacement[0].begin(
+        permit_token=replacement[1].token, browser_binding=state["binding"]
+    )
+
+
+def replace_factor(state, replacement, setup, **changes):
+    return replacement[0].activate(
+        **(
+            dict(
+                setup_token=setup.token,
+                browser_binding=state["binding"],
+                client_ip=ip_address("127.0.0.1"),
+                code=SecretStr(
+                    pyotp.TOTP(setup.seed.base32().get_secret_value()).at(state["now"])
+                ),
+            )
+            | changes
+        )
+    )
+
+
+def replacement_rows(state):
+    with Session(state["runtime"]) as session:
+        return list(session.scalars(select(MfaReplacement)))
+
+
+def test_replacement_setup_is_restricted_one_time_and_retains_original_deadline(
+    state, replacement
+):
+    state["now"] += timedelta(minutes=1)
+    setup = replacement_setup(state, replacement)
+    assert setup.expires_at == replacement[1].expires_at
+    assert replacement_setup(state, replacement) is None
+    (stage,) = replacement_rows(state)
+    assert stage.id != state["credential"] and stage.closed_at is None
+    assert setup.token.get_secret_value() != stage.token_hash
+    assert setup.seed.base32().get_secret_value() not in repr(setup)
+    assert records(state)[2:] == (None, None)
+    assert (
+        MfaSessionIssuer(state["runtime"]).select_membership(
+            proof_token=setup.token,
+            browser_binding=state["binding"],
+            membership_id=state["member"],
+        )
+        is None
+    )
+    assert (
+        MfaEnrollmentService(state["runtime"], keyring=state["keyring"]).activate(
+            setup_token=setup.token,
+            browser_binding=state["binding"],
+            code=SecretStr("000000"),
+            client_ip=ip_address("127.0.0.1"),
+        )
+        is None
+    )
+
+
+def test_replacement_swaps_factor_and_invalidates_old_set_atomically(
+    state, replacement
+):
+    setup = replacement_setup(state, replacement)
+    old_session = legacy_session(state)
+    bundle = replace_factor(state, replacement, setup)
+    assert bundle is not None and bundle.credential_id != state["credential"]
+    assert bundle.security_revision == 2 and len(bundle.codes) == 10
+    assert len({c.value.get_secret_value() for c in bundle.codes}) == 10
+    assert all(c.value.get_secret_value() not in repr(bundle) for c in bundle.codes)
+    (stage,) = replacement_rows(state)
+    assert stage.activated_at == stage.closed_at == state["now"]
+    assert stage.ciphertext is stage.nonce is stage.key_id is None
+    assert records(state)[2:] == (state["now"], state["now"])
+    assert replace_factor(state, replacement, setup) is None
+    with Session(state["runtime"]) as session:
+        factors = list(
+            session.scalars(
+                select(MfaCredential).where(
+                    MfaCredential.user_id == state["user"],
+                    MfaCredential.revoked_at.is_(None),
+                )
+            )
+        )
+        assert len(factors) == 1 and factors[0].id == bundle.credential_id
+        assert factors[0].last_counter == int(state["now"].timestamp()) // 30
+        assert session.get(SessionRecord, old_session).revoked_at == state["now"]
+        current = session.scalar(
+            select(MfaRecoverySet).where(
+                MfaRecoverySet.credential_id == bundle.credential_id
+            )
+        )
+        hashes = list(
+            session.scalars(
+                select(MfaRecoveryCode).where(MfaRecoveryCode.set_id == current.id)
+            )
+        )
+        assert len(hashes) == 10 and all(
+            match_recovery_code(
+                bundle.codes[r.position],
+                r.code_hash,
+                user_id=state["user"],
+                set_id=current.id,
+            )
+            and r.used_at is None
+            for r in hashes
+        )
+        assert session.get(User, state["user"]).security_revision == 2
+        assert all(
+            r.closed_at is not None
+            for r in session.scalars(
+                select(MfaRecoveryPermit).where(
+                    MfaRecoveryPermit.user_id == state["user"]
+                )
+            )
+        )
+        events = list(
+            session.scalars(
+                select(SecurityEvent).where(SecurityEvent.action == "mfa_replaced")
+            )
+        )
+        assert len(events) == 1 and events[0].credential_id == bundle.credential_id
+    with Session(state["runtime"]) as session, session.begin():
+        assert (
+            mfa_consumption.consume_recovery_code(
+                session,
+                user_id=state["user"],
+                credential_id=state["credential"],
+                set_id=state["set"],
+                code=state["codes"][1],
+            )
+            is None
+        )
+        assert (
+            mfa_consumption.consume_totp(
+                session,
+                user_id=state["user"],
+                credential_id=bundle.credential_id,
+                code=SecretStr(
+                    pyotp.TOTP(setup.seed.base32().get_secret_value()).at(state["now"])
+                ),
+                keyring=state["keyring"],
+            )
+            is None
+        )
+    # No automatic login. The next unused OTP can complete the regular MFA path.
+    state["now"] += timedelta(seconds=30)
+    source = start(state)
+    proof = mfa_verification.MfaVerifier(
+        state["runtime"], keyring=state["keyring"]
+    ).verify_login_totp(
+        token=source.token,
+        browser_binding=state["binding"],
+        code=SecretStr(
+            pyotp.TOTP(setup.seed.base32().get_secret_value()).at(state["now"])
+        ),
+        client_ip=ip_address("127.0.0.1"),
+    )
+    assert proof is not None
+    assert (
+        MfaSessionIssuer(state["runtime"]).select_membership(
+            proof_token=proof.token,
+            browser_binding=state["binding"],
+            membership_id=state["member"],
+        )
+        is not None
+    )
+
+
+def test_bad_replacement_totp_shares_quota_and_keeps_old_factor_and_codes_usable(
+    state, replacement
+):
+    setup = replacement_setup(state, replacement)
+    otp = pyotp.TOTP(setup.seed.base32().get_secret_value())
+    valid = {
+        otp.at(state["now"] + timedelta(seconds=offset)) for offset in (-30, 0, 30)
+    }
+    wrong = SecretStr(next(f"{i:06d}" for i in range(10) if f"{i:06d}" not in valid))
+    for _ in range(5):
+        assert replace_factor(state, replacement, setup, code=wrong) is None
+    assert replace_factor(state, replacement, setup) is None
+    assert (
+        records(state)[2:] == (None, None)
+        and replacement_rows(state)[0].closed_at is None
+    )
+    with Session(state["runtime"]) as session:
+        assert {r.failures for r in session.scalars(select(MfaThrottle))} == {5}
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "browser",
+        "token",
+        "password",
+        "revision",
+        "inactive",
+        "factor",
+        "set",
+        "closed",
+        "expired",
+    ],
+)
+def test_replacement_revalidates_bound_original_recovery(state, replacement, change):
+    setup = replacement_setup(state, replacement)
+    values = {}
+    if change == "browser":
+        values["browser_binding"] = SecretStr(secrets.token_urlsafe(32))
+    elif change == "token":
+        values["setup_token"] = replacement[1].token
+    elif change == "expired":
+        state["now"] = setup.expires_at
+    else:
+        with Session(state["runtime"]) as session, session.begin():
+            if change in ("password", "revision", "inactive"):
+                user = session.get(User, state["user"])
+                if change == "password":
+                    user.password_hash = hash_password(
+                        SecretStr(secrets.token_urlsafe(32))
+                    )
+                elif change == "revision":
+                    user.security_revision += 1
+                else:
+                    user.is_active = False
+            elif change == "factor":
+                session.get(MfaCredential, state["credential"]).revoked_at = state[
+                    "now"
+                ]
+            elif change == "set":
+                session.get(MfaRecoverySet, state["set"]).invalidated_at = state["now"]
+            else:
+                session.execute(
+                    update(MfaRecoveryPermit)
+                    .where(MfaRecoveryPermit.user_id == state["user"])
+                    .values(closed_at=state["now"])
+                )
+    assert replace_factor(state, replacement, setup, **values) is None
+    assert replacement_rows(state)[0].activated_at is None
+
+
+@pytest.mark.parametrize("reason", ["browser", "global", "normal_login", "expire"])
+def test_replacement_cancellation_and_purge_remove_seed_without_refunding_offline_code(
+    state, replacement, reason
+):
+    setup = replacement_setup(state, replacement)
+    if reason == "browser":
+        start(state)
+    elif reason == "global":
+        with Session(state["runtime"]) as session, session.begin():
+            login_challenges.revoke_user_challenges(session, state["user"])
+    elif reason == "normal_login":
+        binding = SecretStr(secrets.token_urlsafe(32))
+        proof = normal_proof(state, binding)
+        assert (
+            MfaSessionIssuer(state["runtime"]).select_membership(
+                proof_token=proof.token,
+                browser_binding=binding,
+                membership_id=state["member"],
+            )
+            is not None
+        )
+    else:
+        state["now"] = setup.expires_at - timedelta(microseconds=1)
+        assert mfa_replacement.purge_expired_replacements(state["runtime"]) == 0
+        state["now"] = setup.expires_at
+        assert (
+            mfa_replacement.purge_expired_replacements(state["runtime"], limit=1) == 1
+        )
+        assert mfa_replacement.purge_expired_replacements(state["runtime"]) == 0
+    (stage,) = replacement_rows(state)
+    assert stage.closed_at is not None and stage.ciphertext is None
+    assert records(state)[1][0] is not None and records(state)[2:] == (None, None)
+    assert replace_factor(state, replacement, setup) is None
+
+
+@pytest.mark.parametrize("operation", ["begin", "activate"])
+def test_replacement_commit_failure_never_publishes_seed_codes_or_partial_successor(
+    state, replacement, operation
+):
+    setup = replacement_setup(state, replacement) if operation == "activate" else None
+
+    def fail(session):
+        raise SQLAlchemyError("Synthetic replacement commit failure")
+
+    event.listen(replacement[0]._factory, "before_commit", fail, once=True)
+    with pytest.raises(mfa_replacement.MfaReplacementUnavailable):
+        replace_factor(state, replacement, setup) if setup else replacement_setup(
+            state, replacement
+        )
+    assert records(state)[2:] == (None, None)
+    with Session(state["runtime"]) as session:
+        assert session.get(User, state["user"]).security_revision == 1
+        assert (
+            len(
+                list(
+                    session.scalars(
+                        select(MfaCredential).where(
+                            MfaCredential.user_id == state["user"]
+                        )
+                    )
+                )
+            )
+            == 1
+        )
+    if operation == "begin":
+        assert not replacement_rows(state) and records(state)[0][0].used_at is None
+        assert replacement_setup(state, replacement) is not None
+    else:
+        assert replacement_rows(state)[0].closed_at is None
+        assert replace_factor(state, replacement, setup) is not None
+
+
+@pytest.mark.parametrize(
+    "table", ["mfa_credentials", "mfa_recovery_codes", "security_events"]
+)
+def test_replacement_real_write_failure_rolls_back_retirement_and_new_material(
+    state, replacement, table
+):
+    setup = replacement_setup(state, replacement)
+    with state["owner"].begin() as connection:
+        connection.execute(text(f"REVOKE INSERT ON {table} FROM carrillo_app"))
+    try:
+        with pytest.raises(mfa_replacement.MfaReplacementUnavailable):
+            replace_factor(state, replacement, setup)
+        assert (
+            records(state)[2:] == (None, None)
+            and replacement_rows(state)[0].closed_at is None
+        )
+        with Session(state["runtime"]) as session:
+            assert session.get(User, state["user"]).security_revision == 1
+            assert (
+                len(
+                    list(
+                        session.scalars(
+                            select(MfaCredential).where(
+                                MfaCredential.user_id == state["user"]
+                            )
+                        )
+                    )
+                )
+                == 1
+            )
+    finally:
+        with state["owner"].begin() as connection:
+            connection.execute(text(f"GRANT INSERT ON {table} TO carrillo_app"))
+    assert replace_factor(state, replacement, setup) is not None
+
+
+@pytest.mark.parametrize("failure", ["key", "tamper", "late"])
+def test_replacement_key_integrity_and_final_expiry_fail_closed(
+    state, replacement, monkeypatch, failure
+):
+    setup = replacement_setup(state, replacement)
+    if failure == "key":
+        from pydantic import SecretBytes
+
+        replacement[0]._keyring = SeedKeyring(
+            {"missing": SecretBytes(secrets.token_bytes(32))}, active_key_id="missing"
+        )
+    elif failure == "tamper":
+        (row,) = replacement_rows(state)
+        with state["runtime"].begin() as connection:
+            connection.execute(
+                update(MfaReplacement).values(
+                    ciphertext=bytes([row.ciphertext[0] ^ 1]) + row.ciphertext[1:]
+                )
+            )
+    else:
+        count = 0
+
+        def clock(session):
+            nonlocal count
+            count += 1
+            return setup.expires_at if count == 3 else state["now"]
+
+        monkeypatch.setattr(mfa_replacement, "_database_now", clock)
+    if failure == "late":
+        assert replace_factor(state, replacement, setup) is None
+    else:
+        with pytest.raises(mfa_replacement.MfaReplacementUnavailable):
+            replace_factor(state, replacement, setup)
+    assert (
+        records(state)[2:] == (None, None)
+        and replacement_rows(state)[0].closed_at is None
+    )
+
+
+def test_concurrent_replacement_has_one_successor_one_code_bundle_and_one_event(
+    state, replacement, monkeypatch
+):
+    setup = replacement_setup(state, replacement)
+    entered, release, started = Event(), Event(), Event()
+    pids = []
+    original = mfa_verification._lock_bucket
+
+    def observe(session, scope, key_hash):
+        if entered.is_set() and not release.is_set():
+            pids.append(session.scalar(text("SELECT pg_backend_pid()")))
+            started.set()
+        return original(session, scope, key_hash)
+
+    def pause(session):
+        if not entered.is_set():
+            entered.set()
+            if not release.wait(10):
+                raise TimeoutError("Synthetic replacement contention")
+
+    monkeypatch.setattr(mfa_verification, "_lock_bucket", observe)
+    event.listen(replacement[0]._factory, "before_commit", pause)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(replace_factor, state, replacement, setup)
+        try:
+            assert entered.wait(5)
+            second = pool.submit(replace_factor, state, replacement, setup)
+            assert started.wait(5)
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                with state["owner"].connect() as connection:
+                    if connection.scalar(
+                        text("SELECT cardinality(pg_blocking_pids(:pid)) > 0"),
+                        {"pid": pids[0]},
+                    ):
+                        break
+                time.sleep(0.01)
+            else:
+                pytest.fail("Second replacement did not block")
+        finally:
+            release.set()
+        assert first.result(timeout=5) is not None and second.result(timeout=5) is None
+    with Session(state["runtime"]) as session:
+        assert (
+            len(
+                list(
+                    session.scalars(
+                        select(SecurityEvent).where(
+                            SecurityEvent.action == "mfa_replaced"
+                        )
+                    )
+                )
+            )
+            == 1
+        )
+
+
+def test_replacement_constraints_permissions_and_downgrade_preserve_history(
+    state, replacement
+):
+    replacement_setup(state, replacement)
+    with pytest.raises(DBAPIError), state["runtime"].begin() as connection:
+        connection.execute(delete(MfaReplacement))
+    with pytest.raises(IntegrityError), state["runtime"].begin() as connection:
+        connection.execute(update(MfaReplacement).values(ciphertext=None))
+    config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    with (
+        pytest.raises(DBAPIError, match="Downgrade refused"),
+        state["owner"].begin() as connection,
+    ):
+        config.attributes["connection"] = connection
+        command.downgrade(config, "0020_mfa_recovery_permits")

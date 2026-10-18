@@ -221,6 +221,25 @@ def _lock_permit(session: Session, *, token: SecretStr, browser_binding: SecretS
     binding_hash = _hash(browser_binding, "mfa-pending-browser-v1:")
     if token_hash is None or binding_hash is None:
         return None
+    return _lock_permit_record(
+        session, token_hash=token_hash, binding_hash=binding_hash
+    )
+
+
+def _lock_permit_record(
+    session: Session,
+    *,
+    binding_hash: str,
+    token_hash: str | None = None,
+    permit_id: UUID | None = None,
+    exchanged: bool = False,
+):
+    """Trusted composition only. Exchanged mode requires a bound persisted setup.
+
+    Never expose permit_id/exchanged as an HTTP authorization alternative.
+    """
+    if (token_hash is None) == (permit_id is None):
+        return None
     hint = session.execute(
         select(
             MfaRecoveryPermit.id,
@@ -229,7 +248,11 @@ def _lock_permit(session: Session, *, token: SecretStr, browser_binding: SecretS
             MfaRecoveryPermit.credential_id,
             MfaRecoveryPermit.set_id,
             MfaRecoveryPermit.code_position,
-        ).where(MfaRecoveryPermit.token_hash == token_hash)
+        ).where(
+            MfaRecoveryPermit.id == permit_id
+            if permit_id is not None
+            else MfaRecoveryPermit.token_hash == token_hash
+        )
     ).one_or_none()
     if hint is None or (user := _lock_user(session, hint.user_id)) is None:
         return None
@@ -275,7 +298,7 @@ def _lock_permit(session: Session, *, token: SecretStr, browser_binding: SecretS
         or row is None
         or not user.is_active
         or row.closed_at is not None
-        or row.used_at is not None
+        or ((row.used_at is None) if exchanged else (row.used_at is not None))
         or factor.user_id != user.id
         or factor.revoked_at is not None
         or recovery_set.user_id != user.id
@@ -306,7 +329,10 @@ def _lock_permit(session: Session, *, token: SecretStr, browser_binding: SecretS
             source.password_fingerprint, _password_fingerprint(user)
         )
         or not hmac.compare_digest(source.binding_hash, binding_hash)
-        or not hmac.compare_digest(row.token_hash, token_hash)
+        or (
+            token_hash is not None
+            and not hmac.compare_digest(row.token_hash, token_hash)
+        )
         or row.credential_id != factor.id
         or row.set_id != recovery_set.id
         or row.code_position != consumed.position

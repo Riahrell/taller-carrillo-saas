@@ -168,3 +168,18 @@ El consumidor privado de permiso solo permite componer el futuro setup en un
 commit. No entregar su contexto como prueba pública ni activación; el futuro
 reemplazo deberá revalidar su origen/estado. Normal login con sesión MFA cancela
 permisos en el mismo commit. Ver deliveries/access-2.34.md.
+
+## Actualización 2.35
+
+0021 agrega mfa_replacements, setup cifrado de un uso ligado al permiso consumido.
+Su caducidad es la del permiso original. Activar vuelve a comprobar origen, estado,
+revisión, contraseña, navegador, factor/conjunto y código consumido. El modo
+privado de relectura por ID solo es válido detrás del token de setup; no exponerlo
+como una autorización alternativa al cliente.
+
+Retirar factor/conjunto anterior, activar nuevo con primer contador consumido,
+crear diez hashes, cerrar setup, avanzar revisión/revocar y auditar mfa_replaced
+son un commit. Índice parcial conserva un factor activo; flush de retiro antes
+del insert del sucesor, sin hacer commit intermedio. Historial/códigos viejos se
+conservan revocados, no se borran. Sin sesión automática ni replay de códigos.
+Ver deliveries/access-2.35.md; regeneración y rotación voluntaria siguen separadas.

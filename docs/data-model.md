@@ -344,3 +344,10 @@ y pendiente, y conjunto/posición al código; servicio revalida propietario del
 conjunto y consumo exacto. Un abierto sin usar por usuario; no token/código/semilla
 en claro. SecurityEvent añade mfa_recovery_started con factor y revisión >= 0.
 DELETE runtime y downgrade con evidencia no permitidos. No backfill ni sustitución.
+
+Acceso 2.35 (0021): mfa_replacements referencia de forma única al permiso de
+recuperación; UUID reservado del sucesor, token hash, fechas y semilla AEAD v1.
+Cierre/activación retiran key-ID/nonce/ciphertext; FK RESTRICT y DELETE runtime
+denegado. mfa_replaced requiere factor nuevo/revisión positiva en SecurityEvent;
+el vínculo al viejo se conserva mediante setup -> permiso -> factor/conjunto.
+Downgrade con setup/evento, incluso cerrado, rechazado. Sin backfill o endpoint.

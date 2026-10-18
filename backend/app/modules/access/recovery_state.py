@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.modules.access.models import MfaPending, MfaRecoveryPermit
+from app.modules.access.models import MfaPending, MfaRecoveryPermit, MfaReplacement
 
 
 def _now(session: Session) -> datetime:
@@ -34,3 +34,19 @@ def close_recovery_permits(
         for row in rows:
             row.closed_at = max(now, row.created_at, row.used_at or row.created_at)
         session.flush()
+        stages = session.scalars(
+            select(MfaReplacement)
+            .where(
+                MfaReplacement.recovery_permit_id.in_([row.id for row in rows]),
+                MfaReplacement.closed_at.is_(None),
+            )
+            .order_by(MfaReplacement.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).all()
+        if stages:
+            closed_at = _now(session)
+            for stage in stages:
+                stage.closed_at = max(closed_at, stage.created_at)
+                stage.key_id = stage.nonce = stage.ciphertext = None
+            session.flush()

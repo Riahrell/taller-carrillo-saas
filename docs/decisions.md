@@ -1020,3 +1020,22 @@ por revocación global y reinicio del mismo navegador. No devolver códigos cons
 por cancelación o pérdida de respuesta. Un código distinto y contraseña fresca
 permiten reiniciar, dentro de cuotas. No publicar HTTP antes de reemplazo/recuperación
 completos. Avisos de seguridad/correo, retención y operación siguen pendientes.
+
+## Acceso 2.35: sustitución por recuperación offline
+
+Intercambio de permiso por setup de semilla cifrada y token con propósito propio;
+no ampliar quince minutos de emisión ni reutilizar semilla por relectura. No
+aceptar ID de usuario/factor/permiso como prueba externa: el acceso por ID es
+solo un detalle de la revalidación detrás del token de setup y navegador.
+
+Mantener factor/conjunto anterior activos hasta confirmar TOTP nuevo. Reencriptar
+con clave activa, retirar viejo factor/conjunto, crear sucesor y diez hashes,
+consumir primer OTP, avanzar revisión/revocar y auditar en un commit. No sesión
+automática; código del alta ya está usado para login. Quotas compartidas sin reset.
+
+Cierre de permiso por sesión normal/reinicio/revocación también retira ciphertext
+del setup; purga explícita para caducados. No devuelve código usado. Si se pierde
+la respuesta de setup, reiniciar con contraseña y otro código offline. Si se
+pierde la respuesta de códigos después de reemplazar, exigir MFA del factor nuevo
+y futura regeneración segura, nunca replay. No implementar rotación voluntaria
+como si fuera recuperación; esta entrega exige el permiso offline específico.
