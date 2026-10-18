@@ -31,6 +31,10 @@ class PasswordConfirmation(BaseModel):
         return value
 
 
+class MfaPasswordConfirmation(PasswordConfirmation):
+    code: SecretStr = Field(min_length=1, max_length=128, repr=False, exclude=True)
+
+
 class RecentAuthenticationRequired(Exception):
     """Valid admin session, but no current password confirmation for this token."""
 
@@ -59,7 +63,23 @@ def require_recent_administrator(
     if record.mfa_pending_id is not None:
         # resolve_session has validated ownership, revision, factor and fingerprint.
         proof = session.get(MfaPending, record.mfa_pending_id, populate_existing=True)
-        oldest = min(proof.password_verified_at, proof.factor_verified_at)
+        if record.mfa_reauthenticated_at is not None:
+            if (
+                record.mfa_reauthentication_credential_id != proof.credential_id
+                or record.reauthenticated_at is None
+                or record.reauthentication_fingerprint is None
+                or not hmac.compare_digest(
+                    record.reauthentication_fingerprint, _password_fingerprint(user)
+                )
+                or not record.created_at
+                <= record.reauthenticated_at
+                <= record.mfa_reauthenticated_at
+                <= now
+            ):
+                raise RecentAuthenticationRequired("Recent authentication required")
+            oldest = min(record.reauthenticated_at, record.mfa_reauthenticated_at)
+        else:
+            oldest = min(proof.password_verified_at, proof.factor_verified_at)
         if (
             now < record.last_seen_at
             or now >= record.expires_at

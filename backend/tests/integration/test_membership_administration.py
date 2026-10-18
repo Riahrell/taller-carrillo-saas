@@ -3,6 +3,7 @@
 import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
+from ipaddress import ip_address
 from threading import Event
 from uuid import uuid4
 
@@ -88,6 +89,67 @@ def administration(http_identity, recent_session):
             )
 
 
+@pytest.fixture
+def confirmed_other_admin(administration, mfa_state, monkeypatch):
+    """Create the second administrator through actual password/TOTP consumption."""
+    import pyotp
+    from identity_cleanup import cleanup_identity
+
+    from app.modules.access import authentication, mfa_pending, mfa_sessions, sessions
+    from app.modules.access.mfa_sessions import MfaSessionIssuer
+    from app.modules.access.mfa_verification import MfaVerifier
+    from app.modules.access.passwords import hash_password
+
+    state = dict(administration)
+    password = SecretStr(secrets.token_urlsafe(32))
+    identity = uuid4()
+    with Session(state["runtime"]) as session, session.begin():
+        user = session.get(User, mfa_state["user"])
+        user.password_hash = hash_password(password)
+        email = user.email
+        session.add(
+            TenantMembership(
+                id=identity, tenant_id=state["tenant"], user_id=user.id, role="admin"
+            )
+        )
+    for module in (authentication, mfa_pending, mfa_sessions, sessions):
+        for name in ("_now", "_database_now"):
+            if hasattr(module, name):
+                monkeypatch.setattr(module, name, lambda session: mfa_state["now"])
+    binding = SecretStr(secrets.token_urlsafe(32))
+    try:
+        source = Authenticator(state["runtime"]).begin_mfa_login(
+            authentication.Credentials(email=email, password=password),
+            client_ip=ip_address("127.0.0.1"),
+            browser_binding=binding,
+        )
+        proof = MfaVerifier(
+            state["runtime"], keyring=mfa_state["keyring"]
+        ).verify_login_totp(
+            token=source.token,
+            browser_binding=binding,
+            code=SecretStr(
+                pyotp.TOTP(mfa_state["seed"].base32().get_secret_value()).at(
+                    mfa_state["now"]
+                )
+            ),
+            client_ip=ip_address("127.0.0.1"),
+        )
+        assert proof is not None
+        issued = MfaSessionIssuer(state["runtime"]).finish(
+            proof_token=proof.token, browser_binding=binding
+        )
+        assert issued is not None
+        state["target"], state["target_tokens"] = identity, (issued.token,)
+        yield state
+    finally:
+        with state["owner"].begin() as connection:
+            cleanup_identity(connection, [mfa_state["user"]])
+            connection.execute(
+                delete(TenantMembership).where(TenantMembership.id == identity)
+            )
+
+
 def change(state, *, target=None, role="mechanic", active=True, token=None):
     return state["service"].change_membership(
         token if token is not None else state["actor_token"],
@@ -121,7 +183,7 @@ def snapshot(state):
 @pytest.mark.parametrize(
     ("role", "active"), [("mechanic", True), ("cashier", False), ("admin", True)]
 )
-def test_change_revokes_only_target_membership_and_global_pending_atomically(
+def test_change_revokes_all_target_user_sessions_and_global_pending_atomically(
     administration, role, active
 ):
     state = administration
@@ -136,9 +198,8 @@ def test_change_revokes_only_target_membership_and_global_pending_atomically(
         for token in state["target_tokens"]:
             with pytest.raises(AccessDenied):
                 resolve_session(session, token)
-        assert (
-            resolve_session(session, state["other_token"]).tenant_id == state["other"]
-        )
+        with pytest.raises(AccessDenied):
+            resolve_session(session, state["other_token"])
         assert (
             resolve_session(session, state["actor_token"]).role == MembershipRole.ADMIN
         )
@@ -255,7 +316,8 @@ def test_cross_tenant_or_missing_target_denied(administration, target):
 
 @pytest.mark.parametrize(("role", "active"), [("read_only", True), ("admin", False)])
 @pytest.mark.parametrize(
-    "unusable_other", ["non_admin", "inactive_membership", "inactive_user"]
+    "unusable_other",
+    ["non_admin", "inactive_membership", "inactive_user", "pending_mfa"],
 )
 def test_last_admin_cannot_be_removed(administration, role, active, unusable_other):
     state = administration
@@ -279,21 +341,33 @@ def test_last_admin_cannot_be_removed(administration, role, active, unusable_oth
         assert actor.role == "admin" and actor.is_active
 
 
-def test_self_demotion_allowed_with_second_admin_and_revokes_actor(administration):
+def test_self_demotion_allowed_with_confirmed_second_admin_and_revokes_actor(
+    administration, mfa_state
+):
     state = administration
-    with state["owner"].begin() as connection:
-        connection.execute(
-            update(TenantMembership)
-            .where(TenantMembership.id == state["target"])
-            .values(role="admin")
+    extra_id = uuid4()
+    with Session(state["runtime"]) as session, session.begin():
+        session.add(
+            TenantMembership(
+                id=extra_id,
+                tenant_id=state["tenant"],
+                user_id=mfa_state["user"],
+                role="admin",
+            )
         )
-    assert change(state, target=state["membership"], role="read_only").changed
-    with (
-        Session(state["runtime"]) as session,
-        session.begin(),
-        pytest.raises(AccessDenied),
-    ):
-        resolve_session(session, state["actor_token"])
+    try:
+        assert change(state, target=state["membership"], role="read_only").changed
+        with (
+            Session(state["runtime"]) as session,
+            session.begin(),
+            pytest.raises(AccessDenied),
+        ):
+            resolve_session(session, state["actor_token"])
+    finally:
+        with state["owner"].begin() as connection:
+            connection.execute(
+                delete(TenantMembership).where(TenantMembership.id == extra_id)
+            )
 
 
 def test_reactivation_requires_new_login_and_records_transition(administration):
@@ -382,17 +456,8 @@ def wait_blocked(owner, pid):
     pytest.fail("Contender did not actually wait on a PostgreSQL lock")
 
 
-def test_concurrent_self_demotions_retain_one_active_admin(
-    administration, recent_session
-):
-    state = administration
-    with state["owner"].begin() as connection:
-        connection.execute(
-            update(TenantMembership)
-            .where(TenantMembership.id == state["target"])
-            .values(role="admin")
-        )
-    recent_session(state["target_tokens"][0])
+def test_concurrent_self_demotions_retain_one_active_admin(confirmed_other_admin):
+    state = confirmed_other_admin
     reached, release, second_started = Event(), Event(), Event()
     waiter = {}
 
@@ -586,7 +651,7 @@ def test_admin_privilege_is_rechecked_after_waiting_for_user_lock(administration
     assert snapshot(state) == before
 
 
-def test_crossed_actors_in_two_tenants_lock_users_in_one_order(administration):
+def test_crossed_actors_lock_in_one_order_and_reject_revoked_waiter(administration):
     state = administration
     with Session(state["runtime"]) as session, session.begin():
         extra = TenantMembership(
@@ -629,9 +694,10 @@ def test_crossed_actors_in_two_tenants_lock_users_in_one_order(administration):
             finally:
                 release.set()
             assert first.result(timeout=5).changed
-            assert other.result(timeout=5).changed
+            with pytest.raises(AccessDenied):
+                other.result(timeout=5)
     finally:
         release.set()
         event.remove(state["runtime"], "before_cursor_execute", observe)
     with Session(state["runtime"]) as session:
-        assert session.scalar(select(func.count()).select_from(AuditEvent)) == 2
+        assert session.scalar(select(func.count()).select_from(AuditEvent)) == 1

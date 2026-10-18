@@ -6,20 +6,27 @@ import os
 import socket
 import time
 from copy import copy
+from datetime import timedelta
 from http.client import HTTPResponse
 from http.cookiejar import CookieJar
 from urllib.error import HTTPError
 from urllib.parse import urljoin
 from urllib.request import HTTPCookieProcessor, ProxyHandler, Request, build_opener
+from uuid import uuid4
 
+import pyotp
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.modules.access.identity_http import IdentityAccess
+from app.modules.access.mfa_crypto import generate_totp_seed
 from app.modules.access.models import (
     AuditEvent,
     LoginThrottle,
+    MfaCredential,
+    MfaPending,
     SessionRecord,
     TenantMembership,
 )
@@ -43,8 +50,40 @@ class Browser:
         self.cookies = CookieJar()
         self.opener = build_opener(ProxyHandler({}), HTTPCookieProcessor(self.cookies))
         self.origin, self.base = state["settings"].public_origin, base
+        self.state = state
+        if "proxy_seed" not in state:
+            identity = uuid4()
+            seed = generate_totp_seed()
+            keyring = (
+                IdentityAccess(state["runtime"], state["settings"].identity_keys_file)
+                .require()
+                .keyring
+            )
+            envelope = keyring.encrypt(
+                seed, user_id=state["user"], credential_id=identity
+            )
+            with Session(state["runtime"]) as session, session.begin():
+                session.add(
+                    MfaCredential(
+                        id=identity,
+                        user_id=state["user"],
+                        encryption_version=envelope.version,
+                        key_id=envelope.key_id,
+                        nonce=envelope.nonce,
+                        ciphertext=envelope.ciphertext,
+                        created_at=session.scalar(select(func.clock_timestamp())),
+                    )
+                )
+            state["proxy_seed"] = seed
 
     def request(self, path, *, body=None, headers=None, method=None):
+        if path.startswith("/auth/mfa/reauthenticate") and isinstance(body, dict):
+            body = {
+                "code": pyotp.TOTP(
+                    self.state["proxy_seed"].base32().get_secret_value()
+                ).at(time.time(), counter_offset=1),
+                **body,
+            }
         # Ordinary flows stay below Nginx's shared 10r/s budget across browsers.
         # The final raw-socket test deliberately bypasses this pacing to test limits.
         delay = Browser._next_request - time.monotonic()
@@ -75,7 +114,45 @@ class Browser:
             response = error
         with response:
             raw = response.read(8192)
-            return response.status, json.loads(raw) if raw else None, response.headers
+            result = response.status, json.loads(raw) if raw else None, response.headers
+        if (
+            path == "/auth/login"
+            and result[0] == 202
+            and result[1] == {"status": "mfa_totp"}
+        ):
+            assert not any(cookie.name == "carrillo_session" for cookie in self.cookies)
+            return self.request(
+                "/auth/mfa/totp",
+                body={
+                    "code": pyotp.TOTP(
+                        self.state["proxy_seed"].base32().get_secret_value()
+                    ).now()
+                },
+            )
+        return result
+
+
+def stale_password_proof(state):
+    # Model an entire successful login six minutes ago. Moving only the password
+    # timestamp would describe an impossible login beyond its five-minute limit.
+    with Session(state["runtime"]) as session, session.begin():
+        record = session.scalar(
+            select(SessionRecord).where(
+                SessionRecord.membership_id == state["membership"]
+            )
+        )
+        proof = session.get(MfaPending, record.mfa_pending_id)
+        elapsed = timedelta(minutes=6)
+        for name in (
+            "password_verified_at",
+            "created_at",
+            "expires_at",
+            "finished_at",
+            "factor_verified_at",
+        ):
+            setattr(proof, name, getattr(proof, name) - elapsed)
+        for name in ("created_at", "last_seen_at", "expires_at"):
+            setattr(record, name, getattr(record, name) - elapsed)
 
 
 def test_real_proxy_overwrites_forged_ips_and_logout_revokes(http_identity):
@@ -223,6 +300,7 @@ def test_membership_read_patch_stale_and_foreign_rejection_through_real_proxy(
         "is_active": True,
     }
     old_tag = headers["ETag"]
+    stale_password_proof(state)
     assert (
         browser.request(
             target_path,
@@ -234,7 +312,7 @@ def test_membership_read_patch_stale_and_foreign_rejection_through_real_proxy(
     )
     assert (
         browser.request(
-            "/auth/reauthenticate",
+            "/auth/mfa/reauthenticate",
             body={"password": state["password"].get_secret_value()},
             headers={"X-Expected-Membership": str(state["membership"])},
         )[0]
@@ -299,10 +377,11 @@ def test_administrative_creation_and_new_user_login_through_real_proxy(
         "role": "mechanic",
     }
     context = {"X-Expected-Membership": str(state["membership"])}
+    stale_password_proof(state)
     assert browser.request("/auth/memberships", body=value, headers=context)[0] == 428
     assert (
         browser.request(
-            "/auth/reauthenticate",
+            "/auth/mfa/reauthenticate",
             body={"password": state["password"].get_secret_value()},
             headers=context,
         )[0]
@@ -377,7 +456,7 @@ def test_confirmation_rotates_cookies_and_rejects_replay_through_real_proxy(
     context = {"X-Expected-Membership": str(state["membership"])}
     original = [copy(cookie) for cookie in browser.cookies]
     status, data, headers = browser.request(
-        "/auth/reauthenticate",
+        "/auth/mfa/reauthenticate",
         body={"password": CANARY},
         headers=context,
     )
@@ -395,7 +474,7 @@ def test_confirmation_rotates_cookies_and_rejects_replay_through_real_proxy(
     for cookie in original:
         direct.cookies.set_cookie(copy(cookie))
     status, data, headers = direct.request(
-        "/auth/reauthenticate",
+        "/auth/mfa/reauthenticate",
         body={"password": state["password"].get_secret_value()},
         headers=context
         | {
@@ -409,7 +488,7 @@ def test_confirmation_rotates_cookies_and_rejects_replay_through_real_proxy(
         before = session.scalar(select(SessionRecord))
         expiry, record_id = before.expires_at, before.id
     status, data, headers = browser.request(
-        "/auth/reauthenticate",
+        "/auth/mfa/reauthenticate",
         body={"password": state["password"].get_secret_value()},
         headers=context | {"X-Real-IP": "127.0.9.1", "X-Forwarded-For": "127.0.9.1"},
     )
@@ -435,7 +514,7 @@ def test_confirmation_rotates_cookies_and_rejects_replay_through_real_proxy(
     for cookie in original:
         replay.cookies.set_cookie(copy(cookie))
     status, data, headers = replay.request(
-        "/auth/reauthenticate",
+        "/auth/mfa/reauthenticate",
         body={"password": state["password"].get_secret_value()},
         headers=context,
     )
@@ -451,14 +530,14 @@ def test_confirmation_rotates_cookies_and_rejects_replay_through_real_proxy(
             stale_proof.cookies.set_cookie(copy(cookie))
     assert (
         stale_proof.request(
-            "/auth/reauthenticate",
+            "/auth/mfa/reauthenticate",
             body={"password": CANARY},
             headers=context,
         )[0]
         == 403
     )
     status, data, headers = browser.request(
-        "/auth/reauthenticate?probe=" + CANARY,
+        "/auth/mfa/reauthenticate?probe=" + CANARY,
         body={"password": CANARY},
         headers=context,
     )

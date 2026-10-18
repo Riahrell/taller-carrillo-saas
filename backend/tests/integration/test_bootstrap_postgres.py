@@ -39,6 +39,9 @@ def bootstrap_db(db_session, databases):
     finally:
         # Owns committed test identities only in ephemeral carrillo_test.
         with owner.begin() as connection:
+            from identity_cleanup import cleanup_identity
+
+            cleanup_identity(connection, select(User.id))
             for model in ACCESS_TABLES:
                 connection.execute(delete(model))
 

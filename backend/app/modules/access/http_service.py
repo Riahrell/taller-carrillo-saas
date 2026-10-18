@@ -1,7 +1,7 @@
 """HTTP access transactions, bounded password work, and server session views."""
 
 import hmac
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from threading import BoundedSemaphore
 from uuid import UUID
 
@@ -10,6 +10,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import create_session_factory
+from app.modules.access import mfa_pending
 from app.modules.access.authentication import (
     AuthenticationUnavailable,
     Authenticator,
@@ -20,6 +21,7 @@ from app.modules.access.membership import AccessDenied
 from app.modules.access.models import (
     LoginChallenge,
     MembershipRole,
+    MfaPending,
     SessionRecord,
     Tenant,
 )
@@ -122,9 +124,28 @@ class HttpAccess:
                             )
                         )
                     )
+                typed_binding = None
+                if browser_binding is not None:
+                    with suppress(AccessDenied):
+                        typed_binding = mfa_pending._hash(
+                            browser_binding, "mfa-pending-browser-v1:"
+                        )
+                if typed_binding is not None:
+                    users.update(
+                        session.scalars(
+                            select(MfaPending.user_id).where(
+                                MfaPending.binding_hash == typed_binding
+                            )
+                        )
+                    )
                 # Mixed/stale cookies may refer to different users: lock in UUID order.
                 for user_id in sorted(user for user in users if user is not None):
                     _lock_user(session, user_id)
+                if typed_binding is not None:
+                    for user_id in sorted(user for user in users if user is not None):
+                        mfa_pending._close_browser_pendings(
+                            session, user_id=user_id, binding=browser_binding
+                        )
                 if challenge_hash:
                     record = session.scalar(
                         select(LoginChallenge)

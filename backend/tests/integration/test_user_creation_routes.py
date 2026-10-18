@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.responses import Response
 from fastapi.testclient import TestClient
+from identity_http_fixture import arrange_factor, login_with_factor
 from pydantic import SecretStr
 from sqlalchemy import event, func, select, update
 from sqlalchemy.exc import SQLAlchemyError
@@ -35,7 +36,7 @@ CANARY = "carrillo-http-log-canary"
 
 
 @pytest.fixture
-def creation_web(new_identity_scope, monkeypatch, recent_session):
+def creation_web(new_identity_scope, monkeypatch):
     state = new_identity_scope
     monkeypatch.setattr(
         "app.modules.access.trusted_proxy._proxy_addresses",
@@ -48,22 +49,9 @@ def creation_web(new_identity_scope, monkeypatch, recent_session):
         headers={"X-Real-IP": "127.0.0.1"},
     ) as client:
         policy = client.app.state.http_security
+        arrange_factor(state, client.app, monkeypatch)
         assert client.get("/auth/csrf", headers=READ).status_code == 204
-        assert (
-            client.post(
-                "/auth/login",
-                json={
-                    "email": state["email"],
-                    "password": state["password"].get_secret_value(),
-                },
-                headers={
-                    "Origin": policy.origin,
-                    "X-CSRF-Token": client.cookies[policy.csrf_cookie],
-                },
-            ).status_code
-            == 200
-        )
-        recent_session(SecretStr(client.cookies[policy.session_cookie]))
+        assert login_with_factor(client, state, policy).status_code == 200
         yield client, state, policy
 
 

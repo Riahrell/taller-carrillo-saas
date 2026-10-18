@@ -10,6 +10,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from identity_http_fixture import arrange_factor, login_with_factor
 from pydantic import SecretStr
 from sqlalchemy import delete, event, func, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
@@ -31,7 +32,7 @@ READ = {"X-Requested-With": "XMLHttpRequest", "Sec-Fetch-Site": "same-origin"}
 
 
 @pytest.fixture
-def membership_web(http_identity, monkeypatch, recent_session):
+def membership_web(http_identity, monkeypatch):
     state = dict(http_identity)
     with Session(state["runtime"]) as session, session.begin():
         target = TenantMembership(
@@ -54,22 +55,9 @@ def membership_web(http_identity, monkeypatch, recent_session):
         headers={"X-Real-IP": "127.0.0.1"},
     ) as client:
         policy = client.app.state.http_security
+        arrange_factor(state, client.app, monkeypatch)
         assert client.get("/auth/csrf", headers=READ).status_code == 204
-        assert (
-            client.post(
-                "/auth/login",
-                json={
-                    "email": state["email"],
-                    "password": state["password"].get_secret_value(),
-                },
-                headers={
-                    "Origin": policy.origin,
-                    "X-CSRF-Token": client.cookies[policy.csrf_cookie],
-                },
-            ).status_code
-            == 200
-        )
-        recent_session(SecretStr(client.cookies[policy.session_cookie]))
+        assert login_with_factor(client, state, policy).status_code == 200
         yield client, state, policy
 
 
@@ -416,8 +404,10 @@ def test_last_admin_conflict_preserves_access_and_cookies(membership_web):
 
 def test_self_change_clears_cookies_only_after_commit_and_replay_is_denied(
     membership_web,
+    eligible_administrator,
 ):
     client, state, policy = membership_web
+    eligible_administrator(state["tenant"])
     with state["owner"].begin() as connection:
         connection.execute(
             update(TenantMembership)
@@ -444,9 +434,10 @@ def test_self_change_clears_cookies_only_after_commit_and_replay_is_denied(
 
 @pytest.mark.parametrize("method", ["get", "patch", "self_patch"])
 def test_failed_commit_does_not_publish_view_etag_or_cookie_deletion(
-    membership_web, method
+    membership_web, method, eligible_administrator
 ):
     client, state, policy = membership_web
+    eligible_administrator(state["tenant"])
     with state["owner"].begin() as connection:
         connection.execute(
             update(TenantMembership)
@@ -674,6 +665,9 @@ def membership_pages(membership_web):
     finally:
         # Restricted to these fixture IDs in the ephemeral test DB.
         with state["owner"].begin() as connection:
+            from identity_cleanup import cleanup_identity
+
+            cleanup_identity(connection, user_ids)
             connection.execute(
                 delete(AuditEvent).where(
                     AuditEvent.target_membership_id.in_(member_ids)

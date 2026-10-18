@@ -1,0 +1,28 @@
+# Reviewed TLS overlay; do not use until provider/keys/restore acceptance passes.
+services:
+  backend:
+    environment:
+      APP_ENV: production
+    restart: unless-stopped
+  frontend:
+    restart: unless-stopped
+  proxy:
+    ports:
+      - "80:8080"
+      - "443:8443"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
+    secrets:
+      - tls_certificate
+      - tls_private_key
+  db:
+    restart: unless-stopped
+configs:
+  proxy_config:
+    file: ${TLS_PROXY_CONFIG_FILE:?Render and review the TLS proxy configuration}
+secrets:
+  tls_certificate:
+    file: ${TLS_CERTIFICATE_FILE:?Configure a valid full certificate chain}
+  tls_private_key:
+    file: ${TLS_PRIVATE_KEY_FILE:?Configure the private TLS key file}

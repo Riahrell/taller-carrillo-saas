@@ -13,7 +13,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.access.membership import AccessDenied
-from app.modules.access.models import EnrollmentEmailChallenge, User, VerifiedMailbox
+from app.modules.access.models import (
+    EnrollmentEmailChallenge,
+    MailboxChallenge,
+    User,
+    VerifiedMailbox,
+)
 from app.modules.access.sessions import _database_now, _lock_user
 
 
@@ -92,28 +97,32 @@ def lock_eligible_mailbox(session: Session, *, user_id: UUID) -> VerifiedMailbox
     user = _lock_user(session, user_id)
     if user is None or not user.is_active:
         return None
-    hint = session.scalar(
-        select(VerifiedMailbox.challenge_id).where(
-            VerifiedMailbox.user_id == user.id,
-            VerifiedMailbox.invalidated_at.is_(None),
+    hint = session.execute(
+        select(
+            VerifiedMailbox.id,
+            VerifiedMailbox.challenge_id,
+            VerifiedMailbox.general_challenge_id,
+        ).where(
+            VerifiedMailbox.user_id == user.id, VerifiedMailbox.invalidated_at.is_(None)
         )
-    )
+    ).one_or_none()
     if hint is None:
         return None
+    source = (
+        EnrollmentEmailChallenge if hint.challenge_id is not None else MailboxChallenge
+    )
+    source_id = hint.challenge_id or hint.general_challenge_id
     challenge = session.scalar(
-        select(EnrollmentEmailChallenge)
-        .where(
-            EnrollmentEmailChallenge.id == hint,
-            EnrollmentEmailChallenge.user_id == user.id,
-        )
+        select(source)
+        .where(source.id == source_id, source.user_id == user.id)
         .with_for_update()
         .execution_options(populate_existing=True)
     )
     record = session.scalar(
         select(VerifiedMailbox)
         .where(
+            VerifiedMailbox.id == hint.id,
             VerifiedMailbox.user_id == user.id,
-            VerifiedMailbox.challenge_id == hint,
             VerifiedMailbox.invalidated_at.is_(None),
         )
         .with_for_update()
@@ -128,7 +137,10 @@ def lock_eligible_mailbox(session: Session, *, user_id: UUID) -> VerifiedMailbox
         or now < record.verified_at
         or not hmac.compare_digest(record.address_hash, _address_hash(user))
         or not hmac.compare_digest(
-            challenge.email_fingerprint, enrollment_address_fingerprint(user)
+            challenge.email_fingerprint,
+            enrollment_address_fingerprint(user)
+            if hint.challenge_id is not None
+            else _address_hash(user),
         )
     ):
         return None

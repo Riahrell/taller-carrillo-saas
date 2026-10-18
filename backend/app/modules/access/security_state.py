@@ -20,6 +20,7 @@ from app.modules.access.models import (
     TenantMembership,
     User,
 )
+from app.modules.access.reset_state import close_password_resets
 from app.modules.access.sessions import _database_now, _lock_user, revoke_user_sessions
 
 
@@ -66,6 +67,10 @@ def _advance(session: Session, user: User, *, require_mfa: bool) -> SecurityStat
     user.security_revision += 1
     user.mfa_required = user.mfa_required or require_mfa
     # All transitions share the user -> challenges -> sessions lock order.
+    from app.modules.access.rotation_state import close_rotations
+
+    close_rotations(session, user.id)
+    close_password_resets(session, user.id)
     revoke_user_challenges(session, user.id)
     revoke_user_sessions(session, user.id)
     session.add(

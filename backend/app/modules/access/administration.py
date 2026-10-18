@@ -21,11 +21,11 @@ from sqlalchemy.orm import Session
 
 from app.core.database import create_session_factory
 from app.modules.access.authentication import Credentials, _limit_transaction
-from app.modules.access.login_challenges import revoke_user_challenges
 from app.modules.access.membership import AccessDenied, MembershipContext
 from app.modules.access.models import (
     AuditEvent,
     MembershipRole,
+    MfaCredential,
     SessionRecord,
     Tenant,
     TenantMembership,
@@ -38,7 +38,6 @@ from app.modules.access.sessions import (
     _lock_user,
     _token_hash,
     resolve_session,
-    revoke_membership_sessions,
 )
 
 
@@ -56,6 +55,13 @@ class UserCreation(Credentials):
 
     password: SecretStr = Field(min_length=15, max_length=128, repr=False, exclude=True)
     role: MembershipRole
+
+    @field_validator("password")
+    @classmethod
+    def screen_password(cls, value: SecretStr) -> SecretStr:
+        from app.modules.access.password_policy import validate_new_password
+
+        return validate_new_password(value)
 
 
 class UserCreationConflict(Exception):
@@ -193,6 +199,14 @@ class MembershipAdministrator:
                 )
                 session.add(member)
                 session.flush()
+                if data.role == MembershipRole.ADMIN:
+                    from app.modules.access.security_state import (
+                        synchronize_mfa_requirement,
+                    )
+
+                    synchronize_mfa_requirement(
+                        session, user_id=user_id, expected_revision=0
+                    )
                 session.add(
                     AuditEvent(
                         tenant_id=actor.tenant_id,
@@ -417,8 +431,30 @@ class MembershipAdministrator:
         target.role, target.is_active = change.role, change.is_active
         # Pending identities are global: cancel all of this target user's
         # challenges, but revoke sessions only in the affected membership.
-        revoke_user_challenges(session, target.user_id)
-        revoke_membership_sessions(session, target.id)
+        from app.modules.access.security_state import (
+            advance_security_revision,
+            synchronize_mfa_requirement,
+        )
+
+        user = session.get(User, target.user_id)
+        session.flush()
+        before_revision = user.security_revision
+        if user.is_active:
+            synchronize_mfa_requirement(
+                session, user_id=user.id, expected_revision=before_revision
+            )
+            if user.security_revision == before_revision:
+                advance_security_revision(
+                    session, user_id=user.id, expected_revision=before_revision
+                )
+        else:
+            from app.modules.access.security_state import _advance
+
+            _advance(
+                session,
+                user,
+                require_mfa=target.role == MembershipRole.ADMIN and target.is_active,
+            )
         session.add(
             AuditEvent(
                 tenant_id=actor.tenant_id,
@@ -463,6 +499,11 @@ class MembershipAdministrator:
                 TenantMembership.role == MembershipRole.ADMIN,
                 TenantMembership.is_active.is_(True),
                 User.is_active.is_(True),
+                User.id.in_(
+                    select(MfaCredential.user_id).where(
+                        MfaCredential.revoked_at.is_(None)
+                    )
+                ),
             )
         )
         target_user = session.get(User, target.user_id, populate_existing=True)

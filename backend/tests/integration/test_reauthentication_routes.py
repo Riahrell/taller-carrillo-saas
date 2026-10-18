@@ -9,12 +9,14 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from identity_http_fixture import arrange_factor, login_with_factor, next_factor
 from pydantic import SecretStr
 from sqlalchemy import event, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.main import create_app
+from app.modules.access.membership import AccessDenied
 from app.modules.access.models import (
     LoginChallenge,
     LoginThrottle,
@@ -27,7 +29,7 @@ from app.modules.access.passwords import hash_password
 from app.modules.access.reauthentication import require_recent_administrator
 
 pytestmark = pytest.mark.integration
-PATH = "/auth/reauthenticate"
+PATH = "/auth/mfa/reauthenticate"
 READ = {"X-Requested-With": "XMLHttpRequest", "Sec-Fetch-Site": "same-origin"}
 CANARY = "carrillo-http-log-canary"
 
@@ -49,21 +51,9 @@ def web(http_identity, monkeypatch, request):
         headers={"X-Real-IP": "127.0.0.1"},
     ) as client:
         policy = client.app.state.http_security
+        arrange_factor(state, client.app, monkeypatch)
         assert client.get("/auth/csrf", headers=READ).status_code == 204
-        assert (
-            client.post(
-                "/auth/login",
-                json={
-                    "email": state["email"],
-                    "password": state["password"].get_secret_value(),
-                },
-                headers={
-                    "Origin": policy.origin,
-                    "X-CSRF-Token": client.cookies[policy.csrf_cookie],
-                },
-            ).status_code
-            == 200
-        )
+        assert login_with_factor(client, state, policy).status_code == 200
         yield client, state, policy
 
 
@@ -81,6 +71,9 @@ def headers(client, state, policy, **changes):
 def post(web, *, data=None, changes=None, path=PATH, raw=None):
     client, state, policy = web
     body = {"password": state["password"].get_secret_value()} if data is None else data
+    code = next_factor(state)
+    if isinstance(body, dict):
+        body = {"code": code, **body}
     return client.post(
         path,
         content=json.dumps(body).encode() if raw is None else raw,
@@ -212,6 +205,10 @@ def test_current_unicode_password_is_preserved_without_trimming(web):
             .where(User.id == state["user"])
             .values(password_hash=hash_password(SecretStr(password)))
         )
+    state["password"] = SecretStr(password)
+    client.cookies.clear()
+    assert client.get("/auth/csrf", headers=READ).status_code == 204
+    assert login_with_factor(client, state, web[2]).status_code == 200
     denied(post(web, data={"password": password.strip()}), 401, "Access denied")
     assert post(web, data={"password": password}).status_code == 204
 
@@ -272,8 +269,21 @@ def test_invalid_session_or_permission_is_generic_without_rotation(web, change):
         changes["X-Expected-Membership"] = str(
             state["foreign_membership"] if change == "foreign_actor" else uuid4()
         )
-    denied(post(web, changes=changes), 401, "Access denied")
-    assert snapshot(state) == before and dict(client.cookies.items()) == cookies
+    if change in {"cashier", "mechanic", "read_only"}:
+        assert post(web, changes=changes).status_code == 204
+        with (
+            Session(state["runtime"]) as session,
+            session.begin(),
+            pytest.raises(AccessDenied),
+        ):
+            require_recent_administrator(
+                session,
+                SecretStr(client.cookies[web[2].session_cookie]),
+                expected_actor=state["membership"],
+            )
+    else:
+        denied(post(web, changes=changes), 401, "Access denied")
+        assert snapshot(state) == before and dict(client.cookies.items()) == cookies
 
 
 @pytest.mark.parametrize("pending", [False, True])
@@ -357,7 +367,12 @@ def test_duplicate_headers_are_rejected_before_rotation(web, name):
         values.append((name, headers(client, state, policy)[name]))
     before, limits = snapshot(state), counters(state)
     response = client.post(
-        PATH, json={"password": state["password"].get_secret_value()}, headers=values
+        PATH,
+        json={
+            "password": state["password"].get_secret_value(),
+            "code": next_factor(state),
+        },
+        headers=values,
     )
     denied(response, 403, "Request rejected")
     assert snapshot(state) == before and counters(state) == limits

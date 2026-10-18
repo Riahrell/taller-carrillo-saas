@@ -9,6 +9,7 @@ from threading import Event
 
 import pytest
 from fastapi.testclient import TestClient
+from identity_http_fixture import arrange_factor, login_with_factor, next_factor
 from pydantic import SecretStr
 from sqlalchemy import event, func, select, text
 from sqlalchemy.orm import Session
@@ -51,21 +52,13 @@ def web(new_identity_scope, monkeypatch):
         headers={"X-Real-IP": "127.0.0.1"},
     ) as client:
         policy = client.app.state.http_security
+        arrange_factor(state, client.app, monkeypatch)
         assert client.get("/auth/csrf", headers=READ).status_code == 204
-        assert (
-            client.post(
-                "/auth/login",
-                json={
-                    "email": state["email"],
-                    "password": state["password"].get_secret_value(),
-                },
-                headers={
-                    "Origin": policy.origin,
-                    "X-CSRF-Token": client.cookies[policy.csrf_cookie],
-                },
-            ).status_code
-            == 200
-        )
+        assert login_with_factor(client, state, policy).status_code == 200
+        state["target_etag"] = client.get(
+            f"/auth/memberships/{state['target']}", headers=READ
+        ).headers["etag"]
+        state["http_now"] += timedelta(minutes=5)
         yield client, state, policy
 
 
@@ -82,8 +75,11 @@ def confirm(web):
     client, state, policy = web
     old = client.cookies[policy.session_cookie]
     response = client.post(
-        "/auth/reauthenticate",
-        json={"password": state["password"].get_secret_value()},
+        "/auth/mfa/reauthenticate",
+        json={
+            "password": state["password"].get_secret_value(),
+            "code": next_factor(state),
+        },
         headers=headers(web),
     )
     assert response.status_code == 204
@@ -94,7 +90,7 @@ def write(web, method):
     client, state, _ = web
     if method != "create":
         path = f"/auth/memberships/{state['target']}"
-        tag = client.get(path, headers=READ).headers["etag"]
+        tag = client.get(path, headers=READ).headers.get("etag", state["target_etag"])
     with Session(state["runtime"]) as session:
         activity = session.scalar(
             select(SessionRecord.last_seen_at).where(
@@ -182,8 +178,6 @@ def test_stale_confirmation_rejects_writes_without_effects(
             )
             now = reauthentication._database_now(session)
             if invalid in {"expired", "boundary"}:
-                row.created_at = now - timedelta(minutes=10)
-                row.expires_at = row.created_at + timedelta(hours=8)
                 row.reauthenticated_at = now - timedelta(minutes=5)
                 if invalid == "boundary":
                     monkeypatch.setattr(
@@ -191,14 +185,21 @@ def test_stale_confirmation_rejects_writes_without_effects(
                     )
             elif invalid == "future":
                 row.reauthenticated_at = now + timedelta(minutes=1)
+                row.mfa_reauthenticated_at = row.reauthenticated_at
             else:
                 session.get(User, state["user"]).password_hash = hash_password(
                     SecretStr(secrets.token_urlsafe(24))
                 )
     before, cookies = snapshot(state), dict(client.cookies.items())
     response = write(web, method)
-    assert response.status_code == 428 and response.json() == {
-        "detail": "Recent authentication required"
+    expected_status = 401 if invalid == "password_changed" else 428
+    expected_detail = (
+        "Access denied"
+        if invalid == "password_changed"
+        else "Recent authentication required"
+    )
+    assert response.status_code == expected_status and response.json() == {
+        "detail": expected_detail
     }
     assert response.headers["cache-control"] == "no-store"
     assert (
@@ -310,8 +311,6 @@ def test_confirmation_checked_after_actual_tenant_lock_wait(web):
                     )
                 )
                 now = reauthentication._database_now(holder)
-                row.created_at = now - timedelta(minutes=10)
-                row.expires_at = row.created_at + timedelta(hours=8)
                 row.reauthenticated_at = now - timedelta(minutes=5)
             before = snapshot(state)
             future.result(timeout=5)

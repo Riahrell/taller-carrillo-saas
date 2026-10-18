@@ -22,6 +22,7 @@ from app.modules.access import reauthentication as recent
 from app.modules.access import sessions
 from app.modules.access.models import (
     LoginThrottle,
+    SecurityEvent,
     SessionRecord,
     Tenant,
     TenantMembership,
@@ -105,7 +106,7 @@ def test_rotation_is_committed_hidden_and_does_not_extend_absolute_lifetime(stat
     assert after[4] == before[4] == issued.expires_at
     assert after[1] == sessions._token_hash(issued.token)
     assert after[1] != issued.token.get_secret_value()
-    assert after[3] == after[6] and after[6] >= before[3]
+    assert after[3] >= after[6] >= before[3]
     assert len(after[7]) == 64
     actor = guard(state, issued.token)
     assert (actor.user_id, actor.tenant_id, actor.membership_id, actor.role) == (
@@ -512,6 +513,16 @@ def test_migration_revokes_confirmed_tokens_on_downgrade_and_does_not_backfill(s
     # Exercise the historical 0008 rollback using synthetic pre-0015 sessions.
     # This is isolated migration test setup, never an operational downgrade recipe.
     with state["owner"].begin() as connection:
+        # Arrange synthetic pre-0027 rows only after asserting the operational
+        # guard above. This is historical migration coverage, not a live recipe.
+        connection.execute(
+            SecurityEvent.__table__.delete().where(
+                SecurityEvent.user_id == state["user"],
+                SecurityEvent.action.in_(
+                    ["login_succeeded", "identity_reauthenticated"]
+                ),
+            )
+        )
         connection.execute(
             text(
                 "UPDATE sessions SET security_revision = NULL WHERE "

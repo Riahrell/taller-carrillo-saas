@@ -25,6 +25,8 @@ from app.modules.access.authentication import AuthenticationUnavailable
 from app.modules.access.http_middleware import HttpSecurityMiddleware
 from app.modules.access.http_security import HttpSecurity, RequestRejected
 from app.modules.access.http_service import HttpAccess
+from app.modules.access.identity_http import IdentityAccess
+from app.modules.access.identity_routes import router as identity_router
 from app.modules.access.membership import AccessDenied
 from app.modules.access.reauthentication import RecentAuthenticationRequired
 from app.modules.access.routes import router as access_router
@@ -44,10 +46,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         engine = build_engine(configuration)
         try:
+            from app.modules.access.password_policy import _common
+
+            await run_in_threadpool(_common)
             await run_in_threadpool(verify_connection, engine)
             app.state.session_factory = create_session_factory(engine)
             app.state.access = await run_in_threadpool(HttpAccess, engine)
             app.state.membership_administrator = MembershipAdministrator(engine)
+            app.state.identity = IdentityAccess(
+                engine, configuration.identity_keys_file
+            )
             yield
         finally:
             await run_in_threadpool(engine.dispose)
@@ -65,6 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.http_security = http_security
     application.state.trusted_proxy = trusted_proxy
     application.include_router(access_router)
+    application.include_router(identity_router)
     application.include_router(administration_router)
     application.add_middleware(HttpSecurityMiddleware, policy=http_security)
 
@@ -123,6 +132,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             status_code=503,
             headers={"Cache-Control": "no-store"},
         )
+
+    from app.modules.access.enrollment_email import EnrollmentEmailUnavailable
+    from app.modules.access.mailbox_service import MailboxUnavailable
+    from app.modules.access.mfa_enrollment import MfaEnrollmentUnavailable
+    from app.modules.access.mfa_recovery import MfaRecoveryUnavailable
+    from app.modules.access.mfa_regeneration import MfaRegenerationUnavailable
+    from app.modules.access.mfa_replacement import MfaReplacementUnavailable
+    from app.modules.access.mfa_rotation import MfaRotationUnavailable
+    from app.modules.access.mfa_sessions import MfaSessionUnavailable
+    from app.modules.access.mfa_verification import MfaVerificationUnavailable
+    from app.modules.access.password_reset import PasswordResetUnavailable
+
+    async def identity_unavailable(_request: Request, _error: Exception):
+        return domain_error(503, "Authentication unavailable")
+
+    for error in (
+        MfaRotationUnavailable,
+        PasswordResetUnavailable,
+        EnrollmentEmailUnavailable,
+        MailboxUnavailable,
+        MfaEnrollmentUnavailable,
+        MfaReplacementUnavailable,
+        MfaRegenerationUnavailable,
+        MfaRecoveryUnavailable,
+        MfaSessionUnavailable,
+        MfaVerificationUnavailable,
+    ):
+        application.add_exception_handler(error, identity_unavailable)
 
     @application.exception_handler(RequestValidationError)
     async def invalid_request(

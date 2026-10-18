@@ -25,6 +25,59 @@ class MfaSessionIssuer:
     def __init__(self, engine: Engine) -> None:
         self._factory = create_session_factory(engine)
 
+    def finish(self, *, proof_token: SecretStr, browser_binding: SecretStr):
+        from app.modules.access.login_challenges import (
+            MembershipChoice,
+            PendingLogin,
+            _active_memberships,
+        )
+
+        try:
+            with self._factory.begin() as session:
+                session.execute(text("SET LOCAL lock_timeout = '3s'"))
+                session.execute(text("SET LOCAL statement_timeout = '10s'"))
+                locked = pending._lock_pending(
+                    session,
+                    token=proof_token,
+                    binding=browser_binding,
+                    purpose=pending.PendingPurpose.LOGIN_VERIFIED,
+                )
+                if locked is None:
+                    return None
+                user, proof, checked_at = locked
+                choices = _active_memberships(session, user.id)
+                now = sessions._database_now(session)
+                if not choices or not checked_at <= now < proof.expires_at:
+                    return None
+                if len(choices) > 1:
+                    result = PendingLogin(
+                        proof_token,
+                        proof.expires_at,
+                        tuple(
+                            MembershipChoice(member.id, name)
+                            for member, name in choices
+                        ),
+                    )
+                else:
+                    member, _ = choices[0]
+                    context = resolve_membership(
+                        session, user_id=user.id, tenant_id=member.tenant_id
+                    )
+                    proof.finished_at = now
+                    session.flush()
+                    result = sessions._create_session(
+                        session,
+                        user=user,
+                        context=context,
+                        now=now,
+                        mfa_pending_id=proof.id,
+                    )
+            return result
+        except AccessDenied:
+            return None
+        except SQLAlchemyError:
+            raise MfaSessionUnavailable("MFA session unavailable") from None
+
     def select_membership(
         self,
         *,

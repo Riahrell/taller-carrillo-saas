@@ -59,7 +59,9 @@ class BootstrapInput(BaseModel):
             value.get_secret_value().encode("utf-8")
         except UnicodeError:
             raise ValueError("Password must be valid Unicode") from None
-        return value
+        from app.modules.access.password_policy import validate_new_password
+
+        return validate_new_password(value)
 
 
 @dataclass(frozen=True)
@@ -104,6 +106,11 @@ def bootstrap(engine: Engine, data: BootstrapInput) -> BootstrapResult:
         )
         session.add(membership)
         session.flush()
+        from app.modules.access.security_state import synchronize_mfa_requirement
+
+        synchronize_mfa_requirement(
+            session, user_id=user.id, expected_revision=user.security_revision
+        )
         result = BootstrapResult(tenant.id, user.id, membership.id)
     # Return only after the commit has succeeded.
     return result

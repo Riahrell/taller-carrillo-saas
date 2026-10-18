@@ -40,17 +40,22 @@ from app.modules.access.models import (
     EnrollmentMailDelivery,
     EnrollmentMailOutbox,
     EnrollmentMailThrottle,
+    IdentityMailDelivery,
     LoginChallenge,
     LoginThrottle,
+    MailboxChallenge,
     MfaCredential,
     MfaEnrollment,
     MfaPending,
     MfaRecoveryCode,
     MfaRecoverySet,
+    MfaRotation,
     MfaThrottle,
     PasswordResetChallenge,
     PasswordResetThrottle,
+    ResetRequestInbox,
     SecurityEvent,
+    SecurityNotice,
     SessionRecord,
     Tenant,
     TenantMembership,
@@ -108,9 +113,31 @@ def state(mfa_state, monkeypatch):
         yield state
     finally:
         with state["owner"].begin() as connection:
+            from identity_cleanup import cleanup_identity
+
+            cleanup_identity(connection, [state["identity"]])
+            connection.execute(delete(IdentityMailDelivery))
+            connection.execute(delete(ResetRequestInbox))
+            connection.execute(
+                delete(MfaRotation).where(MfaRotation.user_id == state["identity"])
+            )
+            connection.execute(
+                delete(SecurityNotice).where(
+                    SecurityNotice.event_id.in_(
+                        select(SecurityEvent.id).where(
+                            SecurityEvent.user_id == state["identity"]
+                        )
+                    )
+                )
+            )
             connection.execute(delete(PasswordResetChallenge))
             connection.execute(delete(PasswordResetThrottle))
             connection.execute(delete(VerifiedMailbox))
+            connection.execute(
+                delete(MailboxChallenge).where(
+                    MailboxChallenge.user_id == state["identity"]
+                )
+            )
             connection.execute(delete(MfaEnrollment))
             connection.execute(
                 delete(SecurityEvent).where(SecurityEvent.user_id == state["identity"])
@@ -1830,7 +1857,9 @@ def test_verification_database_constraints_owner_retention_and_downgrade(state):
         connection.execute(delete(VerifiedMailbox))
     config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
     with (
-        pytest.raises(DBAPIError, match="verified mailbox evidence"),
+        pytest.raises(
+            DBAPIError, match="verified mailbox evidence|identity cutover evidence"
+        ),
         state["owner"].begin() as connection,
     ):
         config.attributes["connection"] = connection
@@ -2172,7 +2201,10 @@ def test_reset_database_constraints_and_downgrade_preserve_payload_and_quota(
         connection.execute(delete(PasswordResetChallenge))
     config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
     with (
-        pytest.raises(DBAPIError, match="password reset evidence and quotas"),
+        pytest.raises(
+            DBAPIError,
+            match="password reset evidence and quotas|identity cutover evidence",
+        ),
         state["owner"].begin() as connection,
     ):
         config.attributes["connection"] = connection

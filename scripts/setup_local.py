@@ -16,7 +16,11 @@ def generate(environment: str, *, base: Path | None = None) -> Path:
     destination.mkdir(mode=0o700, exist_ok=False)
     secret_dir = destination / "secrets"
     secret_dir.mkdir(mode=0o700)
-    db_name = "carrillo_test" if environment == "test" else "carrillo_dev"
+    db_name = {
+        "test": "carrillo_test",
+        "development": "carrillo_dev",
+        "production": "carrillo_prod",
+    }[environment]
     credentials = {
         "bootstrap_password": secrets.token_urlsafe(48),
         "owner_password": secrets.token_urlsafe(48),
@@ -36,6 +40,9 @@ def generate(environment: str, *, base: Path | None = None) -> Path:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444)
         with os.fdopen(fd, "w") as stream:
             stream.write(value + "\n")
+    from scripts.setup_identity import create
+
+    create(secret_dir / "identity_keys")
     config = destination / "compose.env"
     fd = os.open(config, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as stream:

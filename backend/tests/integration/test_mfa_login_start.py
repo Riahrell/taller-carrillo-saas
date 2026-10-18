@@ -156,7 +156,10 @@ def snapshot(state):
                 (e.user_id, e.security_revision)
                 for e in session.scalars(
                     select(SecurityEvent)
-                    .where(SecurityEvent.user_id.in_([state["user"], state["other"]]))
+                    .where(
+                        SecurityEvent.user_id.in_([state["user"], state["other"]]),
+                        SecurityEvent.action == "security_revision_advanced",
+                    )
                     .order_by(SecurityEvent.id)
                 )
             ],

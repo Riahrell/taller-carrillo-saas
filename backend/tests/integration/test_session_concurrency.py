@@ -39,6 +39,9 @@ def committed_session(db_session, databases):
         yield runtime, owner, issued, user_id, tenant_id
     finally:
         with owner.begin() as connection:
+            from identity_cleanup import cleanup_identity
+
+            cleanup_identity(connection, [user_id])
             connection.execute(
                 delete(SessionRecord).where(
                     SessionRecord.membership_id == membership_id

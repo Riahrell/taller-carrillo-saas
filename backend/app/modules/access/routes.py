@@ -6,9 +6,10 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, SecretStr
 
-from app.modules.access.authentication import Credentials
+from app.modules.access.authentication import Credentials, PendingMfaLogin
 from app.modules.access.http_context import expected_membership
 from app.modules.access.http_security import RequestRejected
+from app.modules.access.identity_http import browser_binding
 from app.modules.access.login_challenges import PendingLogin
 from app.modules.access.reauthentication import PasswordConfirmation
 
@@ -68,14 +69,28 @@ def current_session(request: Request) -> Response:
 @router.post("/login")
 def login(payload: Credentials, request: Request) -> Response:
     policy, access = request.app.state.http_security, request.app.state.access
-    binding = policy.login_binding(request.headers)
+    policy.login_binding(request.headers)
+    binding = browser_binding(policy, request.headers)
     peer = request.app.state.trusted_proxy.client_ip(request.scope, request.headers)
+    request.app.state.identity.cancel(binding)
     with access.password_slot():
-        result = access.authenticator.begin_login(
+        result = access.authenticator.begin_mfa_login(
             payload, client_ip=peer, browser_binding=binding
         )
     if result is None:
         return _denied()
+    if isinstance(result, PendingMfaLogin):
+        response = JSONResponse(
+            {
+                "status": "mfa_totp"
+                if result.purpose.value == "login_totp"
+                else "mfa_enrollment"
+            },
+            status_code=202,
+            headers={"Cache-Control": "no-store"},
+        )
+        policy.set_challenge(response, result)
+        return response
     if isinstance(result, PendingLogin):
         response = JSONResponse(
             {
@@ -103,13 +118,20 @@ def login(payload: Credentials, request: Request) -> Response:
 @router.post("/select-membership")
 def select_membership(payload: MembershipInput, request: Request) -> Response:
     policy, access = request.app.state.http_security, request.app.state.access
-    binding = policy.login_binding(request.headers)
+    policy.login_binding(request.headers)
+    binding = browser_binding(policy, request.headers)
     token = policy.read_cookies(request.headers).get(policy.challenge_cookie)
-    result = access.authenticator.select_membership(
-        challenge_token=SecretStr(token or ""),
+    result = request.app.state.identity.sessions.select_membership(
+        proof_token=SecretStr(token or ""),
         browser_binding=binding,
         membership_id=payload.membership_id,
     )
+    if result is None:
+        result = access.authenticator.select_membership(
+            challenge_token=SecretStr(token or ""),
+            browser_binding=binding,
+            membership_id=payload.membership_id,
+        )
     if result is None:
         response = _denied()
         policy.clear_challenge(response)
@@ -161,7 +183,7 @@ def logout(_payload: EmptyInput, request: Request) -> Response:
     policy = request.app.state.http_security
     cookies = policy.read_cookies(request.headers)
     try:
-        binding = policy.preauth_binding(request.headers)
+        binding = browser_binding(policy, request.headers)
     except RequestRejected:
         binding = None
     session_token, challenge = (

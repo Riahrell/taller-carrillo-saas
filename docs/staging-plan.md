@@ -3,9 +3,10 @@
 Contexto confirmado por el usuario el 2026-10-16: dispone de un VPS en Contabo
 que también aloja imágenes; inicialmente preveía comprar en Namecheap. Después
 informa que adquirió **taller-carrillo.com** y conectó el DNS a la IP del VPS.
-Es información del usuario: todavía no verificamos resolución, propagación,
-configuración del registrador ni servicio del dominio. No se inspeccionó el VPS.
-Desde aquí no se accedió por SSH, cambió DNS, compró servicios o publicó la app.
+El 2026-10-18 se inspeccionó el VPS por SSH con el alias autorizado `contabo`.
+Desde el VPS, raíz y `panel.taller-carrillo.com` resuelven al servidor SSH.
+El usuario confirmó la creación del CNAME del panel. No se ha verificado
+propagación global ni publicado la nueva aplicación.
 No enviar credenciales del VPS/DB/DNS por chat ni incorporarlas al repositorio.
 
 Actualización posterior del usuario: puede retirar el proyecto existente y
@@ -59,8 +60,20 @@ de despliegue TLS. El HTTP de localhost actual es exclusivamente desarrollo.
 - Smoke HTTPS, permisos entre empresas, rutas sensibles, logs sin secretos y
   recuperación del despliegue comprobados con resultados reales documentados.
 
-Siguiente preparación remota: verificar DNS, inventario de solo lectura del VPS
-y elección de subdominio de pruebas. El dominio público es contexto documental,
+Inventario de solo lectura confirmado el 2026-10-18:
+
+- Servicios anteriores: `saas_frontend` (3000), `saas_backend` (8000) y
+  `saas_postgres` (5432), publicados en las interfaces del servidor.
+- PostgreSQL utiliza `taller-carrillo_postgres_data`; frontend y backend no
+  tienen mounts y su filesystem debe conservarse al respaldar.
+- `/opt/taller-carrillo/uploads` contiene imágenes; no retirar esa ruta.
+- Puertos 80/443 libres, nginx/caddy inactivos, certbot no encontrado.
+- NTP sincronizado; aproximadamente 76 GB disponibles en el disco raíz.
+
+No se detuvieron servicios ni se modificaron datos remotos. Siguiente paso:
+terminar CI y navegador, preparar respaldo recuperable del sistema anterior y
+despliegue aislado para `panel.taller-carrillo.com`, con certificado y renovación.
+El dominio público es contexto documental,
 no un origen codificado en la aplicación: configurar el origen final por entorno.
 No hay contraseñas, IPs públicas o
 credenciales predeterminadas codificadas en este documento.

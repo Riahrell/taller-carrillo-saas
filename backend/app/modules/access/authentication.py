@@ -16,7 +16,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.database import create_session_factory
-from app.modules.access import mfa_pending, security_state
+from app.modules.access import (
+    mfa_consumption,
+    mfa_pending,
+    mfa_verification,
+    security_state,
+)
 from app.modules.access.login_challenges import (
     MembershipChoice,
     PendingLogin,
@@ -29,10 +34,12 @@ from app.modules.access.login_challenges import (
     _token_digest,
 )
 from app.modules.access.membership import AccessDenied, resolve_membership
+from app.modules.access.mfa_crypto import SeedKeyring, SeedProtectionError
 from app.modules.access.models import (
     LoginThrottle,
     MembershipRole,
     MfaCredential,
+    SecurityEvent,
     SessionRecord,
     Tenant,
     TenantMembership,
@@ -43,7 +50,10 @@ from app.modules.access.passwords import (
     password_needs_rehash,
     verify_password,
 )
-from app.modules.access.reauthentication import PasswordConfirmation
+from app.modules.access.reauthentication import (
+    MfaPasswordConfirmation,
+    PasswordConfirmation,
+)
 from app.modules.access.sessions import (
     IDLE_TIMEOUT,
     IssuedSession,
@@ -214,6 +224,9 @@ class Authenticator:
         data: PasswordConfirmation,
         expected_actor: UUID,
         ip_key: str,
+        *,
+        keyring: SeedKeyring | None = None,
+        client_ip: IPv4Address | IPv6Address | None = None,
     ) -> IssuedSession | None:
         # Shared limits and order: IP, account, tenant, user, session. Login has
         # no tenant lock; administration never acquires throttle buckets.
@@ -236,6 +249,14 @@ class Authenticator:
         _refresh(account, now)
         if account.failures >= ACCOUNT_LIMIT:
             return None
+        mfa_buckets = None
+        mfa_failed = False
+        if isinstance(data, MfaPasswordConfirmation):
+            if keyring is None or client_ip is None:
+                raise AuthenticationUnavailable("Authentication unavailable")
+            mfa_buckets = mfa_verification._lock_quotas(session, hint.id, client_ip)
+            if mfa_buckets is None:
+                return None
         try:
             # A rejection must preserve the session/token/activity, while the
             # outer transaction still commits failure counters across workers.
@@ -260,10 +281,22 @@ class Authenticator:
                 prior_activity = record.last_seen_at
                 actor = resolve_session(session, token)
                 if (
-                    record.mfa_pending_id is not None
-                    or _requires_mfa(session, user)
+                    (
+                        not isinstance(data, MfaPasswordConfirmation)
+                        and (
+                            record.mfa_pending_id is not None
+                            or _requires_mfa(session, user)
+                        )
+                    )
+                    or (
+                        isinstance(data, MfaPasswordConfirmation)
+                        and record.mfa_pending_id is None
+                    )
                     or actor.membership_id != expected_actor
-                    or actor.role != MembershipRole.ADMIN
+                    or (
+                        not isinstance(data, MfaPasswordConfirmation)
+                        and actor.role != MembershipRole.ADMIN
+                    )
                     or actor.tenant_id != tenant.id
                     or user.email != hint.email
                 ):
@@ -274,6 +307,23 @@ class Authenticator:
                 )
                 if not usable or not valid:
                     raise AccessDenied("Access denied")
+                password_at = _database_now(session)
+                factor_result = None
+                if isinstance(data, MfaPasswordConfirmation):
+                    from app.modules.access.models import MfaPending
+
+                    proof = session.get(MfaPending, record.mfa_pending_id)
+                    factor_result = mfa_consumption.consume_totp(
+                        session,
+                        user_id=user.id,
+                        credential_id=proof.credential_id,
+                        code=data.code,
+                        keyring=keyring,
+                    )
+                    if factor_result is None:
+                        mfa_failed = True
+                        raise AccessDenied("Access denied")
+                    mfa_verification._finish_attempt(session, mfa_buckets, failed=False)
                 # Hash verification may outlive idle/absolute expiry. Recheck
                 # against the original activity before a successful touch.
                 confirmed_at = _database_now(session)
@@ -285,18 +335,69 @@ class Authenticator:
                     raise AccessDenied("Access denied")
                 rotated = SecretStr(secrets.token_urlsafe(32))
                 record.token_hash = _token_hash(rotated)
-                record.reauthenticated_at = confirmed_at
+                record.reauthenticated_at = password_at
                 record.reauthentication_fingerprint = _password_fingerprint(user)
                 record.last_seen_at = confirmed_at
+                if factor_result is not None:
+                    record.mfa_reauthenticated_at = factor_result.verified_at
+                    record.mfa_reauthentication_credential_id = (
+                        factor_result.credential_id
+                    )
+                session.flush()
+                session.add(
+                    SecurityEvent(
+                        user_id=user.id,
+                        action="identity_reauthenticated",
+                        security_revision=user.security_revision,
+                        occurred_at=confirmed_at,
+                    )
+                )
                 session.flush()
                 result = IssuedSession(rotated, record.expires_at)
         except AccessDenied:
+            if mfa_failed:
+                mfa_verification._finish_attempt(session, mfa_buckets, failed=True)
             _record_failure(session, ip, account)
             return None
         account.failures = 0
         account.window_started_at = _now(session)
         session.flush()
         return result
+
+    def reauthenticate_mfa(
+        self,
+        token: SecretStr,
+        *,
+        data: MfaPasswordConfirmation,
+        expected_actor: UUID,
+        client_ip: IPv4Address | IPv6Address,
+        keyring: SeedKeyring,
+    ) -> IssuedSession | None:
+        try:
+            digest, ip_key = _token_hash(token), _ip_digest(client_ip)
+        except AccessDenied:
+            return None
+        try:
+            with self._factory.begin() as session:
+                _limit_transaction(session)
+                result = self._reauthenticate(
+                    session,
+                    token,
+                    digest,
+                    data,
+                    expected_actor,
+                    ip_key,
+                    keyring=keyring,
+                    client_ip=client_ip,
+                )
+            return result
+        except (
+            SQLAlchemyError,
+            HashingError,
+            SeedProtectionError,
+            mfa_verification.MfaVerificationUnavailable,
+        ):
+            raise AuthenticationUnavailable("Authentication unavailable") from None
 
     def authenticate(
         self,
@@ -361,8 +462,8 @@ class Authenticator:
         )
         allowed = valid and usable and user is not None and user.is_active
         if allowed and mfa_browser_binding is None and _requires_mfa(session, user):
-            # Public MFA login is not integrated yet. Never expose tenant choices
-            # or a password-only session for an account requiring a second factor.
+            # Legacy password entry must never expose tenant choices or a session
+            # for an account requiring the public second-factor flow.
             return None
         memberships = []
         if allowed and tenant_id is None:
@@ -375,13 +476,22 @@ class Authenticator:
                 allowed = False
         if not allowed:
             _record_failure(session, ip, account)
+            if user is not None:
+                session.add(
+                    SecurityEvent(
+                        user_id=user.id,
+                        action="login_failed",
+                        security_revision=user.security_revision,
+                        occurred_at=_database_now(session),
+                    )
+                )
             return None
 
         if password_needs_rehash(user.password_hash):
             user.password_hash = hash_password(credentials.password)
         if mfa_browser_binding is not None:
             # The internal MFA entry point applies global policy, never a role or
-            # tenant chosen by the browser. Legacy HTTP does not call this yet.
+            # tenant chosen by the browser. HTTP uses this restricted entry.
             state = security_state.synchronize_mfa_requirement(
                 session, user_id=user.id, expected_revision=user.security_revision
             )

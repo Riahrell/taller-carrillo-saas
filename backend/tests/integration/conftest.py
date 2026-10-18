@@ -90,8 +90,11 @@ def http_identity(db_session, databases):
 
     from app.modules.access.models import (
         AuditEvent,
+        EnrollmentMailThrottle,
         LoginChallenge,
         LoginThrottle,
+        MfaThrottle,
+        PasswordResetThrottle,
         SessionRecord,
         Tenant,
         TenantMembership,
@@ -135,6 +138,9 @@ def http_identity(db_session, databases):
         yield state
     finally:
         with owner.begin() as connection:
+            from identity_cleanup import cleanup_identity
+
+            cleanup_identity(connection, [state["user"], state["foreign"]])
             connection.execute(
                 delete(AuditEvent).where(
                     AuditEvent.tenant_id.in_([state["tenant"], state["other"]])
@@ -165,6 +171,9 @@ def http_identity(db_session, databases):
                 delete(Tenant).where(Tenant.id.in_([state["tenant"], state["other"]]))
             )
             connection.execute(delete(LoginThrottle))
+            connection.execute(delete(MfaThrottle))
+            connection.execute(delete(EnrollmentMailThrottle))
+            connection.execute(delete(PasswordResetThrottle))
 
 
 @pytest.fixture
@@ -222,7 +231,10 @@ def new_identity_scope(http_identity):
         yield state
     finally:
         with state["owner"].begin() as connection:
+            from identity_cleanup import cleanup_identity
+
             users = select(User.id).where(User.email.startswith(state["prefix"]))
+            cleanup_identity(connection, users)
             members = select(TenantMembership.id).where(
                 TenantMembership.user_id.in_(users)
             )
@@ -345,6 +357,9 @@ def mfa_state(db_session, databases, monkeypatch):
         yield result
     finally:
         with owner.begin() as connection:
+            from identity_cleanup import cleanup_identity
+
+            cleanup_identity(connection, user_ids)
             connection.execute(delete(MfaThrottle))
             connection.execute(
                 delete(SecurityEvent).where(SecurityEvent.user_id.in_(user_ids))
@@ -361,3 +376,32 @@ def mfa_state(db_session, databases, monkeypatch):
                 delete(MfaCredential).where(MfaCredential.user_id.in_(user_ids))
             )
             connection.execute(delete(User).where(User.id.in_(user_ids)))
+
+
+@pytest.fixture
+def eligible_administrator(mfa_state):
+    """Retention-only admin membership backed by an existing confirmed factor."""
+    from sqlalchemy import delete
+    from sqlalchemy.orm import Session
+
+    from app.modules.access.models import TenantMembership
+
+    created = []
+
+    def add(tenant_id):
+        with Session(mfa_state["runtime"]) as session, session.begin():
+            member = TenantMembership(
+                tenant_id=tenant_id, user_id=mfa_state["user"], role="admin"
+            )
+            session.add(member)
+            session.flush()
+            created.append(member.id)
+            return member.id
+
+    try:
+        yield add
+    finally:
+        with mfa_state["owner"].begin() as connection:
+            connection.execute(
+                delete(TenantMembership).where(TenantMembership.id.in_(created))
+            )

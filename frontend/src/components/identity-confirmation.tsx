@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { accessApi, type SessionContext } from "@/lib/access/api";
+import { identityApi } from "@/lib/access/identity";
 import { ApiError } from "@/lib/api/client";
 
 type Props = {
@@ -20,6 +21,19 @@ export default function IdentityConfirmation({
   onConfirmed,
 }: Props) {
   const [busy, setBusy] = useState(false);
+  const [mfa, setMfa] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void identityApi
+      .status()
+      .then((value) => {
+        if (active) setMfa(value.mfa_enabled);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
   const [message, setMessage] = useState("");
   const operation = useRef(false);
   const controller = useRef<AbortController | null>(null);
@@ -43,6 +57,7 @@ export default function IdentityConfirmation({
     if (operation.current) return;
     const fields = new FormData(event.currentTarget);
     const password = String(fields.get("password") ?? "");
+    const code = String(fields.get("code") ?? "");
     event.currentTarget.reset();
     fields.delete("password");
     if (Array.from(password).length < 1 || Array.from(password).length > 128) {
@@ -57,9 +72,13 @@ export default function IdentityConfirmation({
     setMessage("");
     onWriting(true);
     try {
-      await accessApi.reauthenticate(session.membership_id, password, {
-        signal: current.signal,
-      });
+      if (mfa) {
+        await identityApi.reauthenticate(session.membership_id, password, code);
+      } else {
+        await accessApi.reauthenticate(session.membership_id, password, {
+          signal: current.signal,
+        });
+      }
       if (current.signal.aborted) return;
       onChanged();
       const context = await accessApi.session({ signal: current.signal });
@@ -126,6 +145,18 @@ export default function IdentityConfirmation({
             required
             aria-describedby="identity-help"
           />
+          {mfa && (
+            <>
+              <label htmlFor="identity-code">Código del autenticador</label>
+              <input
+                id="identity-code"
+                name="code"
+                autoComplete="one-time-code"
+                required
+                maxLength={128}
+              />
+            </>
+          )}
           <button className="action" type="submit">
             Confirmar identidad
           </button>

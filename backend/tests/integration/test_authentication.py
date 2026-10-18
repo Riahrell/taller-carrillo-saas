@@ -54,6 +54,9 @@ def auth_state(db_session, databases):
         yield state
     finally:
         with owner.begin() as connection:
+            from identity_cleanup import cleanup_identity
+
+            cleanup_identity(connection, [ids[2]])
             connection.execute(
                 delete(SessionRecord).where(SessionRecord.membership_id == ids[3])
             )

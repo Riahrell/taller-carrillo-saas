@@ -21,6 +21,7 @@ from app.modules.access.membership import (
 from app.modules.access.models import (
     MfaCredential,
     MfaPending,
+    SecurityEvent,
     SessionRecord,
     TenantMembership,
     User,
@@ -121,6 +122,14 @@ def _create_session(
     if mfa_pending_id is not None:
         close_recovery_permits(session, user.id)
     session.add(record)
+    session.add(
+        SecurityEvent(
+            user_id=user.id,
+            action="login_succeeded",
+            security_revision=user.security_revision,
+            occurred_at=now,
+        )
+    )
     session.flush()
     return IssuedSession(token=token, expires_at=expires_at)
 
@@ -218,7 +227,10 @@ def _revoke_where(session: Session, condition: ColumnElement[bool]) -> None:
     )
     if records:
         now = _database_now(session)
+        from app.modules.access.rotation_state import close_rotations
+
         for record in records:
+            close_rotations(session, session_id=record.id)
             record.revoked_at = max(record.created_at, now)
         session.flush()
 

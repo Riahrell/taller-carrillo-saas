@@ -95,6 +95,18 @@ class TenantMembership(AccessRecord, Base):
 class SessionRecord(Base):
     __tablename__ = "sessions"
     __table_args__ = (
+        CheckConstraint(
+            (
+                "(mfa_reauthenticated_at IS NULL AND "
+                "mfa_reauthentication_credential_id IS NULL) OR "
+                "(mfa_reauthenticated_at IS NOT NULL AND "
+                "mfa_reauthentication_credential_id IS NOT NULL AND "
+                "mfa_pending_id IS NOT NULL AND reauthenticated_at IS NOT "
+                "NULL AND reauthenticated_at <= mfa_reauthenticated_at AND "
+                "mfa_reauthenticated_at < expires_at)"
+            ),
+            name="mfa_reauthentication_state",
+        ),
         CheckConstraint("security_revision >= 0", name="security_revision_bounds"),
         CheckConstraint(
             "mfa_pending_id IS NULL OR security_revision IS NOT NULL",
@@ -137,6 +149,12 @@ class SessionRecord(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    mfa_reauthenticated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    mfa_reauthentication_credential_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("mfa_credentials.id", ondelete="RESTRICT")
+    )
     reauthenticated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reauthentication_fingerprint: Mapped[str | None] = mapped_column(String(64))
 
@@ -251,6 +269,226 @@ class MfaPending(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class MailboxChallenge(Base):
+    """Fresh proof of exact mailbox, bound to an already authenticated session."""
+
+    __tablename__ = "mailbox_challenges"
+    __table_args__ = (
+        UniqueConstraint("user_id", "id", name="uq_mailbox_challenges_user_id_id"),
+        CheckConstraint(
+            "token_hash ~ '^[0-9a-f]{64}$' AND email_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="hashes_sha256",
+        ),
+        CheckConstraint("security_revision >= 0", name="revision_bounds"),
+        CheckConstraint(
+            (
+                "expires_at > created_at AND expires_at <= created_at + "
+                "interval '15 minutes'"
+            ),
+            name="lifetime_bounds",
+        ),
+        CheckConstraint(
+            (
+                "(closed_at IS NULL OR closed_at >= created_at) AND "
+                "(consumed_at IS NULL OR (closed_at IS NOT NULL AND "
+                "consumed_at = closed_at AND consumed_at >= created_at AND "
+                "consumed_at < expires_at))"
+            ),
+            name="closure_state",
+        ),
+        CheckConstraint(
+            (
+                "(discarded_at IS NULL AND key_id IS NOT NULL AND key_id ~ "
+                "'^[A-Za-z0-9_-]{1,64}$' AND nonce IS NOT NULL AND "
+                "octet_length(nonce) = 12 AND ciphertext IS NOT NULL AND "
+                "octet_length(ciphertext) BETWEEN 64 AND 2048) OR "
+                "(discarded_at IS NOT NULL AND discarded_at >= created_at "
+                "AND key_id IS NULL AND nonce IS NULL AND ciphertext IS NULL)"
+            ),
+            name="payload_state",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    session_id: Mapped[UUID] = mapped_column(
+        ForeignKey("sessions.id", ondelete="RESTRICT")
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    email_fingerprint: Mapped[str] = mapped_column(String(64))
+    security_revision: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    discarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    key_id: Mapped[str | None] = mapped_column(String(64))
+    nonce: Mapped[bytes | None] = mapped_column(LargeBinary)
+    ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
+
+
+class IdentityMailDelivery(Base):
+    """Leases for reset/general-verification/notices; message identity is stable."""
+
+    __tablename__ = "identity_mail_deliveries"
+    __table_args__ = (
+        UniqueConstraint("kind", "source_id", name="uq_identity_mail_source"),
+        CheckConstraint("kind IN ('reset','mailbox','notice')", name="kind_allowed"),
+        CheckConstraint(
+            (
+                "state IN ('pending','leased','accepted','uncertain','rejecte"
+                "d','cancelled')"
+            ),
+            name="state_allowed",
+        ),
+        CheckConstraint("attempts >= 1 AND attempts <= 3", name="attempt_bounds"),
+        CheckConstraint(
+            (
+                "(state = 'leased' AND claim_id IS NOT NULL AND "
+                "lease_expires_at IS NOT NULL) OR (state <> 'leased' AND "
+                "claim_id IS NULL AND lease_expires_at IS NULL)"
+            ),
+            name="lease_state",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    kind: Mapped[str] = mapped_column(String(7))
+    source_id: Mapped[UUID]
+    state: Mapped[str] = mapped_column(String(9))
+    attempts: Mapped[int] = mapped_column(Integer)
+    claim_id: Mapped[UUID | None]
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SecurityNotice(Base):
+    """Notification by event reference; no bearer token or recipient copy."""
+
+    __tablename__ = "security_notices"
+    __table_args__ = (
+        CheckConstraint("address_hash ~ '^[0-9a-f]{64}$'", name="address_hash_sha256"),
+        CheckConstraint(
+            "expires_at = created_at + interval '24 hours'", name="absolute_lifetime"
+        ),
+        CheckConstraint(
+            "state IN ('pending', 'accepted', 'uncertain', 'rejected', 'expired')",
+            name="state_allowed",
+        ),
+    )
+    event_id: Mapped[UUID] = mapped_column(
+        ForeignKey("security_events.id", ondelete="RESTRICT"), primary_key=True
+    )
+    address_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    state: Mapped[str] = mapped_column(String(9), server_default=text("'pending'"))
+
+
+class MfaRotation(Base):
+    """Voluntary replacement bound to the current session's recent combined proof."""
+
+    __tablename__ = "mfa_rotations"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["user_id", "credential_id"],
+            ["mfa_credentials.user_id", "mfa_credentials.id"],
+            name="fk_rotation_current_factor_owner",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "token_hash ~ '^[0-9a-f]{64}$' AND session_hash ~ '^[0-9a-f]{64}$'",
+            name="hashes_sha256",
+        ),
+        CheckConstraint("security_revision >= 0", name="revision_bounds"),
+        CheckConstraint(
+            (
+                "password_verified_at <= factor_verified_at AND "
+                "factor_verified_at <= created_at AND created_at < "
+                "expires_at AND expires_at <= password_verified_at + "
+                "interval '5 minutes'"
+            ),
+            name="proof_lifetime",
+        ),
+        CheckConstraint(
+            (
+                "(closed_at IS NULL OR closed_at >= created_at) AND "
+                "(activated_at IS NULL OR (closed_at IS NOT NULL AND "
+                "activated_at=closed_at AND activated_at<expires_at))"
+            ),
+            name="closure_state",
+        ),
+        CheckConstraint(
+            (
+                "(closed_at IS NULL AND key_id IS NOT NULL AND key_id ~ "
+                "'^[A-Za-z0-9_-]{1,64}$' AND nonce IS NOT NULL AND "
+                "octet_length(nonce)=12 AND ciphertext IS NOT NULL AND "
+                "octet_length(ciphertext)=36) OR (closed_at IS NOT NULL AND "
+                "key_id IS NULL AND nonce IS NULL AND ciphertext IS NULL)"
+            ),
+            name="payload_state",
+        ),
+        Index(
+            "uq_mfa_rotations_open_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("closed_at IS NULL"),
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    session_id: Mapped[UUID] = mapped_column(
+        ForeignKey("sessions.id", ondelete="RESTRICT")
+    )
+    credential_id: Mapped[UUID]
+    session_hash: Mapped[str] = mapped_column(String(64))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    security_revision: Mapped[int] = mapped_column(BigInteger)
+    password_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    factor_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    key_id: Mapped[str | None] = mapped_column(String(64))
+    nonce: Mapped[bytes | None] = mapped_column(LargeBinary)
+    ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
+
+
+class ResetRequestInbox(Base):
+    """Blind encrypted request. No user discovery in the public request path."""
+
+    __tablename__ = "reset_request_inbox"
+    __table_args__ = (
+        CheckConstraint(
+            "expires_at = created_at + interval '15 minutes'", name="absolute_lifetime"
+        ),
+        CheckConstraint(
+            "claimed_at IS NULL OR claimed_at >= created_at", name="claim_window"
+        ),
+        CheckConstraint(
+            (
+                "(finished_at IS NULL AND key_id IS NOT NULL AND nonce IS "
+                "NOT NULL AND octet_length(nonce)=12 AND ciphertext IS NOT "
+                "NULL AND octet_length(ciphertext) BETWEEN 64 AND 2048) OR "
+                "(finished_at IS NOT NULL AND finished_at >= created_at AND "
+                "key_id IS NULL AND nonce IS NULL AND ciphertext IS NULL)"
+            ),
+            name="payload_state",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    key_id: Mapped[str | None] = mapped_column(String(64))
+    nonce: Mapped[bytes | None] = mapped_column(LargeBinary)
+    ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
+
+
 class PasswordResetChallenge(Base):
     """Purpose-specific reset authority and encrypted staging; no sending yet."""
 
@@ -339,6 +577,20 @@ class VerifiedMailbox(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "id", name="uq_verified_mailboxes_user_id_id"),
         ForeignKeyConstraint(
+            ["user_id", "general_challenge_id"],
+            ["mailbox_challenges.user_id", "mailbox_challenges.id"],
+            name="fk_verified_mailbox_general_owner",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            (
+                "(challenge_id IS NOT NULL AND general_challenge_id IS NULL) "
+                "OR (challenge_id IS NULL AND general_challenge_id IS NOT "
+                "NULL)"
+            ),
+            name="one_source",
+        ),
+        ForeignKeyConstraint(
             ["user_id", "challenge_id"],
             ["enrollment_email_challenges.user_id", "enrollment_email_challenges.id"],
             name="fk_verified_mailbox_challenge_owner",
@@ -360,7 +612,8 @@ class VerifiedMailbox(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     user_id: Mapped[UUID]
-    challenge_id: Mapped[UUID] = mapped_column(unique=True)
+    challenge_id: Mapped[UUID | None] = mapped_column(unique=True)
+    general_challenge_id: Mapped[UUID | None] = mapped_column(unique=True)
     address_hash: Mapped[str] = mapped_column(String(64))
     verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -814,7 +1067,17 @@ class SecurityEvent(Base):
             "security_revision IS NOT NULL AND security_revision > 0) OR "
             "(action = 'mfa_recovery_started' AND credential_id IS NOT NULL AND "
             "security_revision IS NOT NULL AND security_revision >= 0) OR "
-            "(action IN ('mfa_replaced', 'mfa_codes_regenerated') AND "
+            "(action IN ('login_succeeded', 'login_failed', "
+            "'identity_reauthenticated') AND credential_id IS NULL AND "
+            "security_revision IS NOT NULL AND security_revision >= 0) OR "
+            "(action = 'mailbox_verified' AND credential_id IS NULL AND "
+            "security_revision IS NOT NULL AND security_revision >= 0) OR "
+            "(action = 'password_reset_completed' AND credential_id IS NULL AND "
+            "security_revision IS NOT NULL AND security_revision > 0) OR "
+            "(action = 'mfa_seed_rewrapped' AND credential_id IS NOT "
+            "NULL AND security_revision IS NOT NULL AND "
+            "security_revision >= 0) OR "
+            "(action IN ('mfa_replaced', 'mfa_codes_regenerated', 'mfa_rotated') AND "
             "credential_id IS NOT NULL AND "
             "security_revision IS NOT NULL AND security_revision > 0) OR "
             "(action IN ('mfa_totp_consumed', 'mfa_recovery_consumed') "
@@ -831,7 +1094,10 @@ class SecurityEvent(Base):
             "action IN ('mfa_totp_consumed', 'mfa_recovery_consumed', "
             "'security_revision_advanced', 'mfa_enrollment_email_confirmed', "
             "'mfa_enrolled', 'mfa_recovery_started', 'mfa_replaced', "
-            "'mfa_codes_regenerated')",
+            "'mfa_codes_regenerated', 'password_reset_completed', "
+            "'mailbox_verified', 'login_succeeded', 'login_failed', "
+            "'identity_reauthenticated', 'mfa_rotated', "
+            "'mfa_seed_rewrapped')",
             name="action_allowed",
         ),
         CheckConstraint(

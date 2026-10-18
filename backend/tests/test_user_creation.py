@@ -59,5 +59,7 @@ def test_creation_has_no_credential_or_role_default(missing):
 
 @pytest.mark.parametrize("length", [15, 128])
 def test_creation_unicode_password_boundaries(length):
-    command = UserCreation(**payload(password=SecretStr("🔧" * length)))
+    command = UserCreation(
+        **payload(password=SecretStr("🔧" + secrets.token_urlsafe(128)[: length - 1]))
+    )
     assert len(command.password.get_secret_value()) == length

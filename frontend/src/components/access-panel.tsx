@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import MfaFlow from "@/components/mfa-flow";
 
 import {
   useCallback,
@@ -21,6 +22,7 @@ import { ApiError } from "@/lib/api/client";
 type View =
   | { kind: "checking" }
   | { kind: "login"; message?: string }
+  | { kind: "mfa"; stage: "mfa_totp" | "mfa_enrollment" }
   | { kind: "choose"; choices: Choice[] }
   | { kind: "active"; session: SessionContext }
   | { kind: "uncertain"; message: string; closing: boolean };
@@ -191,7 +193,12 @@ export default function AccessPanel() {
               })
             : await accessApi.select(selected, { signal: current.signal });
         if (current.signal.aborted) return;
-        if (result.status === "select_membership") {
+        if (
+          result.status === "mfa_totp" ||
+          result.status === "mfa_enrollment"
+        ) {
+          setView({ kind: "mfa", stage: result.status });
+        } else if (result.status === "select_membership") {
           setSelected("");
           setView({ kind: "choose", choices: result.choices });
         } else {
@@ -280,6 +287,22 @@ export default function AccessPanel() {
         >
           {message}
         </p>
+      )}
+      {view.kind === "mfa" && (
+        <MfaFlow
+          initial={view.stage}
+          onCancel={() => void act("logout")}
+          onLogin={(result) => {
+            if (result.status === "select_membership") {
+              setView({ kind: "choose", choices: result.choices });
+            } else if (result.status === "authenticated") {
+              check();
+            }
+          }}
+        />
+      )}
+      {view.kind === "login" && (
+        <Link href="/recuperar">Olvidé mi contraseña</Link>
       )}
       {view.kind === "checking" && (
         <p role="status" className="panel-description">
@@ -385,6 +408,9 @@ export default function AccessPanel() {
             Cancelar acceso
           </button>
         </form>
+      )}
+      {view.kind === "active" && (
+        <Link href="/seguridad">Seguridad de mi cuenta</Link>
       )}
       {view.kind === "active" && (
         <>

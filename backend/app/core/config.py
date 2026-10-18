@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     csrf_signing_key: SecretStr | None = None
     csrf_signing_key_file: Path | None = None
     trusted_proxy_host: str | None = None
+    identity_keys_file: Path | None = None
 
     @field_validator("trusted_proxy_host")
     @classmethod
@@ -110,6 +111,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production(self) -> Self:
+        if self.app_env == "production" and self.identity_keys_file is None:
+            raise ValueError("Production requires external identity keys")
         if self.app_env == "production" and self.docs_enabled:
             raise ValueError("Interactive documentation is forbidden in production")
         return self

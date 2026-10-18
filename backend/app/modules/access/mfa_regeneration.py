@@ -5,7 +5,7 @@ Never accept caller identities, roles, factor IDs or a transferable success flag
 """
 
 from datetime import datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import SecretStr
 from sqlalchemy import Engine, select
@@ -54,13 +54,20 @@ class MfaCodeRegenerator:
     def __init__(self, engine: Engine):
         self._factory = create_session_factory(engine)
 
-    def regenerate(self, *, session_token: SecretStr) -> RecoveryBundle | None:
+    def regenerate(
+        self, *, session_token: SecretStr, expected_actor: UUID | None = None
+    ) -> RecoveryBundle | None:
         if not isinstance(session_token, SecretStr):
             raise ValueError("Invalid internal MFA input")
         try:
             with self._factory.begin() as session:
                 _timeouts(session)
                 context = sessions.resolve_session(session, session_token)
+                if (
+                    expected_actor is not None
+                    and context.membership_id != expected_actor
+                ):
+                    raise AccessDenied("Access denied")
                 record = session.scalar(
                     select(SessionRecord).where(
                         SessionRecord.token_hash == sessions._token_hash(session_token)
@@ -71,10 +78,34 @@ class MfaCodeRegenerator:
                 # resolve_session holds the owner lock and validates current proof,
                 # fingerprint, revision, factor and active tenant membership.
                 proof = session.get(MfaPending, record.mfa_pending_id)
+                password_at, factor_at = (
+                    proof.password_verified_at,
+                    proof.factor_verified_at,
+                )
+                if record.mfa_reauthenticated_at is not None:
+                    from app.modules.access.login_challenges import (
+                        _password_fingerprint,
+                    )
+
+                    current_user = session.get(User, context.user_id)
+                    if (
+                        record.mfa_reauthentication_credential_id != proof.credential_id
+                        or record.reauthenticated_at is None
+                        or record.reauthentication_fingerprint
+                        != _password_fingerprint(current_user)
+                        or not record.created_at
+                        <= record.reauthenticated_at
+                        <= record.mfa_reauthenticated_at
+                        <= sessions._database_now(session)
+                    ):
+                        raise AccessDenied("Access denied")
+                    password_at, factor_at = (
+                        record.reauthenticated_at,
+                        record.mfa_reauthenticated_at,
+                    )
                 deadline = min(
                     record.expires_at,
-                    min(proof.password_verified_at, proof.factor_verified_at)
-                    + RECENT_AUTHENTICATION_WINDOW,
+                    min(password_at, factor_at) + RECENT_AUTHENTICATION_WINDOW,
                 )
                 checked_at = _clock(session, record.last_seen_at, deadline)
                 factor = session.scalar(
@@ -97,11 +128,19 @@ class MfaCodeRegenerator:
                     .with_for_update()
                     .execution_options(populate_existing=True)
                 )
-                if factor is None or old_set is None:
+                if factor is None:
                     raise AccessDenied("Access denied")
-                now = _clock(session, max(checked_at, old_set.created_at), deadline)
+                now = _clock(
+                    session,
+                    max(
+                        checked_at,
+                        old_set.created_at if old_set is not None else checked_at,
+                    ),
+                    deadline,
+                )
                 codes, set_id = generate_recovery_codes(), uuid4()
-                old_set.invalidated_at = now
+                if old_set is not None:
+                    old_set.invalidated_at = now
                 session.flush()  # Release current-set partial uniqueness atomically.
                 session.add(
                     MfaRecoverySet(
@@ -128,14 +167,19 @@ class MfaCodeRegenerator:
                     user_id=user.id,
                     expected_revision=user.security_revision,
                 )
-                session.add(
-                    SecurityEvent(
+                from app.modules.access.security_notices import enqueue_notice
+
+                enqueue_notice(
+                    session,
+                    user=user,
+                    event=SecurityEvent(
                         user_id=user.id,
                         credential_id=factor.id,
                         action="mfa_codes_regenerated",
                         security_revision=state.revision,
                         occurred_at=now,
-                    )
+                    ),
+                    now=now,
                 )
                 session.flush()
                 _clock(session, now, deadline)

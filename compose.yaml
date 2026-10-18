@@ -12,9 +12,11 @@ x-backend: &backend
     PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Configure the exact browser origin}
     TRUSTED_PROXY_HOST: proxy
     CSRF_SIGNING_KEY_FILE: /run/secrets/csrf_signing_key
+    IDENTITY_KEYS_FILE: /run/secrets/identity_keys
   secrets:
     - database_url
     - csrf_signing_key
+    - identity_keys
   depends_on:
     db:
       condition: service_healthy
@@ -143,6 +145,7 @@ services:
       DATABASE_URL_FILE: /run/secrets/database_url
       MIGRATION_DATABASE_URL_FILE: /run/secrets/migration_database_url
       RUN_DB_INTEGRATION: "1"
+      IDENTITY_KEYS_FILE: /run/secrets/identity_keys
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Configure the exact browser origin}
       CSRF_SIGNING_KEY_FILE: /run/secrets/csrf_signing_key
       TRUSTED_PROXY_HOST: proxy
@@ -150,6 +153,7 @@ services:
       - database_url
       - migration_database_url
       - csrf_signing_key
+      - identity_keys
 
 networks:
   api:
@@ -181,3 +185,6 @@ secrets:
 
   csrf_signing_key:
     file: ${DB_SECRETS_DIR:?Generate the local environment first}/csrf_signing_key
+
+  identity_keys:
+    file: ${DB_SECRETS_DIR:?Generate the local environment first}/identity_keys

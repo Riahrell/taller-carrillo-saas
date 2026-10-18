@@ -103,7 +103,10 @@ def snapshot(state):
         )
         events = list(
             session.scalars(
-                select(SecurityEvent).where(SecurityEvent.user_id == state["user"])
+                select(SecurityEvent).where(
+                    SecurityEvent.user_id == state["user"],
+                    SecurityEvent.action == "security_revision_advanced",
+                )
             )
         )
         return (

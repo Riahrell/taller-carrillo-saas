@@ -33,6 +33,7 @@ from app.modules.access.models import (
     AuditEvent,
     LoginChallenge,
     MembershipRole,
+    SecurityEvent,
     SessionRecord,
     Tenant,
     TenantMembership,
@@ -74,7 +75,10 @@ def provisioning(http_identity, recent_session):
     finally:
         # Owner cleanup is confined to synthetic identities in this guarded DB.
         with state["owner"].begin() as connection:
+            from identity_cleanup import cleanup_identity
+
             users = select(User.id).where(User.email.startswith(state["prefix"]))
+            cleanup_identity(connection, users)
             members = select(TenantMembership.id).where(
                 TenantMembership.user_id.in_(users)
             )
@@ -186,6 +190,19 @@ def test_new_user_membership_and_audit_commit_together(provisioning, role):
         client_ip=ip_address("192.0.2.87"),
         selected_tenant_id=state["tenant"],
     )
+    if role == "admin":
+        from app.modules.access.authentication import PendingMfaLogin
+        from app.modules.access.mfa_pending import PendingPurpose
+
+        assert logged is None
+        pending = Authenticator(state["runtime"]).begin_mfa_login(
+            Credentials(email=value.email, password=value.password),
+            client_ip=ip_address("192.0.2.87"),
+            browser_binding=SecretStr(secrets.token_urlsafe(32)),
+        )
+        assert isinstance(pending, PendingMfaLogin)
+        assert pending.purpose == PendingPurpose.ENROLLMENT
+        return
     assert logged is not None
     with Session(state["runtime"]) as session, session.begin():
         assert (
@@ -444,27 +461,21 @@ def test_permission_rechecked_after_waiting_for_actor(provisioning):
     assert counts(state) == before
 
 
-def test_created_admin_counts_for_last_admin_protection(provisioning, recent_session):
+def test_created_admin_awaiting_mfa_cannot_replace_last_confirmed_admin(provisioning):
     state = provisioning
     value = data(state, role="admin")
     new = create(state, value)
-    state["service"].change_membership(
-        state["token"],
-        membership_id=state["membership"],
-        change=MembershipChange(role="read_only", is_active=True),
-    )
-    with Session(state["runtime"]) as session, session.begin():
-        member = session.get(TenantMembership, new.membership_id)
-        token = issue_session(
-            session, user_id=member.user_id, tenant_id=state["tenant"]
-        ).token
-    recent_session(token)
     with pytest.raises(LastAdministratorRequired):
         state["service"].change_membership(
-            token,
-            membership_id=new.membership_id,
-            change=MembershipChange(role="cashier", is_active=True),
+            state["token"],
+            membership_id=state["membership"],
+            change=MembershipChange(role="read_only", is_active=True),
         )
+    with Session(state["runtime"]) as session, session.begin():
+        member = session.get(TenantMembership, new.membership_id)
+        assert session.get(User, member.user_id).mfa_required is True
+        with pytest.raises(AccessDenied):
+            issue_session(session, user_id=member.user_id, tenant_id=state["tenant"])
 
 
 @pytest.mark.parametrize(
@@ -513,22 +524,41 @@ def test_downgrade_refuses_to_discard_creation_evidence(provisioning):
     with state["owner"].connect() as connection:
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0024_password_reset_requests"
+            == "0029_mfa_rotation"
         )
     assert counts(state) == before
 
 
 def test_migration_roundtrip_preserves_existing_change_audit(provisioning):
     state = provisioning
-    state["service"].change_membership(
-        state["token"],
-        membership_id=state["target"],
-        change=MembershipChange(role="mechanic", is_active=True),
-    )
+    # Arrange an actual pre-0015 audit row. Modern permission changes advance
+    # security revision and deliberately cannot be rolled back past that evidence.
+    with Session(state["runtime"]) as session, session.begin():
+        member = session.get(TenantMembership, state["target"])
+        member.role = "mechanic"
+        session.add(
+            AuditEvent(
+                tenant_id=state["tenant"],
+                actor_membership_id=state["membership"],
+                target_membership_id=state["target"],
+                action="membership_changed",
+                before_role="cashier",
+                after_role="mechanic",
+                before_active=True,
+                after_active=True,
+                created_at=session.scalar(select(func.clock_timestamp())),
+            )
+        )
     config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
     # Preserve the historical audit roundtrip using pre-0015 synthetic sessions.
     # New session evidence is separately covered by downgrade refusal tests.
     with state["owner"].begin() as connection:
+        connection.execute(
+            delete(SecurityEvent).where(
+                SecurityEvent.user_id.in_([state["user"], state["foreign"]]),
+                SecurityEvent.action == "login_succeeded",
+            )
+        )
         connection.execute(
             text(
                 "UPDATE sessions SET security_revision = NULL WHERE "

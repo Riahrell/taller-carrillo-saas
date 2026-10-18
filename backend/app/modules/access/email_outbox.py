@@ -35,6 +35,8 @@ COOLDOWN = timedelta(seconds=60)
 class MailPurpose(StrEnum):
     ENROLLMENT = "enrollment"
     PASSWORD_RESET = "password_reset"
+    MAILBOX_VERIFICATION = "mailbox_verification"
+    RESET_REQUEST = "reset_request"
 
 
 class MailProtectionError(ValueError):
@@ -72,6 +74,10 @@ def _aad(
         {
             MailPurpose.ENROLLMENT: b"carrillo:enrollment-mail:v1\x00",
             MailPurpose.PASSWORD_RESET: b"carrillo:password-reset-mail:v1\x00",
+            MailPurpose.MAILBOX_VERIFICATION: (
+                b"carrillo:mailbox-verification-mail:v1\x00"
+            ),
+            MailPurpose.RESET_REQUEST: b"carrillo:blind-reset-request:v1\x00",
         }[purpose]
         + user_id.bytes
         + challenge_id.bytes
@@ -213,9 +219,10 @@ class MailProtection:
             raise MailProtectionError("Mail protection unavailable") from None
 
     def scopes(self, user_id: UUID, client_ip: IPv4Address | IPv6Address):
-        if self.purpose != MailPurpose.ENROLLMENT or not isinstance(
-            client_ip, (IPv4Address, IPv6Address)
-        ):
+        if self.purpose not in {
+            MailPurpose.ENROLLMENT,
+            MailPurpose.MAILBOX_VERIFICATION,
+        } or not isinstance(client_ip, (IPv4Address, IPv6Address)):
             raise MailProtectionError("Mail protection unavailable")
         if isinstance(client_ip, IPv6Address) and client_ip.ipv4_mapped is not None:
             client_ip = client_ip.ipv4_mapped

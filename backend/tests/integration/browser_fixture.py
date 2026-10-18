@@ -5,13 +5,16 @@ import os
 import secrets
 import time
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.modules.access.models import Tenant, TenantMembership, User
+from app.modules.access.identity_http import IdentityAccess
+from app.modules.access.mfa_crypto import generate_totp_seed
+from app.modules.access.models import MfaCredential, Tenant, TenantMembership, User
 from app.modules.access.passwords import hash_password
 
 pytestmark = [
@@ -25,7 +28,26 @@ pytestmark = [
 
 def test_hold_browser_identity(new_identity_scope):
     state = new_identity_scope
+    seed = generate_totp_seed()
+    credential_id = uuid4()
+    keyring = (
+        IdentityAccess(state["runtime"], state["settings"].identity_keys_file)
+        .require()
+        .keyring
+    )
+    envelope = keyring.encrypt(seed, user_id=state["user"], credential_id=credential_id)
     with Session(state["runtime"]) as session, session.begin():
+        session.add(
+            MfaCredential(
+                id=credential_id,
+                user_id=state["user"],
+                encryption_version=envelope.version,
+                key_id=envelope.key_id,
+                nonce=envelope.nonce,
+                ciphertext=envelope.ciphertext,
+                created_at=session.scalar(select(func.clock_timestamp())),
+            )
+        )
         session.execute(
             update(Tenant)
             .where(Tenant.id == state["tenant"])
@@ -59,6 +81,7 @@ def test_hold_browser_identity(new_identity_scope):
             {
                 "email": state["email"],
                 "password": state["password"].get_secret_value(),
+                "totp_seed": seed.base32().get_secret_value(),
                 "new_email": state["prefix"] + "staff@example.com",
                 "new_password": secrets.token_urlsafe(32),
             },

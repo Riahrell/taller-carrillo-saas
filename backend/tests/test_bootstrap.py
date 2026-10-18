@@ -48,7 +48,11 @@ def test_invalid_bootstrap_input_is_rejected(changes):
 
 @pytest.mark.parametrize("length", [15, 128])
 def test_password_length_boundaries_accept_unicode(length):
-    assert cli.BootstrapInput(**valid_data(password=SecretStr("🔧" * length)))
+    assert cli.BootstrapInput(
+        **valid_data(
+            password=SecretStr("🔧" + secrets.token_urlsafe(128)[: length - 1])
+        )
+    )
 
 
 def setup_terminal(monkeypatch, password=None, confirmation=None):

@@ -97,6 +97,9 @@ def state(mfa_state, monkeypatch):
         yield state
     finally:
         with state["owner"].begin() as connection:
+            from identity_cleanup import cleanup_identity
+
+            cleanup_identity(connection, [state["user"]])
             connection.execute(delete(MfaReplacement))
             connection.execute(
                 delete(MfaRecoveryPermit).where(
@@ -1165,7 +1168,9 @@ def test_regeneration_replaces_only_codes_and_revokes_its_authority(
         "token",
     ],
 )
-def test_regeneration_rejects_stale_or_unbound_authority(state, regeneration, change):
+def test_regeneration_checks_authority_and_can_replace_quarantined_set(
+    state, regeneration, change
+):
     service, token = regeneration
     with state["owner"].begin() as connection:
         if change == "expiry":
@@ -1208,6 +1213,14 @@ def test_regeneration_rejects_stale_or_unbound_authority(state, regeneration, ch
             connection.execute(update(SessionRecord).values(mfa_pending_id=None))
         else:
             token = SecretStr(secrets.token_urlsafe(32))
+    if change == "set":
+        bundle = service.regenerate(session_token=token)
+        assert bundle is not None and len(bundle.codes) == 10
+        with Session(state["runtime"]) as session:
+            sets = session.scalars(select(MfaRecoverySet)).all()
+            assert len(sets) == 2
+            assert sum(row.invalidated_at is None for row in sets) == 1
+        return
     assert service.regenerate(session_token=token) is None
     with Session(state["runtime"]) as session:
         assert (
@@ -1309,5 +1322,11 @@ def test_regeneration_event_prevents_destructive_downgrade(state, regeneration):
     )
     with state["owner"].connect() as connection:
         config.attributes["connection"] = connection
-        with pytest.raises(DBAPIError, match="regeneration evidence must be preserved"):
+        with pytest.raises(
+            DBAPIError,
+            match=(
+                "regeneration evidence must be preserved|identity audit evidence|"
+                "identity cutover evidence"
+            ),
+        ):
             command.downgrade(config, "0021_mfa_replacement")

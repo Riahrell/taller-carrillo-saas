@@ -1,0 +1,24 @@
+# Explicit operational overlay. Supply real files outside Git; no placeholders.
+services:
+  identity-worker:
+    extends:
+      file: compose.yaml
+      service: backend
+    command: ["python", "-m", "app.tools.identity_worker"]
+    restart: unless-stopped
+    environment:
+      SMTP_CONFIG_FILE: /run/secrets/smtp_config
+    secrets:
+      - smtp_config
+      - source: smtp_password
+        target: smtp_password
+    networks: [private, mail]
+    healthcheck:
+      disable: true
+networks:
+  mail:
+secrets:
+  smtp_config:
+    file: ${SMTP_CONFIG_FILE:?Configure the private SMTP JSON file}
+  smtp_password:
+    file: ${SMTP_PASSWORD_FILE:?Configure the private SMTP password file}

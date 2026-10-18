@@ -271,14 +271,19 @@ class MfaReplacementService:
                 state = advance_security_revision(
                     session, user_id=user.id, expected_revision=user.security_revision
                 )
-                session.add(
-                    SecurityEvent(
+                from app.modules.access.security_notices import enqueue_notice
+
+                enqueue_notice(
+                    session,
+                    user=user,
+                    event=SecurityEvent(
                         user_id=user.id,
                         credential_id=stage.id,
                         action="mfa_replaced",
                         security_revision=state.revision,
                         occurred_at=finished_at,
-                    )
+                    ),
+                    now=finished_at,
                 )
                 session.flush()
                 _clock(session, finished_at, stage.expires_at)

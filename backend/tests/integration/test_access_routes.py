@@ -7,14 +7,17 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from identity_http_fixture import arrange_factor, next_factor
+from pydantic import SecretStr
 from sqlalchemy import event, func, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.main import create_app
+from app.modules.access import mfa_pending
 from app.modules.access.models import (
-    LoginChallenge,
     LoginThrottle,
+    MfaPending,
     SessionRecord,
     TenantMembership,
     User,
@@ -38,6 +41,7 @@ def web(http_identity, monkeypatch):
         client=("127.0.0.2", 12345),
         headers={"X-Real-IP": "127.0.0.1"},
     ) as client:
+        arrange_factor(state, app, monkeypatch)
         yield client, state, app.state.http_security
 
 
@@ -62,7 +66,8 @@ def write(client, policy, path, body, **kwargs):
 
 
 def login(client, state, policy, **extra):
-    return write(
+    code = next_factor(state)
+    response = write(
         client,
         policy,
         "/auth/login",
@@ -72,6 +77,9 @@ def login(client, state, policy, **extra):
             **extra,
         },
     )
+    if response.status_code == 202 and response.json().get("status") == "mfa_totp":
+        return write(client, policy, "/auth/mfa/totp", {"code": code})
+    return response
 
 
 def multi(state):
@@ -178,7 +186,14 @@ def test_pending_selection_preserves_binding_during_csrf_refresh(web):
     current = client.get("/auth/session", headers=READ).json()
     assert current["tenant_id"] == str(state["other"]) and current["role"] == "mechanic"
     with Session(state["runtime"]) as session:
-        assert session.scalar(select(LoginChallenge.finished_at)) is not None
+        assert (
+            session.scalar(
+                select(MfaPending.finished_at).where(
+                    MfaPending.purpose == "login_verified"
+                )
+            )
+            is not None
+        )
 
 
 def test_pending_logout_cancels_identity_before_deleting_cookies(web):
@@ -197,7 +212,14 @@ def test_pending_logout_cancels_identity_before_deleting_cookies(web):
     )
     assert response.status_code == 401 and count(state, SessionRecord) == 0
     with Session(state["runtime"]) as session:
-        assert session.scalar(select(LoginChallenge.finished_at)) is not None
+        assert (
+            session.scalar(
+                select(MfaPending.finished_at).where(
+                    MfaPending.purpose == "login_verified"
+                )
+            )
+            is not None
+        )
 
 
 @pytest.mark.parametrize("candidate", ["foreign", "unknown", "tenant"])
@@ -388,7 +410,14 @@ def test_failed_commit_does_not_publish_or_clear_authentication_cookies(web, ope
         )
     elif operation == "select":
         with Session(state["runtime"]) as session:
-            assert session.scalar(select(LoginChallenge.finished_at)) is None
+            assert (
+                session.scalar(
+                    select(MfaPending.finished_at).where(
+                        MfaPending.purpose == "login_verified"
+                    )
+                )
+                is None
+            )
         assert (
             write(
                 client,
@@ -458,7 +487,14 @@ def test_other_browser_cannot_use_pending_identity_or_consume_it(web):
             == 401
         )
     with Session(state["runtime"]) as session:
-        assert session.scalar(select(LoginChallenge.finished_at)) is None
+        assert (
+            session.scalar(
+                select(MfaPending.finished_at).where(
+                    MfaPending.purpose == "login_verified"
+                )
+            )
+            is None
+        )
     assert (
         write(
             client,
@@ -486,6 +522,9 @@ def test_mixed_browser_cookies_logout_revokes_session_and_pending_atomically(
     ) as other:
         bootstrap(other)
         assert login(other, state, policy).status_code == 202
+        pending_hash = mfa_pending._hash(
+            SecretStr(other.cookies[policy.challenge_cookie]), "mfa-pending-token-v1:"
+        )
         # Simulate overlapping browser responses: retain the original session CSRF.
         for name in (policy.preauth_cookie, policy.challenge_cookie):
             client.cookies.set(name, other.cookies[name])
@@ -506,7 +545,13 @@ def test_mixed_browser_cookies_logout_revokes_session_and_pending_atomically(
                 event.remove(engine, "commit", reject)
         with Session(state["runtime"]) as session:
             assert (
-                session.scalar(select(LoginChallenge.finished_at)) is not None
+                session.scalar(
+                    select(MfaPending.finished_at).where(
+                        MfaPending.purpose == "login_verified",
+                        MfaPending.token_hash == pending_hash,
+                    )
+                )
+                is not None
             ) is not fail_commit
             assert (
                 session.scalar(select(SessionRecord.revoked_at)) is not None
