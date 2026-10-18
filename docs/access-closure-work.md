@@ -1,5 +1,15 @@
 # Trabajo continuo de cierre de acceso
 
+## Cambio de prioridad — 2026-10-18
+
+Por instrucción expresa del usuario se pospone la VPS y se continúa en local con
+catálogo e inventario. Esto sustituye la puerta anterior que exigía terminar el
+despliegue antes de comenzar módulos comerciales. No elimina los controles de
+acceso de cada operación ni certifica seguridad productiva. El seguimiento
+histórico de abajo conserva lo ocurrido; para estado remoto vigente consultar
+`staging-plan.md`. Próxima tarea: contrato y persistencia mínima de productos,
+con aislamiento por empresa y sin modificar existencias al crear un producto.
+
 Solicitud vigente: implementar los recorridos pendientes, después ejecutar la
 validación conjunta y corregir los fallos antes de pasar a inventario. No cerrar
 por cantidad de pruebas. Este archivo es seguimiento, no evidencia de controles.

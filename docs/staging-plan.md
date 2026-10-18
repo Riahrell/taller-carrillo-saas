@@ -1,5 +1,23 @@
 # Pruebas remotas: Contabo y dominio informado
 
+## Prioridad vigente — 2026-10-18
+
+El usuario solicita dejar la VPS para después y continuar el desarrollo local
+del catálogo e inventario. Se detienen las tareas remotas de limpieza, despliegue
+y certificados. No eliminar proyectos ni volúmenes por la autorización anterior
+mientras esté vigente esta postergación.
+
+Se obtuvo una copia fría del despliegue anterior y se conservó cifrada fuera del
+servidor, con integridad de archivos verificada. Su restauración de base todavía
+no está validada: el ensayo se detuvo en la comparación de configuración de las
+imágenes. No presentarla como respaldo con recuperación demostrada. Los tres
+contenedores anteriores fueron reiniciados después de la captura; no se retiró
+ningún proyecto ni volumen. No se desplegó la aplicación nueva ni se emitió TLS.
+
+Antes de retomar producción: validar esa restauración, revisar el estado real
+del servidor, preparar release y comprobar HTTPS/renovación y recorridos externos.
+Estas tareas no bloquean el trabajo local autorizado de módulos comerciales.
+
 Contexto confirmado por el usuario el 2026-10-16: dispone de un VPS en Contabo
 que también aloja imágenes; inicialmente preveía comprar en Namecheap. Después
 informa que adquirió **taller-carrillo.com** y conectó el DNS a la IP del VPS.

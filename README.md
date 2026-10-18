@@ -13,8 +13,13 @@ sesiones afectadas. No hay cuentas ni contraseñas predeterminadas.
 
 La implementación local no equivale a despliegue aprobado. Siguen pendientes el
 respaldo remoto recuperable, HTTPS/renovación y la aceptación real de los recorridos
-por correo y teléfono. No iniciar inventario hasta cerrar los criterios acordados.
+por correo y teléfono. El usuario decidió el 2026-10-18 posponer la VPS y avanzar
+en local con catálogo e inventario. Los pendientes externos siguen siendo
+requisitos antes de publicar; esta decisión no declara cerrada la seguridad.
 El despliegue anterior de Contabo todavía no se ha sustituido.
+
+Inventario comienza con [cantidades exactas, entrega 3.1](docs/deliveries/inventory-3.1.md):
+validación interna probada, todavía sin pantallas ni operaciones de stock.
 
 - [Entrega 2.39](docs/deliveries/access-2.39.md) y
   [seguimiento/evidencia actuales](docs/access-closure-work.md).

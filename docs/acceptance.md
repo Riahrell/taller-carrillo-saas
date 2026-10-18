@@ -1,5 +1,11 @@
 # Plan incremental y aceptación
 
+Actualización de prioridad, 2026-10-18: el usuario pospone VPS/despliegue y autoriza
+continuar catálogo e inventario en local. Las puertas históricas que exigían
+aceptación externa antes de inventario quedan sustituidas en ese punto. Mantener
+las pruebas de permisos, aislamiento y consistencia de cada módulo; HTTPS,
+recuperación remota y aceptación operativa siguen pendientes antes de publicar.
+
 Estado: hito 0 documentado y fundación 1.4 implementada y validada integralmente
 en local. Workflow CI comprobado con actionlint; primera ejecución en GitHub
 pendiente porque no hay remoto configurado. Ese resultado remoto no se presume.
