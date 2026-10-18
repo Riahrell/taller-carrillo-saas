@@ -151,3 +151,20 @@ avanza revisión/revoca acceso global y audita mfa_enrolled en un commit. Ese ev
 exige factor y revisión positiva; no es sesión ni consumo de código offline.
 No repetir semilla/códigos por lectura o reenvío de respuesta.
 Ver deliveries/access-2.33.md; las secciones 2.22–2.25 anteriores son históricas.
+
+## Actualización 2.34
+
+0020 conserva permisos de recuperación ligados al usuario/factor, pendiente de
+contraseña y código concreto consumido. FK de propietarios, hash de token, un
+permiso abierto sin usar por sujeto, quince minutos desde emisión y prueba de
+contraseña de menos de cinco minutos al emitir. No es evidencia de sesión.
+Crear permiso, consumir código, revocar sesiones/pendientes y registrar inicio
+son un commit; factor/conjunto siguen activos hasta sustitución confirmada.
+No reusar código si se pierde respuesta; verificar contraseña otra vez y otro código
+sin usar abren
+otra recuperación y cierran la anterior, bajo cuotas compartidas.
+
+El consumidor privado de permiso solo permite componer el futuro setup en un
+commit. No entregar su contexto como prueba pública ni activación; el futuro
+reemplazo deberá revalidar su origen/estado. Normal login con sesión MFA cancela
+permisos en el mismo commit. Ver deliveries/access-2.34.md.

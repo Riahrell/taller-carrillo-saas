@@ -336,3 +336,11 @@ Un desafío por setup y token único. DELETE runtime denegado; downgrade con
 setup/evento mfa_enrolled rechazado incluso si está cerrado. SecurityEvent exige
 factor y revisión positiva para mfa_enrolled. Sin backfill, campos comerciales
 o verificación histórica de correo inventada.
+
+Acceso 2.34 (0020): mfa_recovery_permits guarda hash con propósito distinto,
+propietario, factor/conjunto/código concreto, pendiente de contraseña y sus fechas,
+revisión, emisión/caducidad y uso/cierre. FK compuestas ligan propietario a factor
+y pendiente, y conjunto/posición al código; servicio revalida propietario del
+conjunto y consumo exacto. Un abierto sin usar por usuario; no token/código/semilla
+en claro. SecurityEvent añade mfa_recovery_started con factor y revisión >= 0.
+DELETE runtime y downgrade con evidencia no permitidos. No backfill ni sustitución.

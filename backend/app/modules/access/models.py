@@ -300,6 +300,73 @@ class EnrollmentEmailChallenge(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class MfaRecoveryPermit(Base):
+    """Password + consumed offline code; never a business-session proof."""
+
+    __tablename__ = "mfa_recovery_permits"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["user_id", "pending_id"],
+            ["mfa_pendings.user_id", "mfa_pendings.id"],
+            ondelete="RESTRICT",
+            name="fk_recovery_permit_pending_owner",
+        ),
+        ForeignKeyConstraint(
+            ["user_id", "credential_id"],
+            ["mfa_credentials.user_id", "mfa_credentials.id"],
+            ondelete="RESTRICT",
+            name="fk_recovery_permit_factor_owner",
+        ),
+        ForeignKeyConstraint(
+            ["set_id", "code_position"],
+            ["mfa_recovery_codes.set_id", "mfa_recovery_codes.position"],
+            ondelete="RESTRICT",
+            name="fk_recovery_permit_consumed_code",
+        ),
+        Index(
+            "uq_mfa_recovery_permits_open_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("closed_at IS NULL AND used_at IS NULL"),
+        ),
+        CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="token_hash_sha256"),
+        CheckConstraint("security_revision >= 0", name="revision_bounds"),
+        CheckConstraint(
+            "expires_at = created_at + interval '15 minutes'", name="absolute_lifetime"
+        ),
+        CheckConstraint(
+            "password_verified_at <= offline_verified_at AND offline_verified_at "
+            "<= created_at AND created_at < password_verified_at + "
+            "interval '5 minutes'",
+            name="fresh_password",
+        ),
+        CheckConstraint(
+            "used_at >= created_at AND used_at < expires_at", name="use_window"
+        ),
+        CheckConstraint(
+            "closed_at >= created_at AND (used_at IS NULL OR closed_at >= used_at)",
+            name="closure_window",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(index=True)
+    pending_id: Mapped[UUID] = mapped_column(unique=True)
+    credential_id: Mapped[UUID] = mapped_column()
+    set_id: Mapped[UUID] = mapped_column(
+        ForeignKey("mfa_recovery_sets.id", ondelete="RESTRICT")
+    )
+    code_position: Mapped[int] = mapped_column(Integer)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    security_revision: Mapped[int] = mapped_column(BigInteger)
+    password_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    offline_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class MfaEnrollment(Base):
     """First-factor setup only; closed stages keep evidence without seed payload."""
 
@@ -587,6 +654,8 @@ class SecurityEvent(Base):
             "AND security_revision IS NOT NULL AND security_revision >= 0) OR "
             "(action = 'mfa_enrolled' AND credential_id IS NOT NULL AND "
             "security_revision IS NOT NULL AND security_revision > 0) OR "
+            "(action = 'mfa_recovery_started' AND credential_id IS NOT NULL AND "
+            "security_revision IS NOT NULL AND security_revision >= 0) OR "
             "(action IN ('mfa_totp_consumed', 'mfa_recovery_consumed') "
             "AND credential_id IS NOT NULL AND security_revision IS NULL)",
             name="action_state",
@@ -600,7 +669,7 @@ class SecurityEvent(Base):
         CheckConstraint(
             "action IN ('mfa_totp_consumed', 'mfa_recovery_consumed', "
             "'security_revision_advanced', 'mfa_enrollment_email_confirmed', "
-            "'mfa_enrolled')",
+            "'mfa_enrolled', 'mfa_recovery_started')",
             name="action_allowed",
         ),
         CheckConstraint(

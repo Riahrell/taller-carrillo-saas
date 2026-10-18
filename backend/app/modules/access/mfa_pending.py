@@ -22,6 +22,7 @@ from app.modules.access.login_challenges import (
 )
 from app.modules.access.membership import AccessDenied
 from app.modules.access.models import MfaCredential, MfaPending, User
+from app.modules.access.recovery_state import close_recovery_permits
 from app.modules.access.sessions import _database_now, _lock_user
 
 
@@ -163,6 +164,7 @@ def _close_browser_pendings(
             row.finished_at = max(now, row.created_at)
         session.flush()
     _close_enrollment_emails(session, user_id, binding_hash=binding_hash)
+    close_recovery_permits(session, user_id, binding_hash=binding_hash)
 
 
 def _lock_pending(

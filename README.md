@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.33, incorporación TOTP interna con códigos offline; web sin segundo factor
+## Estado: acceso 2.34, inicio restringido de recuperación MFA offline; web sin segundo factor
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -34,7 +34,7 @@ La fundación tiene validación integral local y workflow CI preparado. Su prime
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md), [última entrega 2.33](docs/deliveries/access-2.33.md)
+- [Aceptación](docs/acceptance.md), [última entrega 2.34](docs/deliveries/access-2.34.md)
   y [contrato de diseño 2.20](docs/deliveries/access-2.20.md).
 - [MFA y recuperación](docs/mfa-recovery-contract.md): TOTP, incorporación,
   códigos offline y separación de recuperación por correo. Primitivas internas
@@ -640,8 +640,10 @@ de buzón y permisos restringidos (0016), sin envíos. 2.31 compone desafío,
 cola cifrada y cuotas de correo en un commit (0017), con descarte del contenido.
 2.32 añade consumidor interno con leases, revalidación y transporte simulado (0018).
 2.33 añade setup cifrado y activación TOTP/códigos offline en un commit (0019),
-con revisión/revocación global; sin login automático. Sigue recuperación MFA
-restringida mediante código offline, antes de HTTP/UI públicos.
+con revisión/revocación global; sin login automático. 2.34 consume contraseña
+verificada/código offline y revoca acceso para emitir permiso restringido (0020).
+Una sesión MFA normal lo cancela atómicamente. Sigue setup/reemplazo confirmado
+del factor con ese permiso, antes de HTTP/UI públicos.
 [Criterios de cierre de seguridad antes de inventario](docs/access-security-closure.md). Faltan los caminos completos de autenticación/
 recuperación antes de HTTP/UI.
 El contrato 2.20 ya define incorporación con prueba fresca de buzón, obligatoriedad

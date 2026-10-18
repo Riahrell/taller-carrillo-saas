@@ -23,6 +23,7 @@ from app.modules.access.models import (
     TenantMembership,
     User,
 )
+from app.modules.access.recovery_state import close_recovery_permits
 from app.modules.access.sessions import (
     IssuedSession,
     _database_now,
@@ -181,6 +182,7 @@ def revoke_user_challenges(session: Session, user_id: UUID) -> None:
                 record.finished_at = max(now, record.created_at)
             session.flush()
         _close_enrollment_emails(session, user_id)
+        close_recovery_permits(session, user_id)
 
 
 def _issue_challenge(

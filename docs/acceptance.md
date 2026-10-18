@@ -181,3 +181,10 @@ usuario/conjunto, revoca globalmente y audita en un commit. Semilla/códigos sol
 tras commit y sin relectura. Probar cuotas compartidas, estado actual/plazo
 original, claves/AEAD, rollback, exclusión concurrente real y retención/purga.
 No atribuir a esto activación pública, QR/HTTPS o flujos de recuperación terminados.
+
+Acceso 2.34: contraseña reciente y código offline solo autorizan permiso restringido.
+Consumo, revocación, permiso y eventos atómicos; factor/conjunto anterior activos.
+Probar cuotas/formatos, relectura de origen, caducidad original/emisión, fallos SQL/
+commit, concurrencia real y exclusión de sesión/alta inicial. Sesión MFA normal
+cancela permiso solo al confirmar; rollback conserva permiso y no devuelve código.
+Sustitución nueva con TOTP y avisos de seguridad siguen pendientes.

@@ -292,7 +292,10 @@ sin SMTP o worker operativo. Ver [entrega](deliveries/access-2.32.md).
 OTP consumido y diez códigos/revocación/auditoría en un commit (0019). El permiso
 se intercambia una vez por setup restringido; activar revalida toda la prueba
 original y conserva la caducidad. Sin sesión automática, HTTP o claves operativas.
-Sigue recuperación restringida con código offline,
+2.34 añade inicio offline restringido: contraseña verificada, consumo/auditoría
+de código, revocación y permiso de quince minutos desde emisión, con factor/conjunto
+anteriores activos. Sesión MFA normal confirmada cancela permisos.
+Sigue setup/reemplazo con nuevo TOTP y conjunto offline,
 hooks de roles/factores y último admin, reautenticación MFA, UI y operación.
 Mantener el alcance de la puerta de seguridad previa al inventario.
 

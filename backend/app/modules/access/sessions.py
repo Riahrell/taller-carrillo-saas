@@ -25,6 +25,7 @@ from app.modules.access.models import (
     TenantMembership,
     User,
 )
+from app.modules.access.recovery_state import close_recovery_permits
 
 IDLE_TIMEOUT = timedelta(minutes=30)
 ABSOLUTE_TIMEOUT = timedelta(hours=8)
@@ -117,6 +118,8 @@ def _create_session(
     if not user.is_active or context.user_id != user.id:
         raise AccessDenied("Access denied")
     _validate_session_proof(session, record, user)
+    if mfa_pending_id is not None:
+        close_recovery_permits(session, user.id)
     session.add(record)
     session.flush()
     return IssuedSession(token=token, expires_at=expires_at)

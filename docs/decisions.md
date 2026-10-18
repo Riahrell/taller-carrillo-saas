@@ -998,3 +998,25 @@ buzón está vinculada al valor exacto vigente durante la incorporación; su uso
 para elegibilidad de reset de contraseña debe integrarse explícitamente.
 Cierre/purga de setups conserva metadatos y retira payload; backups/WAL tienen
 retención propia, no se afirma borrado seguro de memoria o almacenamiento.
+
+## Acceso 2.34: inicio offline de recuperación
+
+Reutilizar pendiente LOGIN_TOTP ya ligado a contraseña/navegador, nunca aceptar
+IDs de usuario/factor/conjunto del cliente. Cuotas MFA IP/cuenta preceden locks
+de identidad y consumo; formato incorrecto también gasta fallos si el pendiente
+es válido. Un código consumido, revocación global y permiso nuevo se confirman
+juntos. No revocar factor/conjunto ni aumentar revisión al iniciar: ocurre al
+confirmar el reemplazo, que sigue pendiente. El permiso no abre negocio.
+
+Caducidad del permiso: quince minutos desde emisión, conforme contrato; exigir
+contraseña dentro de sus cinco minutos antes de emitir. No renovar por inspección
+o consumo; plazo puede superar al pendiente de contraseña original, nunca omitir
+comprobación de huella/revisión actual. Consumo de permiso solo como composición
+privada para futuro setup, con rollback de cualquier trabajo posterior fallido.
+
+Cancelar al confirmar una sesión normal con evidencia MFA vigente, en la guardia
+central de creación y misma transacción; TOTP aislado no cancela. También cerrar
+por revocación global y reinicio del mismo navegador. No devolver códigos consumidos
+por cancelación o pérdida de respuesta. Un código distinto y contraseña fresca
+permiten reiniciar, dentro de cuotas. No publicar HTTP antes de reemplazo/recuperación
+completos. Avisos de seguridad/correo, retención y operación siguen pendientes.
