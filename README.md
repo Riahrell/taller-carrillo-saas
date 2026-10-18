@@ -37,6 +37,8 @@ ficha privada, costo/precio separados, historial y conteos revisados.
 Las imágenes de producto se
 integrarán con Object Storage de Contabo según el
 [contrato de imágenes](docs/product-images-contract.md), todavía sin conexión real.
+La [entrega 3.12](docs/deliveries/inventory-3.12.md) añade validación y reprocesado
+local de imágenes, pendiente de worker aislado y conexión privada al bucket.
 Las nuevas rutas requieren la versión y migraciones correspondientes; todavía no
 se aplicaron a desarrollo ni VPS.
 

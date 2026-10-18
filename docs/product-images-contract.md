@@ -2,7 +2,8 @@
 
 Requisito explícito del propietario: los productos deben admitir imagen y los
 archivos se almacenarán en Object Storage de Contabo, proveedor ya contratado.
-Este contrato incorpora el requisito; todavía no implementa carga ni migraciones.
+Este contrato incorpora el requisito; 3.12 implementa únicamente el procesador
+local de archivos, todavía sin carga, rutas HTTP ni migraciones.
 La conexión real se hará separada del despliegue en la VPS, actualmente aplazado.
 
 ## Almacenamiento y aislamiento
@@ -47,7 +48,15 @@ antes de habilitar cargas. Un fallo del almacenamiento no debe eliminar stock.
   contenido decodificado, no confiar en extensión o Content-Type declarado.
   Primera versión de imágenes raster estáticas; rechazar SVG y archivos animados.
   Reprocesar a formato de salida permitido y retirar metadatos antes de guardar.
-  Límites numéricos y formatos exactos se fijarán en el contrato de implementación.
+  El procesador 3.12 acepta JPEG, PNG y WebP estáticos según bytes reales, máximo
+  8 MiB, 20 millones de píxeles y 8192 píxeles por lado antes de decodificar.
+  Verifica estructura y decodificación completa; aplica orientación EXIF, reduce
+  proporcionalmente a 1600 píxeles por lado sin ampliar y genera PNG RGBA limpio,
+  máximo 12 MiB, conservando transparencia y eliminando metadatos. Son límites
+  técnicos iniciales, no cuotas comerciales. No realiza gestión de color ICC.
+  El límite de bytes del cuerpo HTTP debe aplicarse antes de materializarlo.
+  Todavía requiere worker aislado con memoria/tiempo y admisión de concurrencia;
+  **no llamar este procesador desde una ruta pública ni un hilo de FastAPI**.
 - Probar archivo inválido/truncado, exceso de tamaño/píxeles, sustitución
   concurrente, reintento, rollback, timeout de S3 y limpieza sin borrar imágenes
   referenciadas. Pruebas locales con adaptador simulado y prueba real aislada en
@@ -61,5 +70,17 @@ Contabo documenta compatibilidad S3 y configuración por endpoint/credenciales:
 https://docs.contabo.com/docs/storage/object-storage/
 https://help.contabo.com/en/support/solutions/articles/103000411092-object-storage-s3-compatibility-protocols-and-connection-settings
 
-No se conectó ninguna cuenta, se transfirió ningún archivo ni se verificó la
-configuración privada del bucket durante esta definición.
+## Configuración comunicada por el propietario
+
+El propietario confirmó endpoint `https://usc1.contabostorage.com`, bucket exclusivo
+`taller-carrillo-imagenes`, direccionamiento path-style y región `default`.
+Indicó que el bucket es privado y que probó su conexión. Son datos comunicados,
+todavía no comprobados por esta implementación. Se introducirán mediante
+configuración del servidor, sin convertirlos en valores predeterminados del SaaS.
+Las credenciales permanecen fuera del repositorio y no se han leído ni copiado
+en esta fase. No se conectó la cuenta, transfirió un archivo ni verificó la
+política real del bucket durante 3.12.
+
+El reprocesado sigue las recomendaciones de
+[Pillow sobre archivos no confiables y metadatos](https://pillow.readthedocs.io/en/stable/handbook/security.html).
+No equivale a un escaneo antivirus ni garantiza por sí solo aislamiento de recursos.
