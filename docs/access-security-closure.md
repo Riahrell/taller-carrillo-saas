@@ -1,5 +1,10 @@
 # Cierre de seguridad de acceso antes del inventario
 
+**Estado actual:** consultar `access-current-audit.md`. La tabla de abajo conserva
+la foto histórica de 2.38. MFA/reset/HTTP/UI ya están integrados y probados; los
+pendientes operativos siguen explícitos. El usuario aplazó VPS y autorizó inventario
+local; no interpretar ese cambio como cierre de seguridad productiva.
+
 Prioridad confirmada por el usuario: terminar esta parte de seguridad primero.
 Este documento organiza el alcance ya acordado en MFA/recuperación, revisión de
 seguridad y staging; no añade certificaciones ni módulos nuevos. No equivale a

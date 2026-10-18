@@ -1,5 +1,10 @@
 # Seguridad: revisión y puerta de paso
 
+Estado vigente y contraste de evidencias en `access-current-audit.md`. La matriz
+histórica de abajo precede a la integración 2.39; no describe la ausencia actual
+de MFA, CSP o restauración sintética. Despliegue/aceptación externa siguen pendientes,
+mientras el usuario autorizó continuar inventario en local.
+
 Prioridad del usuario (2026-10-16): seguridad por encima del plazo del inventario.
 Revoca la propuesta de pasar a catálogo inmediatamente después de 2.15. No
 afirmar seguridad absoluta, certificación ASVS, ausencia de vulnerabilidades o

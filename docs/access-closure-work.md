@@ -7,8 +7,14 @@ catálogo e inventario. Esto sustituye la puerta anterior que exigía terminar e
 despliegue antes de comenzar módulos comerciales. No elimina los controles de
 acceso de cada operación ni certifica seguridad productiva. El seguimiento
 histórico de abajo conserva lo ocurrido; para estado remoto vigente consultar
-`staging-plan.md`. Próxima tarea: contrato y persistencia mínima de productos,
-con aislamiento por empresa y sin modificar existencias al crear un producto.
+`staging-plan.md`. Auditoría actual y evidencias: `access-current-audit.md`.
+Inventario local ya llega a pantalla/servicios transaccionales en 3.11. Siguiente
+trabajo local: imágenes privadas de productos, sin reabrir tareas remotas aplazadas.
+
+## Seguimiento histórico anterior a 2.39
+
+Las casillas y resultados parciales siguientes conservan la cronología. No son el
+estado actual ni implican que las funciones integradas sigan sin implementar.
 
 Solicitud vigente: implementar los recorridos pendientes, después ejecutar la
 validación conjunta y corregir los fallos antes de pasar a inventario. No cerrar

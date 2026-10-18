@@ -42,6 +42,8 @@ se aplicaron a desarrollo ni VPS.
 
 - [Entrega 2.39](docs/deliveries/access-2.39.md) y
   [seguimiento/evidencia actuales](docs/access-closure-work.md).
+- [Auditoría actual de acceso](docs/access-current-audit.md): controles locales
+  comprobados y pendientes externos, sin confundir integración con cierre productivo.
 - [Criterios antes de inventario](docs/access-security-closure.md) y
   [operación de identidad](docs/identity-operations.md).
 - [Imágenes y SBOM](docs/container-security.md), [escaneos de código/locks](docs/security-scanning.md)
