@@ -1,0 +1,66 @@
+# Conteo físico — contrato de implementación
+
+Aplica las decisiones de inventario existentes, sin movimientos libres enviados
+por cliente. La primera operación será un conteo administrativo de un producto
+activo de la empresa de sesión. No representa compra, venta ni pago.
+
+## Entrada y valoración implementadas
+
+`PhysicalCount`: producto, cantidad física final exacta, motivo obligatorio de
+hasta 500 caracteres y costo unitario declarado opcional de hasta seis decimales.
+El límite de motivo es técnico. Campos adicionales se rechazan; no admite empresa,
+actor, saldo anterior, diferencia, valor resultante ni precio de venta.
+
+`StockValue.recount` obtiene el resultado usando un saldo que deberá leer y bloquear
+el servicio. Menor cantidad consume valor al promedio histórico; cero consume todo.
+Mayor cantidad usa la razón histórica valor/cantidad sin redondear primero el costo
+unitario. Si cantidad o valor previo es cero, exige costo declarado explícito,
+incluido cero cuando el administrador lo declare. Rechaza costo declarado cuando
+corresponde el histórico y cuando no hay entrada. Conteo igual conserva exactamente
+cantidad y valor: debe guardar evidencia, sin generar movimiento ficticio.
+
+Estos componentes son puros. No autorizan usuarios, escriben tablas ni exponen HTTP.
+
+## Persistencia siguiente, aún sin implementar
+
+- `stock_balances`: clave única empresa/producto, cantidad NUMERIC(18,3) y valor
+  NUMERIC(28,6), no negativos y finitos; cantidad cero implica valor cero.
+  FK compuesta a producto de la misma empresa.
+- `stock_counts`: evidencia inmutable con empresa/producto, actor de membresía
+  de esa empresa, cantidad/valor anteriores y resultantes, motivo, costo declarado
+  cuando aplique, fecha UTC, clave de operación y huella del contenido normalizado.
+  Unicidad empresa/clave de operación para repetición segura. Reutilizar clave con
+  contenido distinto produce conflicto, nunca otro conteo.
+- `stock_movements`: diferencia firmada de cantidad y valor, fecha y FK compuesta
+  al conteo y su empresa/producto; origen verificable, sin texto libre que suplante
+  una compra o venta. Un movimiento por conteo con diferencia; ninguno si es igual.
+  Incorporar otros orígenes con relaciones tipadas en sus respectivos hitos.
+
+El runtime no podrá editar o borrar conteos/movimientos. El saldo materializado
+sí se actualiza exclusivamente desde el servicio autorizado. FK y CHECK no bastan
+para probar igualdad entre libro y saldo: pruebas de transacciones y reconciliación
+deben verificarla. No se promete aislamiento ante SQL arbitrario del rol runtime.
+
+## Transacción prevista
+
+Una sola transacción: autorizar sesión admin y confirmación reciente; bloquear
+empresa, usuario/sesión y producto en orden compatible con catálogo/accesos;
+resolver clave de operación; leer/bloquear saldo; calcular desde ese saldo; insertar
+conteo, movimiento si existe diferencia y actualizar saldo; revalidar autorización
+antes de commit. El bloqueo de empresa serializa inicialmente sus escrituras y
+protege también el primer saldo ausente; unicidad es la segunda barrera. No depender
+solo de SELECT FOR UPDATE de una fila que todavía no existe.
+
+Una repetición también exige autorización vigente, y devuelve la evidencia guardada
+sin revalorar ni modificar existencias. Respuesta solo después de commit. Timeout
+ambiguo se resuelve consultando/reintentando la misma clave con el mismo contenido,
+nunca generando otra automáticamente. No mantener bloqueos durante llamadas a S3.
+
+## Pruebas de persistencia requeridas
+
+Empresa ajena, usuario revocado, perfil insuficiente, confirmación expirada incluso
+antes de commit; producto inactivo; primer saldo concurrente; dos conteos simultáneos;
+misma clave igual/distinta; fallo de inserción de evidencia/movimiento/saldo y de
+commit; no-op con evidencia; conservación y reconciliación de cantidad/valor;
+prohibición SQL de editar evidencia; migración y downgrade que rechace borrar datos.
+Hasta ejecutar estas pruebas no habilitar formulario ni ruta de stock.

@@ -51,3 +51,26 @@ class StockValue:
             # Round the applied total once, without rounding a unit average first.
             removed = (self.value * amount / self.quantity).quantize(_SCALE)
             return StockValue(self.quantity - amount, self.value - removed)
+
+    def recount(
+        self, counted: Decimal, *, declared_unit_cost: Decimal | None = None
+    ) -> "StockValue":
+        """Value a physical count against the server's locked current balance."""
+        final_quantity = _COUNT.validate_python(counted)
+        if final_quantity <= self.quantity:
+            if declared_unit_cost is not None:
+                raise ValueError("Declared cost does not apply to this count")
+            if final_quantity == self.quantity:
+                return self
+            with localcontext(Context(prec=80, rounding=ROUND_HALF_UP)):
+                return self.withdraw(self.quantity - final_quantity)
+        with localcontext(Context(prec=80, rounding=ROUND_HALF_UP)):
+            difference = final_quantity - self.quantity
+            if self.quantity > 0 and self.value > 0:
+                if declared_unit_cost is not None:
+                    raise ValueError("Count must use existing historical valuation")
+                added = (self.value * difference / self.quantity).quantize(_SCALE)
+                return StockValue(final_quantity, self.value + added)
+            if declared_unit_cost is None:
+                raise ValueError("Positive count requires an explicit unit cost")
+            return self.receive(difference, declared_unit_cost)
