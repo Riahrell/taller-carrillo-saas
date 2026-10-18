@@ -9,7 +9,8 @@ tabla objetivo de abajo siguen siendo diseño pendiente de implementar.
 Inventario 3.8 incorpora `stock_balances`, `stock_counts` y `stock_movements`
 mediante `0032_stock_counts`. El esquema registra evidencia de conteo y vincula
 el movimiento a sus diferencias exactas por FK compuesta; no habilita aún un
-servicio ni HTTP de stock. Contrato en `inventory-count-contract.md`.
+servicio ni HTTP de stock en esa entrega. 3.9 añade el servicio transaccional
+interno de conteos, sin rutas nuevas. Contrato en `inventory-count-contract.md`.
 
 Las imágenes de producto se almacenarán en Object Storage de Contabo; la relación
 prevista `product_images` guardará referencias privadas y metadatos con vínculo

@@ -1,0 +1,213 @@
+"""Authorized, idempotent physical counts in one stock transaction."""
+
+import hashlib
+import json
+from datetime import datetime
+from decimal import ROUND_HALF_UP, Context, Decimal, localcontext
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from sqlalchemy import Engine, select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+
+from app.core.database import create_session_factory
+from app.modules.access.administrator_guard import (
+    AdministrativeDenied,
+    authorize_administrator,
+)
+from app.modules.access.authentication import _limit_transaction
+from app.modules.access.membership import AccessDenied
+from app.modules.access.sessions import _database_now
+from app.modules.catalog.models import Product
+from app.modules.inventory.inputs import PhysicalCount
+from app.modules.inventory.models import StockBalance, StockCountRecord, StockMovement
+from app.modules.inventory.valuation import StockValue
+
+
+class InventoryDenied(AccessDenied):
+    """Current session cannot access this inventory operation."""
+
+
+class InventoryConflict(Exception):
+    """An operation key already identifies a different request."""
+
+
+class InventoryUnavailable(RuntimeError):
+    """Safe persistence failure; repeat only with the same operation key."""
+
+
+class CountView(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    id: UUID
+    product_id: UUID
+    operation_key: UUID
+    before_quantity: Decimal
+    after_quantity: Decimal
+    before_value: Decimal
+    after_value: Decimal
+    quantity_delta: Decimal
+    value_delta: Decimal
+    reason: str
+    declared_unit_cost: Decimal | None
+    created_at: datetime
+    actor_membership_id: UUID = Field(exclude=True, repr=False)
+
+
+def _canonical_decimal(value: Decimal | None) -> str | None:
+    if value is None:
+        return None
+    if value == 0:
+        return "0"
+    result = format(value, "f")
+    return result.rstrip("0").rstrip(".") if "." in result else result
+
+
+def _fingerprint(data: PhysicalCount) -> str:
+    content = {
+        "kind": "physical_count_v1",
+        "product_id": str(data.product_id),
+        "counted_quantity": _canonical_decimal(data.counted_quantity),
+        "reason": data.reason,
+        "declared_unit_cost": _canonical_decimal(data.declared_unit_cost),
+    }
+    encoded = json.dumps(content, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+class InventoryAdministrator:
+    """Locks tenant -> actor user/session -> product -> balance.
+
+    The tenant lock also serializes first-balance creation and operation keys.
+    No network calls, subordinate commits or retry with a new key inside here.
+    """
+
+    def __init__(self, engine: Engine):
+        self._factory = create_session_factory(engine)
+
+    @staticmethod
+    def _authorize(session: Session, token: SecretStr, expected_actor: UUID):
+        try:
+            return authorize_administrator(session, token, expected_actor)
+        except AdministrativeDenied:
+            raise InventoryDenied("Access denied") from None
+
+    @staticmethod
+    def _view(record: StockCountRecord, actor_id: UUID) -> CountView:
+        return CountView(
+            **{
+                field: getattr(record, field)
+                for field in CountView.model_fields
+                if field != "actor_membership_id"
+            },
+            actor_membership_id=actor_id,
+        )
+
+    def record_count(
+        self,
+        token: SecretStr,
+        *,
+        data: PhysicalCount,
+        operation_key: UUID,
+        expected_actor: UUID,
+    ) -> CountView:
+        if type(data) is not PhysicalCount or not isinstance(operation_key, UUID):
+            raise AccessDenied("Access denied")
+        # Also reject invalid copies constructed by internal callers bypassing
+        # Pydantic validation; never trust computed/previous stock as input.
+        data = PhysicalCount.model_validate(data.model_dump())
+        fingerprint = _fingerprint(data)
+        try:
+            with self._factory.begin() as session:
+                _limit_transaction(session)
+                actor = self._authorize(session, token, expected_actor)
+                previous = session.scalar(
+                    select(StockCountRecord).where(
+                        StockCountRecord.tenant_id == actor.tenant_id,
+                        StockCountRecord.operation_key == operation_key,
+                    )
+                )
+                if previous is not None:
+                    if previous.request_fingerprint != fingerprint:
+                        raise InventoryConflict("Operation key conflict")
+                    self._authorize(session, token, expected_actor)
+                    result = self._view(previous, actor.membership_id)
+                else:
+                    product = session.scalar(
+                        select(Product)
+                        .where(
+                            Product.tenant_id == actor.tenant_id,
+                            Product.id == data.product_id,
+                            Product.is_active.is_(True),
+                        )
+                        .with_for_update()
+                        .execution_options(populate_existing=True)
+                    )
+                    if product is None:
+                        raise InventoryDenied("Access denied")
+                    balance = session.scalar(
+                        select(StockBalance)
+                        .where(
+                            StockBalance.tenant_id == actor.tenant_id,
+                            StockBalance.product_id == product.id,
+                        )
+                        .with_for_update()
+                        .execution_options(populate_existing=True)
+                    )
+                    before = (
+                        StockValue(balance.quantity, balance.value)
+                        if balance
+                        else StockValue(Decimal(0), Decimal(0))
+                    )
+                    after = before.recount(
+                        data.counted_quantity,
+                        declared_unit_cost=data.declared_unit_cost,
+                    )
+                    with localcontext(Context(prec=80, rounding=ROUND_HALF_UP)):
+                        quantity_delta = after.quantity - before.quantity
+                        value_delta = after.value - before.value
+                    record = StockCountRecord(
+                        tenant_id=actor.tenant_id,
+                        product_id=product.id,
+                        actor_membership_id=actor.membership_id,
+                        operation_key=operation_key,
+                        request_fingerprint=fingerprint,
+                        reason=data.reason,
+                        declared_unit_cost=data.declared_unit_cost,
+                        before_quantity=before.quantity,
+                        before_value=before.value,
+                        after_quantity=after.quantity,
+                        after_value=after.value,
+                        quantity_delta=quantity_delta,
+                        value_delta=value_delta,
+                        created_at=_database_now(session),
+                    )
+                    session.add(record)
+                    session.flush()
+                    if quantity_delta != 0:
+                        session.add(
+                            StockMovement(
+                                tenant_id=actor.tenant_id,
+                                product_id=product.id,
+                                count_id=record.id,
+                                quantity_delta=quantity_delta,
+                                value_delta=value_delta,
+                                created_at=record.created_at,
+                            )
+                        )
+                    if balance is None:
+                        balance = StockBalance(
+                            tenant_id=actor.tenant_id,
+                            product_id=product.id,
+                            quantity=after.quantity,
+                            value=after.value,
+                        )
+                        session.add(balance)
+                    else:
+                        balance.quantity, balance.value = after.quantity, after.value
+                    session.flush()
+                    self._authorize(session, token, expected_actor)
+                    result = self._view(record, actor.membership_id)
+            return result
+        except SQLAlchemyError:
+            raise InventoryUnavailable("Inventory unavailable") from None

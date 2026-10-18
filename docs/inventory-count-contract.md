@@ -19,7 +19,8 @@ incluido cero cuando el administrador lo declare. Rechaza costo declarado cuando
 corresponde el histórico y cuando no hay entrada. Conteo igual conserva exactamente
 cantidad y valor: debe guardar evidencia, sin generar movimiento ficticio.
 
-Estos componentes son puros. No autorizan usuarios, escriben tablas ni exponen HTTP.
+Los componentes de entrada/valoración son puros. El servicio 3.9 descrito abajo
+los conecta con autorización y persistencia; todavía no existe HTTP de stock.
 
 ## Persistencia implementada en 3.8
 
@@ -57,7 +58,7 @@ cualquiera tiene datos, incluso un saldo cero. La reversión de esquema vacío
 conserva el contrato previo. PostgreSQL NUMERIC puede redondear SQL directo; las
 entradas de aplicación deben pasar por los validadores exactos existentes.
 
-## Transacción prevista, servicio todavía pendiente
+## Transacción implementada en 3.9
 
 Una sola transacción: autorizar sesión admin y confirmación reciente; bloquear
 empresa, usuario/sesión y producto en orden compatible con catálogo/accesos;
@@ -72,6 +73,31 @@ sin revalorar ni modificar existencias. Respuesta solo después de commit. Timeo
 ambiguo se resuelve consultando/reintentando la misma clave con el mismo contenido,
 nunca generando otra automáticamente. No mantener bloqueos durante llamadas a S3.
 
+`InventoryAdministrator.record_count` recibe sesión, membresía esperada, entrada
+tipada y UUID de operación; no recibe empresa. Revalida incluso las copias internas
+de entrada. La huella SHA-256 incluye versión de operación, producto, cantidad,
+motivo recortado y costo declarado. Decimales numéricamente iguales tienen la misma
+representación; costo omitido y cero explícito son distintos. La clave de operación
+no concede autoridad y no es una credencial.
+
+Repetición autorizada devuelve snapshots y fecha originales, incluso si después
+se desactivó el producto; no es una operación nueva. Clave con contenido diferente
+produce conflicto. Nueva clave exige producto activo de la empresa. Una referencia
+ausente, ajena o inactiva se deniega sin distinguir el caso. No hay reintentos
+automáticos dentro del servicio. La evidencia del conteo conserva el actor original;
+el contexto oculto del DTO corresponde al administrador que realiza la consulta.
+
+La guardia administrativa se comparte con catálogo en
+`access/administrator_guard.py`; mantiene bloqueo de empresa, resolución de sesión,
+rol admin y confirmación reciente. El módulo preexistente `access/administration.py`
+permanece intacto. La transacción usa los límites existentes de bloqueo/sentencia.
+
+La reconciliación cantidad/valor del libro frente al saldo se comprueba en pruebas;
+todavía no existe una herramienta operativa de reconciliación. HTTP, consulta
+paginada de existencias/movimientos e interfaz siguen pendientes. Los errores de
+valoración (por ejemplo falta de costo) aún son rechazos internos `ValueError`;
+el adaptador HTTP deberá traducirlos explícitamente sin publicar detalles internos.
+
 ## Pruebas de persistencia requeridas
 
 Empresa ajena, usuario revocado, perfil insuficiente, confirmación expirada incluso
@@ -79,4 +105,6 @@ antes de commit; producto inactivo; primer saldo concurrente; dos conteos simult
 misma clave igual/distinta; fallo de inserción de evidencia/movimiento/saldo y de
 commit; no-op con evidencia; conservación y reconciliación de cantidad/valor;
 prohibición SQL de editar evidencia; migración y downgrade que rechace borrar datos.
-Hasta ejecutar estas pruebas no habilitar formulario ni ruta de stock.
+Las pruebas de servicio ejecutan autorización, rollback y transacciones concurrentes
+en PostgreSQL. Antes de habilitar HTTP/formulario faltan sus pruebas de origen,
+CSRF, cookies, límite de cuerpo, contexto de navegador y errores seguros.

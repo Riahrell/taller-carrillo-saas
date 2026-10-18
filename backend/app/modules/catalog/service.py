@@ -9,11 +9,14 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.database import create_session_factory
+from app.modules.access.administrator_guard import (
+    AdministrativeDenied,
+    authorize_administrator,
+)
 from app.modules.access.authentication import _limit_transaction
 from app.modules.access.membership import AccessDenied, MembershipContext
-from app.modules.access.models import AuditEvent, MembershipRole, SessionRecord, Tenant
-from app.modules.access.reauthentication import require_recent_administrator
-from app.modules.access.sessions import _database_now, _token_hash, resolve_session
+from app.modules.access.models import AuditEvent
+from app.modules.access.sessions import _database_now
 from app.modules.catalog.inputs import (
     CatalogPageQuery,
     CategoryCreation,
@@ -81,37 +84,12 @@ class CatalogAdministrator:
         *,
         recent: bool = True,
     ) -> MembershipContext:
-        if (recent or expected_actor is not None) and not isinstance(
-            expected_actor, UUID
-        ):
-            raise AccessDenied("Access denied")
-        # Unlocked hint locates the parent only; never grants authority.
-        tenant_id = session.scalar(
-            select(SessionRecord.tenant_id).where(
-                SessionRecord.token_hash == _token_hash(token)
+        try:
+            return authorize_administrator(
+                session, token, expected_actor, recent=recent
             )
-        )
-        if tenant_id is None:
-            raise AccessDenied("Access denied")
-        tenant = session.scalar(
-            select(Tenant)
-            .where(Tenant.id == tenant_id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
-        if tenant is None or not tenant.is_active:
-            raise AccessDenied("Access denied")
-        actor = resolve_session(session, token)
-        if (
-            actor.tenant_id != tenant.id
-            or actor.role != MembershipRole.ADMIN
-            or expected_actor is not None
-            and expected_actor != actor.membership_id
-        ):
-            raise CatalogDenied("Access denied")
-        if recent:
-            require_recent_administrator(session, token, expected_actor=expected_actor)
-        return actor
+        except AdministrativeDenied:
+            raise CatalogDenied("Access denied") from None
 
     def create_category(
         self, token: SecretStr, *, data: CategoryCreation, expected_actor: UUID
