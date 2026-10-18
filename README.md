@@ -22,6 +22,8 @@ Inventario incorpora [cantidades exactas, entrega 3.1](docs/deliveries/inventory
 y [persistencia del catálogo, entrega 3.2](docs/deliveries/inventory-3.2.md).
 La [entrega 3.3](docs/deliveries/inventory-3.3.md) añade altas internas con permisos,
 precio exacto y auditoría atómica.
+La [entrega 3.4](docs/deliveries/inventory-3.4.md) conecta altas y consultas
+administrativas por API, con empresa de sesión y paginación limitada.
 Todavía sin pantallas ni operaciones de stock habilitadas.
 
 - [Entrega 2.39](docs/deliveries/access-2.39.md) y

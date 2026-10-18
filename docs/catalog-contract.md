@@ -2,7 +2,8 @@
 
 Fuente: alcance de catálogo del Plan Maestro v1.1, modelo y decisiones existentes.
 Se implementa por partes: 3.2 incorpora persistencia y 3.3 servicios internos de
-alta con autorización y auditoría. Todavía sin API/UI de catálogo habilitadas.
+alta con autorización y auditoría. 3.4 conecta consultas y altas administrativas
+por HTTP; contrato en `catalog-http-contract.md`. Interfaz todavía pendiente.
 
 ## Persistencia 3.2
 
@@ -58,7 +59,9 @@ para catálogo. No hay payload libre. Autor y evidencia se guardan con el alta e
 un commit. UPDATE/DELETE siguen prohibidos al runtime. Downgrade se niega si hay
 eventos nuevos, preservando evidencia. No se reescriben eventos históricos.
 
-Consulta, edición/desactivación, paginación y transporte siguen pendientes. El
+3.4 agrega consulta administrativa, detalle de producto y paginación acotada por
+empresa, sin confirmación reciente para leer ni eventos comerciales al consultar.
+Edición/desactivación siguen pendientes. El
 precio solicitado en una futura edición administrativa no será autoridad de precio
 en venta: el cobro consultará el catálogo autorizado en servidor.
 
@@ -66,7 +69,7 @@ No existe RLS ni aislamiento contra SQL arbitrario del rol runtime. La FK proteg
 la relación, no sustituye filtro por empresa y autorización de cada consulta.
 Mantener las pruebas de IDs ajenos, sesión revocada, perfiles no autorizados,
 rollback de auditoría y colisiones de SKU; agregar conflictos de edición antes
-de exponer esos formularios. HTTP deberá exigir CSRF/origen y vincular contexto.
+de exponer esos formularios. HTTP exige CSRF/origen y vincula contexto.
 
 Servicios de taller, publicación y movimientos se incorporarán por separado.
 Crear, editar o desactivar un producto no crea ni altera existencias.

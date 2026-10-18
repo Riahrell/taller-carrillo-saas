@@ -3,7 +3,7 @@
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from sqlalchemy import Engine, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -11,10 +11,14 @@ from sqlalchemy.orm import Session
 from app.core.database import create_session_factory
 from app.modules.access.authentication import _limit_transaction
 from app.modules.access.membership import AccessDenied, MembershipContext
-from app.modules.access.models import AuditEvent, SessionRecord, Tenant
+from app.modules.access.models import AuditEvent, MembershipRole, SessionRecord, Tenant
 from app.modules.access.reauthentication import require_recent_administrator
-from app.modules.access.sessions import _database_now, _token_hash
-from app.modules.catalog.inputs import CategoryCreation, ProductCreation
+from app.modules.access.sessions import _database_now, _token_hash, resolve_session
+from app.modules.catalog.inputs import (
+    CatalogPageQuery,
+    CategoryCreation,
+    ProductCreation,
+)
 from app.modules.catalog.models import Category, Product
 
 
@@ -26,17 +30,36 @@ class CatalogUnavailable(RuntimeError):
     """Safe storage failure; a lost response must not trigger automatic replay."""
 
 
+class CatalogDenied(AccessDenied):
+    """Current session without permission or missing/foreign catalog target."""
+
+
 class CategoryView(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     id: UUID
     name: str
     is_active: bool
+    actor_membership_id: UUID | None = Field(default=None, exclude=True, repr=False)
 
 
 class ProductView(CategoryView):
     category_id: UUID | None
     sku: str | None
     price: Decimal
+
+
+class CategoryPage(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    items: tuple[CategoryView, ...]
+    next_after: UUID | None
+    actor_membership_id: UUID = Field(exclude=True, repr=False)
+
+
+class ProductPage(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    items: tuple[ProductView, ...]
+    next_after: UUID | None
+    actor_membership_id: UUID = Field(exclude=True, repr=False)
 
 
 class CatalogAdministrator:
@@ -52,9 +75,15 @@ class CatalogAdministrator:
 
     @staticmethod
     def _authorize(
-        session: Session, token: SecretStr, expected_actor: UUID
+        session: Session,
+        token: SecretStr,
+        expected_actor: UUID | None,
+        *,
+        recent: bool = True,
     ) -> MembershipContext:
-        if not isinstance(expected_actor, UUID):
+        if (recent or expected_actor is not None) and not isinstance(
+            expected_actor, UUID
+        ):
             raise AccessDenied("Access denied")
         # Unlocked hint locates the parent only; never grants authority.
         tenant_id = session.scalar(
@@ -72,11 +101,16 @@ class CatalogAdministrator:
         )
         if tenant is None or not tenant.is_active:
             raise AccessDenied("Access denied")
-        actor = require_recent_administrator(
-            session, token, expected_actor=expected_actor
-        )
-        if actor.tenant_id != tenant.id:
-            raise AccessDenied("Access denied")
+        actor = resolve_session(session, token)
+        if (
+            actor.tenant_id != tenant.id
+            or actor.role != MembershipRole.ADMIN
+            or expected_actor is not None
+            and expected_actor != actor.membership_id
+        ):
+            raise CatalogDenied("Access denied")
+        if recent:
+            require_recent_administrator(session, token, expected_actor=expected_actor)
         return actor
 
     def create_category(
@@ -105,7 +139,10 @@ class CatalogAdministrator:
                 session.flush()
                 self._authorize(session, token, expected_actor)
                 result = CategoryView(
-                    id=category.id, name=category.name, is_active=category.is_active
+                    id=category.id,
+                    name=category.name,
+                    is_active=category.is_active,
+                    actor_membership_id=actor.membership_id,
                 )
             return result
         except SQLAlchemyError:
@@ -132,7 +169,7 @@ class CatalogAdministrator:
                         .execution_options(populate_existing=True)
                     )
                     if category is None:
-                        raise AccessDenied("Access denied")
+                        raise CatalogDenied("Access denied")
                 product = Product(
                     tenant_id=actor.tenant_id,
                     name=data.name,
@@ -165,6 +202,7 @@ class CatalogAdministrator:
                     category_id=product.category_id,
                     sku=product.sku,
                     price=product.price,
+                    actor_membership_id=actor.membership_id,
                 )
             return result
         except IntegrityError as error:
@@ -175,3 +213,108 @@ class CatalogAdministrator:
             raise CatalogUnavailable("Catalog unavailable") from None
         except SQLAlchemyError:
             raise CatalogUnavailable("Catalog unavailable") from None
+
+    def list_products(
+        self,
+        token: SecretStr,
+        *,
+        query: CatalogPageQuery,
+        expected_actor: UUID | None = None,
+    ) -> ProductPage:
+        if type(query) is not CatalogPageQuery:
+            raise AccessDenied("Access denied")
+        try:
+            with self._factory.begin() as session:
+                _limit_transaction(session)
+                actor = self._authorize(session, token, expected_actor, recent=False)
+                statement = select(Product).where(Product.tenant_id == actor.tenant_id)
+                if query.after is not None:
+                    statement = statement.where(Product.id > query.after)
+                rows = list(
+                    session.scalars(
+                        statement.order_by(Product.id).limit(query.limit + 1)
+                    )
+                )
+                items = tuple(self._product_view(row) for row in rows[: query.limit])
+                result = ProductPage(
+                    items=items,
+                    actor_membership_id=actor.membership_id,
+                    next_after=items[-1].id if len(rows) > query.limit else None,
+                )
+            return result
+        except SQLAlchemyError:
+            raise CatalogUnavailable("Catalog unavailable") from None
+
+    def list_categories(
+        self,
+        token: SecretStr,
+        *,
+        query: CatalogPageQuery,
+        expected_actor: UUID | None = None,
+    ) -> CategoryPage:
+        if type(query) is not CatalogPageQuery:
+            raise AccessDenied("Access denied")
+        try:
+            with self._factory.begin() as session:
+                _limit_transaction(session)
+                actor = self._authorize(session, token, expected_actor, recent=False)
+                statement = select(Category).where(
+                    Category.tenant_id == actor.tenant_id
+                )
+                if query.after is not None:
+                    statement = statement.where(Category.id > query.after)
+                rows = list(
+                    session.scalars(
+                        statement.order_by(Category.id).limit(query.limit + 1)
+                    )
+                )
+                items = tuple(
+                    CategoryView(id=row.id, name=row.name, is_active=row.is_active)
+                    for row in rows[: query.limit]
+                )
+                result = CategoryPage(
+                    items=items,
+                    actor_membership_id=actor.membership_id,
+                    next_after=items[-1].id if len(rows) > query.limit else None,
+                )
+            return result
+        except SQLAlchemyError:
+            raise CatalogUnavailable("Catalog unavailable") from None
+
+    def current_product(
+        self,
+        token: SecretStr,
+        *,
+        product_id: UUID,
+        expected_actor: UUID | None = None,
+    ) -> ProductView:
+        if not isinstance(product_id, UUID):
+            raise AccessDenied("Access denied")
+        try:
+            with self._factory.begin() as session:
+                _limit_transaction(session)
+                actor = self._authorize(session, token, expected_actor, recent=False)
+                product = session.scalar(
+                    select(Product).where(
+                        Product.tenant_id == actor.tenant_id, Product.id == product_id
+                    )
+                )
+                if product is None:
+                    raise CatalogDenied("Access denied")
+                result = self._product_view(product).model_copy(
+                    update={"actor_membership_id": actor.membership_id}
+                )
+            return result
+        except SQLAlchemyError:
+            raise CatalogUnavailable("Catalog unavailable") from None
+
+    @staticmethod
+    def _product_view(product: Product) -> ProductView:
+        return ProductView(
+            id=product.id,
+            name=product.name,
+            is_active=product.is_active,
+            category_id=product.category_id,
+            sku=product.sku,
+            price=product.price,
+        )

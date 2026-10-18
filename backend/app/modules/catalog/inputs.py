@@ -1,5 +1,6 @@
 """Administrative desired values; never tenant, stock or sale authority."""
 
+import re
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
@@ -56,3 +57,18 @@ class ProductCreation(CategoryCreation):
         ):
             raise ValueError("Price outside NUMERIC(20,2) bounds or precision")
         return price
+
+
+class CatalogPageQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    limit: int = Field(default=25, ge=1, le=100, strict=True)
+    after: UUID | None = None
+
+    @field_validator("limit", mode="before")
+    @classmethod
+    def canonical_limit(cls, value: object) -> object:
+        if isinstance(value, str):
+            if re.fullmatch(r"[1-9][0-9]{0,2}", value, flags=re.ASCII) is None:
+                raise ValueError("Invalid page limit")
+            return int(value)
+        return value

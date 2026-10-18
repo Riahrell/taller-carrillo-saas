@@ -31,6 +31,7 @@ from app.modules.access.models import (
     TenantMembership,
 )
 from app.modules.access.reauthentication import require_recent_administrator
+from app.modules.catalog.models import Category, Product
 
 pytestmark = [
     pytest.mark.integration,
@@ -130,6 +131,80 @@ class Browser:
                 },
             )
         return result
+
+
+def test_private_catalog_creation_and_tenant_scope_through_real_proxy(http_identity):
+    from sqlalchemy import delete
+
+    state = http_identity
+    browser = Browser(state)
+    try:
+        assert browser.request("/auth/csrf", headers=READ)[0] == 204
+        assert (
+            browser.request(
+                "/auth/login",
+                body={
+                    "email": state["email"],
+                    "password": state["password"].get_secret_value(),
+                },
+            )[0]
+            == 200
+        )
+        expected = {"X-Expected-Membership": str(state["membership"])}
+        status, category, _ = browser.request(
+            "/catalog/categories", body={"name": "Repuestos"}, headers=expected
+        )
+        assert status == 201
+        status, product, headers = browser.request(
+            "/catalog/products",
+            body={
+                "name": "Filtro",
+                "price": "12.34",
+                "sku": "PROXY-1",
+                "category_id": category["id"],
+            },
+            headers=expected,
+        )
+        assert status == 201 and headers["Cache-Control"] == "no-store"
+        assert headers["X-Access-Membership"] == str(state["membership"])
+        assert browser.request("/catalog/products", headers=READ)[1] == {
+            "items": [product],
+            "next_after": None,
+        }
+        assert (
+            browser.request("/catalog/products/" + product["id"], headers=READ)[1]
+            == product
+        )
+        assert (
+            browser.request(
+                "/catalog/products?tenant_id=" + str(state["other"]), headers=READ
+            )[0]
+            == 422
+        )
+        with Session(state["runtime"]) as session, session.begin():
+            foreign = Product(tenant_id=state["other"], name="Private", price="1.00")
+            session.add(foreign)
+            session.flush()
+            foreign_id = str(foreign.id)
+        assert (
+            browser.request("/catalog/products/" + foreign_id, headers=READ)[0] == 403
+        )
+        assert (
+            browser.request(
+                "/catalog/products",
+                body={"name": CANARY * 1000, "price": "1.00"},
+                headers=expected,
+            )[0]
+            == 413
+        )
+    finally:
+        with state["owner"].begin() as connection:
+            for model in (AuditEvent, Product, Category):
+                connection.execute(
+                    delete(model).where(
+                        model.tenant_id.in_([state["tenant"], state["other"]])
+                    )
+                )
 
 
 def stale_password_proof(state):

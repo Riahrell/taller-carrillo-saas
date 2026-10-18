@@ -31,6 +31,13 @@ from app.modules.access.membership import AccessDenied
 from app.modules.access.reauthentication import RecentAuthenticationRequired
 from app.modules.access.routes import router as access_router
 from app.modules.access.trusted_proxy import TrustedProxy
+from app.modules.catalog.routes import router as catalog_router
+from app.modules.catalog.service import (
+    CatalogAdministrator,
+    CatalogConflict,
+    CatalogDenied,
+    CatalogUnavailable,
+)
 
 
 class LivenessResponse(BaseModel):
@@ -53,6 +60,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.session_factory = create_session_factory(engine)
             app.state.access = await run_in_threadpool(HttpAccess, engine)
             app.state.membership_administrator = MembershipAdministrator(engine)
+            app.state.catalog = CatalogAdministrator(engine)
             app.state.identity = IdentityAccess(
                 engine, configuration.identity_keys_file
             )
@@ -75,6 +83,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(access_router)
     application.include_router(identity_router)
     application.include_router(administration_router)
+    application.include_router(catalog_router)
     application.add_middleware(HttpSecurityMiddleware, policy=http_security)
 
     def domain_error(status: int, detail: str) -> JSONResponse:
@@ -83,6 +92,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             status_code=status,
             headers={"Cache-Control": "no-store"},
         )
+
+    @application.exception_handler(CatalogDenied)
+    async def catalog_denied(_request: Request, _error: CatalogDenied):
+        return domain_error(403, "Access denied")
+
+    @application.exception_handler(CatalogConflict)
+    async def catalog_conflict(_request: Request, _error: CatalogConflict):
+        return domain_error(409, "SKU unavailable")
+
+    @application.exception_handler(CatalogUnavailable)
+    async def catalog_unavailable(_request: Request, _error: CatalogUnavailable):
+        return domain_error(503, "Catalog unavailable")
 
     @application.exception_handler(AdministrationDenied)
     async def administration_denied(_request: Request, _error: AdministrationDenied):

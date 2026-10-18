@@ -5,7 +5,11 @@ from decimal import Decimal, localcontext
 import pytest
 from pydantic import ValidationError
 
-from app.modules.catalog.inputs import CategoryCreation, ProductCreation
+from app.modules.catalog.inputs import (
+    CatalogPageQuery,
+    CategoryCreation,
+    ProductCreation,
+)
 
 
 @pytest.mark.parametrize(
@@ -83,3 +87,15 @@ def test_optional_sku_category_and_small_decimal_context():
         data = ProductCreation(name="Filtro", price="999999999999999999.99")
     assert data.price == Decimal("999999999999999999.99")
     assert data.sku is None and data.category_id is None
+
+
+@pytest.mark.parametrize("limit", [0, 101, -1, True, 1.0, "01", "+1", " 1", "1.0"])
+def test_page_rejects_unbounded_or_ambiguous_limits(limit):
+    with pytest.raises(ValidationError):
+        CatalogPageQuery(limit=limit)
+
+
+def test_page_allows_canonical_query_string_but_not_authority_fields():
+    assert CatalogPageQuery(limit="100").limit == 100
+    with pytest.raises(ValidationError):
+        CatalogPageQuery(tenant_id="forbidden")
