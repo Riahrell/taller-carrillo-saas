@@ -303,3 +303,26 @@ hooks de roles/factores y último admin, reautenticación MFA, UI y operación.
 Mantener el alcance de la puerta de seguridad previa al inventario.
 
 Prioridad y criterios de cierre: [seguridad de acceso](access-security-closure.md).
+
+## Regeneración interna 2.36
+
+`MfaCodeRegenerator.regenerate` recibe exclusivamente el token de sesión del
+titular. Reutiliza el login MFA completo persistido durante cinco minutos desde
+la más antigua de las verificaciones de contraseña/TOTP, según la decisión de
+prueba reciente anterior. No acepta usuario, factor, empresa, rol ni flags de
+verificación. Una sesión sin prueba combinada, antigua, revocada o con revisión,
+contraseña, membresía o factor obsoletos no autoriza regenerar. No requiere rol
+admin: cada titular puede gestionar únicamente sus códigos globales.
+
+Bajo lock del usuario y conjunto actual, invalida el conjunto anterior, crea diez
+hashes nuevos, avanza revisión, revoca todas las sesiones/pendientes y audita
+`mfa_codes_regenerated` en una transacción. Conserva semilla, contador y factor.
+Entrega códigos una vez después del commit; la sesión que autorizó queda revocada.
+Un segundo intento concurrente no obtiene otro conjunto. No reexpone códigos si
+se pierde la respuesta: realizar login completo de nuevo y regenerar.
+
+No verifica un nuevo secreto ni añade cuota por propósito: las pruebas de login
+ya pasaron las cuotas persistentes de contraseña y MFA. La reautenticación MFA
+futura deberá conservar evidencia equivalente ligada a sesión/revisión, sin
+convertir una confirmación de contraseña sola en autorización. HTTP/UI, avisos
+y operación siguen pendientes. Ver [entrega 2.36](deliveries/access-2.36.md).

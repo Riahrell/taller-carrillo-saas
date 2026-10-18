@@ -698,7 +698,8 @@ class SecurityEvent(Base):
             "security_revision IS NOT NULL AND security_revision > 0) OR "
             "(action = 'mfa_recovery_started' AND credential_id IS NOT NULL AND "
             "security_revision IS NOT NULL AND security_revision >= 0) OR "
-            "(action = 'mfa_replaced' AND credential_id IS NOT NULL AND "
+            "(action IN ('mfa_replaced', 'mfa_codes_regenerated') AND "
+            "credential_id IS NOT NULL AND "
             "security_revision IS NOT NULL AND security_revision > 0) OR "
             "(action IN ('mfa_totp_consumed', 'mfa_recovery_consumed') "
             "AND credential_id IS NOT NULL AND security_revision IS NULL)",
@@ -713,7 +714,8 @@ class SecurityEvent(Base):
         CheckConstraint(
             "action IN ('mfa_totp_consumed', 'mfa_recovery_consumed', "
             "'security_revision_advanced', 'mfa_enrollment_email_confirmed', "
-            "'mfa_enrolled', 'mfa_recovery_started', 'mfa_replaced')",
+            "'mfa_enrolled', 'mfa_recovery_started', 'mfa_replaced', "
+            "'mfa_codes_regenerated')",
             name="action_allowed",
         ),
         CheckConstraint(

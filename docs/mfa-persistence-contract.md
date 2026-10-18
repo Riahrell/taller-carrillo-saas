@@ -183,3 +183,7 @@ son un commit. Índice parcial conserva un factor activo; flush de retiro antes
 del insert del sucesor, sin hacer commit intermedio. Historial/códigos viejos se
 conservan revocados, no se borran. Sin sesión automática ni replay de códigos.
 Ver deliveries/access-2.35.md; regeneración y rotación voluntaria siguen separadas.
+
+## 2.36 — Regeneración conservando factor
+
+Servicio interno propietario de transacción: usuario → sesión validada → factor/conjunto actual; las demás operaciones globales comparten lock de usuario antes de hijos. Invalida conjunto, inserta diez hashes, avanza revisión/revoca y audita juntos. La evidencia de login persistida valida ambos factores, huella y revisión; plazo cinco minutos desde el más antiguo, comprobado tras locks y al terminar. No hay TOTP adicional ni cambio de contador. 0022 conserva evento tipado y bloquea downgrade con evidencia.

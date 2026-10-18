@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.35, reemplazo MFA offline interno y atómico; web sin segundo factor
+## Estado: acceso 2.36, regeneración de códigos MFA interna; web sin segundo factor
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -34,7 +34,7 @@ La fundación tiene validación integral local y workflow CI preparado. Su prime
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md), [última entrega 2.35](docs/deliveries/access-2.35.md)
+- [Aceptación](docs/acceptance.md), [última entrega 2.36](docs/deliveries/access-2.36.md)
   y [contrato de diseño 2.20](docs/deliveries/access-2.20.md).
 - [MFA y recuperación](docs/mfa-recovery-contract.md): TOTP, incorporación,
   códigos offline y separación de recuperación por correo. Primitivas internas
@@ -644,7 +644,7 @@ con revisión/revocación global; sin login automático. 2.34 consume contraseñ
 verificada/código offline y revoca acceso para emitir permiso restringido (0020).
 Una sesión MFA normal lo cancela atómicamente. 2.35 agrega setup cifrado y
 reemplazo confirmado con TOTP nuevo (0021), códigos/revisión/revocaciones en un
-commit, sin login automático. Sigue regeneración segura de códigos con MFA
+commit, sin login automático. 2.36 añade regeneración segura de códigos con MFA
 fresco, antes de HTTP/UI públicos.
 [Criterios de cierre de seguridad antes de inventario](docs/access-security-closure.md). Faltan los caminos completos de autenticación/
 recuperación antes de HTTP/UI.
@@ -674,3 +674,8 @@ El usuario autoriza limpiar la VPS si hace falta; identificar recursos y
 respaldar datos antes, según `docs/staging-plan.md`. No hubo cambios remotos.
 CI remota sigue
 pendiente hasta conectar un repositorio autorizado.
+
+Estado 2.36: regeneración interna de códigos con login MFA combinado reciente,
+conjunto/revisión/revocación/auditoría atómicos y factor conservado. MFA sigue
+sin HTTP/UI operativos. [Entrega 2.36](docs/deliveries/access-2.36.md).
+Siguiente: elegibilidad de correo para reset de contraseña, preservando MFA.

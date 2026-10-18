@@ -195,3 +195,7 @@ atómicos. Probar rollback SQL/commit/clave/plazo, cuotas, revalidación/cancela
 semilla/códigos de entrega única, primer OTP no reutilizable, código viejo inválido
 y login completo posterior con el nuevo factor, más carrera realmente bloqueada.
 No se atribuye regeneración voluntaria, UI o recuperación excepcional completadas.
+
+## 2.36 — Regeneración interna de códigos
+
+Sesión con prueba persistida de contraseña/TOTP vigentes; rechazo de expiración exacta, cambios de contraseña/revisión/actividad/membresía/factor/conjunto y sesión sin MFA. Diez hashes nuevos, factor/contador intactos, conjunto viejo invalidado, revocación/revisión/evento atómicos; rollback por commit/escritura/caducidad final y un único resultado concurrente. Sin relectura tras éxito; downgrade preserva evidencia. Ver entrega para resultados ejecutados.

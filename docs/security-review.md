@@ -137,3 +137,7 @@ fallar DB/commit/clave/plazo no deja sucesor parcial. Sesión MFA normal, revoca
 global y reinicio propio cierran el setup y retiran ciphertext. No es rotación
 voluntaria con TOTP actual ni regeneración de códigos del mismo factor. No hay
 rutas/QR/UI o factores reales habilitados por esta entrega.
+
+## 2.36 — Regeneración interna
+
+Códigos nuevos solo después del commit, prueba combinada del login menor de cinco minutos, sesión/revisión/factor/membresía vigentes del servidor. Sin secretos nuevos que verificar ni bypass de cuotas del login. Factor conservado; revisión/revocación evitan replay. HTTP/UI, reautenticación, avisos, reset/eligibilidad de buzón, hooks de rol/último admin y operación siguen abiertos. Próxima tarea: elegibilidad explícita del correo para reset; no usar una marca histórica o permitir email-only MFA.

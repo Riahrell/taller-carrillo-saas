@@ -351,3 +351,7 @@ Cierre/activación retiran key-ID/nonce/ciphertext; FK RESTRICT y DELETE runtime
 denegado. mfa_replaced requiere factor nuevo/revisión positiva en SecurityEvent;
 el vínculo al viejo se conserva mediante setup -> permiso -> factor/conjunto.
 Downgrade con setup/evento, incluso cerrado, rechazado. Sin backfill o endpoint.
+
+## 2.36 — Auditoría de regeneración
+
+0022 amplía security_events con mfa_codes_regenerated: credencial propietaria obligatoria y revisión positiva. No añade tablas ni campos comerciales. Downgrade rechaza evidencia de regeneración existente. Conjuntos/códigos mantienen restricciones de propietario y conjunto vigente único.

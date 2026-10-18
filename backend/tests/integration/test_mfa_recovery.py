@@ -1075,3 +1075,239 @@ def test_replacement_constraints_permissions_and_downgrade_preserve_history(
     ):
         config.attributes["connection"] = connection
         command.downgrade(config, "0020_mfa_recovery_permits")
+
+
+@pytest.fixture
+def regeneration(state):
+    from app.modules.access.mfa_regeneration import MfaCodeRegenerator
+
+    proof = normal_proof(state, state["binding"])
+    assert proof is not None
+    issued = MfaSessionIssuer(state["runtime"]).select_membership(
+        proof_token=proof.token,
+        browser_binding=state["binding"],
+        membership_id=state["member"],
+    )
+    assert issued is not None
+    return MfaCodeRegenerator(state["runtime"]), issued.token
+
+
+def test_regeneration_replaces_only_codes_and_revokes_its_authority(
+    state, regeneration
+):
+    service, token = regeneration
+    before = records(state)
+    with Session(state["runtime"]) as session:
+        factor = session.get(MfaCredential, state["credential"])
+        snapshot = (factor.ciphertext, factor.last_counter, factor.last_verified_at)
+    bundle = service.regenerate(session_token=token)
+    assert bundle is not None and len(bundle.codes) == 10
+    assert bundle.credential_id == state["credential"] and bundle.security_revision == 2
+    assert service.regenerate(session_token=token) is None
+    assert records(state)[1:3] == before[1:3]
+    assert records(state)[3] == state["now"]
+    with Session(state["runtime"]) as session:
+        factor = session.get(MfaCredential, state["credential"])
+        assert (
+            factor.ciphertext,
+            factor.last_counter,
+            factor.last_verified_at,
+        ) == snapshot
+        current = session.scalar(
+            select(MfaRecoverySet).where(MfaRecoverySet.invalidated_at.is_(None))
+        )
+        hashes = list(
+            session.scalars(
+                select(MfaRecoveryCode.code_hash).where(
+                    MfaRecoveryCode.set_id == current.id
+                )
+            )
+        )
+        assert len(hashes) == 10
+        for code in bundle.codes:
+            assert (
+                sum(
+                    match_recovery_code(
+                        code, digest, user_id=state["user"], set_id=current.id
+                    )
+                    for digest in hashes
+                )
+                == 1
+            )
+        assert (
+            session.scalar(
+                select(SecurityEvent).where(
+                    SecurityEvent.action == "mfa_codes_regenerated"
+                )
+            ).security_revision
+            == 2
+        )
+        assert all(
+            row.revoked_at is not None for row in session.scalars(select(SessionRecord))
+        )
+    assert state["seed"].base32().get_secret_value() not in repr(bundle)
+    assert all(
+        code.value.get_secret_value() not in repr(bundle) for code in bundle.codes
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "expiry",
+        "password",
+        "revision",
+        "inactive",
+        "membership",
+        "factor",
+        "set",
+        "no-proof",
+        "token",
+    ],
+)
+def test_regeneration_rejects_stale_or_unbound_authority(state, regeneration, change):
+    service, token = regeneration
+    with state["owner"].begin() as connection:
+        if change == "expiry":
+            state["now"] += timedelta(minutes=5)
+        elif change == "password":
+            connection.execute(
+                update(User)
+                .where(User.id == state["user"])
+                .values(
+                    password_hash=hash_password(SecretStr(secrets.token_urlsafe(32)))
+                )
+            )
+        elif change == "revision":
+            connection.execute(
+                update(User).where(User.id == state["user"]).values(security_revision=2)
+            )
+        elif change == "inactive":
+            connection.execute(
+                update(User).where(User.id == state["user"]).values(is_active=False)
+            )
+        elif change == "membership":
+            connection.execute(
+                update(TenantMembership)
+                .where(TenantMembership.id == state["member"])
+                .values(is_active=False)
+            )
+        elif change == "factor":
+            connection.execute(
+                update(MfaCredential)
+                .where(MfaCredential.id == state["credential"])
+                .values(revoked_at=state["now"])
+            )
+        elif change == "set":
+            connection.execute(
+                update(MfaRecoverySet)
+                .where(MfaRecoverySet.id == state["set"])
+                .values(invalidated_at=state["now"])
+            )
+        elif change == "no-proof":
+            connection.execute(update(SessionRecord).values(mfa_pending_id=None))
+        else:
+            token = SecretStr(secrets.token_urlsafe(32))
+    assert service.regenerate(session_token=token) is None
+    with Session(state["runtime"]) as session:
+        assert (
+            session.scalar(
+                select(SecurityEvent.id).where(
+                    SecurityEvent.action == "mfa_codes_regenerated"
+                )
+            )
+            is None
+        )
+        assert len(list(session.scalars(select(MfaRecoverySet)))) == 1
+
+
+@pytest.mark.parametrize("failure", ["commit", "deadline", "codes", "events"])
+def test_regeneration_failure_rolls_back_set_revision_and_revocation(
+    state, regeneration, monkeypatch, failure
+):
+    from app.modules.access import mfa_regeneration
+
+    service, token = regeneration
+    if failure == "commit":
+
+        def fail(session):
+            raise SQLAlchemyError("Synthetic commit failure")
+
+        event.listen(service._factory, "before_commit", fail, once=True)
+    elif failure == "deadline":
+        real = mfa_regeneration.generate_recovery_codes
+
+        def expire():
+            result = real()
+            state["now"] += timedelta(minutes=5)
+            return result
+
+        monkeypatch.setattr(mfa_regeneration, "generate_recovery_codes", expire)
+    else:
+        table = "mfa_recovery_codes" if failure == "codes" else "security_events"
+        with state["owner"].begin() as connection:
+            connection.execute(text(f"REVOKE INSERT ON {table} FROM carrillo_app"))
+    try:
+        if failure == "deadline":
+            assert service.regenerate(session_token=token) is None
+        else:
+            with pytest.raises(
+                mfa_regeneration.MfaRegenerationUnavailable,
+                match="^MFA regeneration unavailable$",
+            ):
+                service.regenerate(session_token=token)
+        with Session(state["runtime"]) as session:
+            assert session.get(User, state["user"]).security_revision == 1
+            assert session.get(MfaRecoverySet, state["set"]).invalidated_at is None
+            assert len(list(session.scalars(select(MfaRecoverySet)))) == 1
+            assert all(
+                row.revoked_at is None for row in session.scalars(select(SessionRecord))
+            )
+    finally:
+        if failure in ("codes", "events"):
+            with state["owner"].begin() as connection:
+                connection.execute(text(f"GRANT INSERT ON {table} TO carrillo_app"))
+
+
+def test_concurrent_regeneration_has_one_bundle(state, regeneration):
+    service, token = regeneration
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(
+            pool.map(lambda _: service.regenerate(session_token=token), range(2))
+        )
+    assert sum(value is not None for value in results) == 1
+    with Session(state["runtime"]) as session:
+        assert len(list(session.scalars(select(MfaRecoverySet)))) == 2
+        assert (
+            len(
+                list(
+                    session.scalars(
+                        select(SecurityEvent).where(
+                            SecurityEvent.action == "mfa_codes_regenerated"
+                        )
+                    )
+                )
+            )
+            == 1
+        )
+
+
+def test_regeneration_accepts_just_before_original_password_deadline(
+    state, regeneration
+):
+    service, token = regeneration
+    state["now"] += timedelta(minutes=5, microseconds=-1)
+    assert service.regenerate(session_token=token) is not None
+
+
+def test_regeneration_event_prevents_destructive_downgrade(state, regeneration):
+    service, token = regeneration
+    assert service.regenerate(session_token=token) is not None
+    config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    config.set_main_option(
+        "script_location", str(Path(__file__).resolve().parents[2] / "migrations")
+    )
+    with state["owner"].connect() as connection:
+        config.attributes["connection"] = connection
+        with pytest.raises(DBAPIError, match="regeneration evidence must be preserved"):
+            command.downgrade(config, "0021_mfa_replacement")

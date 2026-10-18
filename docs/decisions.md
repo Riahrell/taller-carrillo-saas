@@ -1039,3 +1039,7 @@ la respuesta de setup, reiniciar con contraseña y otro código offline. Si se
 pierde la respuesta de códigos después de reemplazar, exigir MFA del factor nuevo
 y futura regeneración segura, nunca replay. No implementar rotación voluntaria
 como si fuera recuperación; esta entrega exige el permiso offline específico.
+
+## 2.36 — Regeneración con evidencia combinada reciente
+
+Se reutiliza el login MFA completo dentro de cinco minutos desde la prueba más antigua, conforme al contrato; no basta contraseña confirmada o sesión antigua. Operación propia global, independiente del rol. Regenerar conserva factor/contador, invalida el conjunto anterior, avanza revisión y cierra todas las sesiones para impedir replay/concurrencia. Sin cuota adicional por propósito porque no evalúa secretos nuevos; login conserva sus cuotas. Nueva evidencia de reautenticación y adaptación HTTP/UI pendientes.
