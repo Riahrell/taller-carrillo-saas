@@ -1,11 +1,11 @@
 """Add HTTP security to an existing local environment without changing DB secrets."""
 
 import argparse
-import os
 import re
 import secrets
 from pathlib import Path
 
+from scripts.private_files import write_mount_secret
 from scripts.setup_local import ROOT
 
 
@@ -28,15 +28,12 @@ def upgrade(environment: str, *, base: Path | None = None) -> Path:
         raise ValueError("Refusing an unexpected local secret directory")
     secret = secret_dir / "csrf_signing_key"
     try:
-        fd = os.open(secret, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444)
+        write_mount_secret(secret, secrets.token_hex(32) + "\n")
     except FileExistsError:
         if not re.fullmatch(r"[0-9a-f]{64}", secret.read_text().strip()):
             raise ValueError(
                 "Existing HTTP key is invalid; nothing was overwritten"
             ) from None
-    else:
-        with os.fdopen(fd, "w") as stream:
-            stream.write(secrets.token_hex(32) + "\n")
     if "PUBLIC_ORIGIN" not in values:
         with config.open("a") as stream:
             stream.write("\nPUBLIC_ORIGIN=http://localhost:8080\n")

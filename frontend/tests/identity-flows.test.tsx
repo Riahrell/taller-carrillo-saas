@@ -92,3 +92,23 @@ it("does not redisplay a setup secret returned after the page was hidden", async
   expect(screen.queryByText("synthetic-seed-canary")).not.toBeInTheDocument();
   expect(screen.getByText("Reinicia el acceso")).toBeInTheDocument();
 });
+
+it("rejects a username autofilled as TOTP while accepting a full offline code", async () => {
+  const totp = vi.spyOn(identityApi, "totp");
+  const recover = vi.spyOn(identityApi, "recover").mockResolvedValue({
+    status: "confirm_factor",
+    seed: "synthetic-replacement-seed",
+    qr: "data:image/svg+xml;base64,PHN2Zy8+",
+  });
+  render(<MfaFlow initial="mfa_totp" onLogin={vi.fn()} onCancel={vi.fn()} />);
+  const input = screen.getByLabelText("Código de verificación");
+  fireEvent.change(input, { target: { value: "test@example.com" } });
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+  expect(totp).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("checkbox"));
+  const code = "synthetic-offline-code-0123456789";
+  fireEvent.change(input, { target: { value: code } });
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+  await waitFor(() => expect(recover).toHaveBeenCalledWith(code));
+  expect(screen.getByText("Configura tu autenticador")).toBeInTheDocument();
+});

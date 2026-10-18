@@ -1,5 +1,6 @@
 """Safety regressions for CI orchestration; these tests never invoke Docker."""
 
+import json
 import os
 import subprocess
 import tempfile
@@ -51,6 +52,23 @@ class PipelineTests(unittest.TestCase):
         ):
             pipeline.execute()
         cleanup.assert_called_once()
+
+    def test_runtime_gate_scans_application_database_and_proxy_images(self):
+        pipeline = self.pipeline()
+        images = {
+            name: {"image": "candidate-" + name}
+            for name in ("backend", "frontend", "db", "proxy")
+        }
+        with (
+            patch.object(pipeline, "compose") as compose,
+            patch.object(pipeline, "run") as run,
+        ):
+            compose.return_value.stdout = json.dumps({"services": images})
+            pipeline.scan_runtime_images()
+        arguments = run.call_args.args[0]
+        self.assertEqual(arguments[1:3], ["-m", "scripts.image_security"])
+        self.assertEqual(arguments[3::2], ["--image"] * 4)
+        self.assertEqual(set(arguments[4::2]), {x["image"] for x in images.values()})
 
     def test_local_settings_cannot_override_the_test_environment(self) -> None:
         with patch.dict(

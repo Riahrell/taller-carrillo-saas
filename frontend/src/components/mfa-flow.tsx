@@ -15,6 +15,7 @@ export default function MfaFlow({ initial, onLogin, onCancel }: Props) {
   const [seed, setSeed] = useState("");
   const [qr, setQr] = useState("");
   const [codes, setCodes] = useState<string[]>([]);
+  const [offline, setOffline] = useState(false);
   const [replacement, setReplacement] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -27,6 +28,7 @@ export default function MfaFlow({ initial, onLogin, onCancel }: Props) {
       if (document.visibilityState === "hidden") {
         epoch.current += 1;
         form.current?.reset();
+        setOffline(false);
         setSeed("");
         setQr("");
         setCodes([]);
@@ -65,6 +67,7 @@ export default function MfaFlow({ initial, onLogin, onCancel }: Props) {
     const code = String(data.get("code") ?? "").trim();
     const offline = data.get("offline") === "on";
     e.currentTarget.reset();
+    setOffline(false);
     void run(async (current) => {
       if (stage === "totp") {
         if (offline) {
@@ -101,7 +104,7 @@ export default function MfaFlow({ initial, onLogin, onCancel }: Props) {
     });
   }
   return (
-    <div aria-busy={busy}>
+    <div className="identity-flow" aria-busy={busy}>
       <h3>
         {stage === "totp"
           ? "Confirma tu autenticador"
@@ -203,13 +206,21 @@ export default function MfaFlow({ initial, onLogin, onCancel }: Props) {
               autoComplete="one-time-code"
               type="text"
               required
-              maxLength={128}
+              maxLength={stage === "email" || offline ? 128 : 6}
+              minLength={stage === "email" || offline ? undefined : 6}
+              pattern={stage === "email" || offline ? undefined : "[0-9]{6}"}
+              inputMode={stage === "email" || offline ? "text" : "numeric"}
               spellCheck={false}
             />
             {stage === "totp" && (
               <label>
-                <input type="checkbox" name="offline" /> Perdí mi autenticador;
-                usar un código de recuperación
+                <input
+                  type="checkbox"
+                  name="offline"
+                  checked={offline}
+                  onChange={(e) => setOffline(e.target.checked)}
+                />{" "}
+                Perdí mi autenticador; usar un código de recuperación
               </label>
             )}
             <button type="submit">Confirmar</button>

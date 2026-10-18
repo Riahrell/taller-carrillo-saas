@@ -1,5 +1,7 @@
 # Only used by scripts.ci, with a fresh generated project and credentials.
 services:
+  db:
+    image: ${CI_PROJECT_NAME:?Use python3 -m scripts.ci}-postgres:ci
   backend:
     image: ${CI_PROJECT_NAME:?Use python3 -m scripts.ci}-backend:ci
   tests:
@@ -14,6 +16,7 @@ services:
   frontend-tests:
     image: ${CI_PROJECT_NAME:?Use python3 -m scripts.ci}-frontend-tests:ci
   proxy:
+    image: ${CI_PROJECT_NAME:?Use python3 -m scripts.ci}-proxy:ci
     ports:
       - "127.0.0.1::8080"
 

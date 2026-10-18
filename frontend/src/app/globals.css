@@ -116,6 +116,92 @@ select {
   width: 100%;
   min-height: 270px;
 }
+.identity-page {
+  max-width: 960px;
+  min-height: calc(100svh - 220px);
+  margin: auto;
+  padding: 40px 6%;
+}
+.identity-panel h1 {
+  margin: 0 0 20px;
+  font-size: clamp(26px, 4vw, 36px);
+  letter-spacing: -1px;
+}
+.identity-panel h2 {
+  margin-top: 36px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+  font-size: 22px;
+}
+.identity-panel p,
+.identity-flow p,
+.identity-panel li,
+.identity-flow li {
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.identity-panel form,
+.identity-flow form,
+.identity-panel fieldset,
+.identity-flow fieldset {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 18px 0;
+  padding: 0;
+  border: 0;
+}
+.identity-panel label,
+.identity-flow label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.identity-panel input,
+.identity-flow input:not([type="checkbox"]) {
+  width: 100%;
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid #bfc5b5;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 16px;
+}
+.identity-panel button,
+.identity-flow button {
+  min-height: 44px;
+  max-width: 100%;
+  padding: 12px 16px;
+  margin: 6px 0;
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  background: var(--ink);
+  color: #fffef9;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.identity-panel button:disabled,
+.identity-flow button:disabled {
+  cursor: wait;
+}
+.identity-panel code,
+.identity-flow code {
+  overflow-wrap: anywhere;
+  font-size: 16px;
+}
+.identity-panel img,
+.identity-flow img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 20px 0;
+}
+.identity-panel [role="status"],
+.identity-flow [role="alert"] {
+  padding: 12px 14px;
+  border-left: 3px solid #768e3d;
+  background: #f0f1e6;
+}
 .panel-step {
   color: var(--muted);
   font-size: 9px;

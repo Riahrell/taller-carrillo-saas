@@ -2,10 +2,11 @@
 
 import argparse
 import json
-import os
 import re
 import shlex
 from pathlib import Path
+
+from scripts.private_files import write_mount_secret
 
 
 def prepare(source: Path, destination: Path, sender: str) -> None:
@@ -50,9 +51,7 @@ def prepare(source: Path, destination: Path, sender: str) -> None:
             + "\n",
         ),
     ):
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444)
-        with os.fdopen(descriptor, "w") as stream:
-            stream.write(data)
+        write_mount_secret(path, data)
 
 
 def main():

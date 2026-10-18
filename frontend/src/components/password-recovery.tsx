@@ -80,7 +80,7 @@ export default function PasswordRecovery() {
     }
   }
   return (
-    <section className="access-panel" aria-busy={busy}>
+    <section className="access-panel identity-panel" aria-busy={busy}>
       <h1>Recuperar contraseña</h1>
       <p>No se desactiva el autenticador ni se reemplazan los códigos MFA.</p>
       {message && <p role="status">{message}</p>}

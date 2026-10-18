@@ -55,7 +55,7 @@ export default function MailboxConfirmation() {
     }
   }
   return (
-    <section className="access-panel">
+    <section className="access-panel identity-panel">
       <h1>Verificar correo</h1>
       {enrollment ? (
         <>

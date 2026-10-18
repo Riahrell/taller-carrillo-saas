@@ -93,7 +93,7 @@ export default function SecurityPanel() {
     const data = new FormData(e.currentTarget);
     e.currentTarget.reset();
     const password = String(data.get("password") ?? "");
-    const code = String(data.get("code") ?? "");
+    const code = String(data.get("totp") ?? "");
     void run(async () => {
       await identityApi.reauthenticate(context.membership_id, password, code);
       setMessage(
@@ -103,7 +103,7 @@ export default function SecurityPanel() {
     });
   }
   return (
-    <section className="access-panel" aria-busy={busy}>
+    <section className="access-panel identity-panel" aria-busy={busy}>
       <h1>Seguridad de mi cuenta</h1>
       {message && <p role="status">{message}</p>}
       {context && security && (
@@ -153,10 +153,15 @@ export default function SecurityPanel() {
                   <label htmlFor="security-code">Código del autenticador</label>
                   <input
                     id="security-code"
-                    name="code"
+                    name="totp"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
                     autoComplete="one-time-code"
+                    spellCheck={false}
                     required
-                    maxLength={128}
+                    minLength={6}
+                    maxLength={6}
                   />
                   <button type="submit">Confirmar identidad</button>
                 </fieldset>
@@ -196,7 +201,7 @@ export default function SecurityPanel() {
                     onSubmit={(e) => {
                       e.preventDefault();
                       const code = String(
-                        new FormData(e.currentTarget).get("code") ?? "",
+                        new FormData(e.currentTarget).get("totp") ?? "",
                       );
                       e.currentTarget.reset();
                       void run(async (current) => {
@@ -219,9 +224,14 @@ export default function SecurityPanel() {
                     </label>
                     <input
                       id="rotation-code"
-                      name="code"
+                      name="totp"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]{6}"
                       autoComplete="one-time-code"
-                      maxLength={128}
+                      spellCheck={false}
+                      minLength={6}
+                      maxLength={6}
                       required
                     />
                     <button type="submit" disabled={busy}>
@@ -270,6 +280,9 @@ export default function SecurityPanel() {
             onClick={() =>
               void run(async () => {
                 await identityApi.revokeAll(context.membership_id);
+                form.current?.reset();
+                setRotation(null);
+                setCodes([]);
                 setContext(null);
                 setSecurity(null);
                 setMessage("Se cerraron todas tus sesiones.");

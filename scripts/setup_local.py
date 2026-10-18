@@ -5,6 +5,8 @@ import os
 import secrets
 from pathlib import Path
 
+from scripts.private_files import write_mount_secret
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -37,9 +39,7 @@ def generate(environment: str, *, base: Path | None = None) -> Path:
         path = secret_dir / name
         # Readable by container UIDs through read-only secret mounts; host parent
         # directories are 0700, so other host users cannot traverse to the files.
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444)
-        with os.fdopen(fd, "w") as stream:
-            stream.write(value + "\n")
+        write_mount_secret(path, value + "\n")
     from scripts.setup_identity import create
 
     create(secret_dir / "identity_keys")

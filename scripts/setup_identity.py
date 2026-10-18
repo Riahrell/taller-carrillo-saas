@@ -2,9 +2,10 @@
 
 import argparse
 import json
-import os
 import secrets
 from pathlib import Path
+
+from scripts.private_files import write_mount_secret
 
 
 def key_document():
@@ -18,13 +19,7 @@ def key_document():
 
 
 def create(path: Path):
-    if not path.parent.is_dir():
-        raise ValueError("Create the private secret directory first")
-    with os.fdopen(
-        os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o444), "w"
-    ) as output:
-        json.dump(key_document(), output)
-        output.write("\n")
+    write_mount_secret(path, json.dumps(key_document()) + "\n")
 
 
 def main():

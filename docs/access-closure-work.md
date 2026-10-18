@@ -158,3 +158,27 @@ QR y recuperación en navegador, imágenes/SBOM según plan, respaldo remoto
 recuperable, imágenes de release, HTTPS/renovación y aceptación real en teléfono.
 No se han aplicado migraciones a desarrollo ni a Contabo. El inventario aún no
 se inicia; la prioridad del usuario sigue siendo cerrar estos criterios de acceso.
+
+### Endurecimiento de imágenes y repetición conservada
+
+Se integró escaneo de las cuatro imágenes y SBOM; detalle en
+[entrega 2.39](deliveries/access-2.39.md) y [control de imágenes](container-security.md).
+Las imágenes iniciales tenían 142 hallazgos HIGH/CRITICAL sumados entre paquetes;
+no son fotografías del servidor. Se redujeron dependencias y aplicaron parches,
+sin introducir excepciones de runtime.
+
+Los procesos anteriores dejaron de estar activos y sus logs de /tmp ya no estaban
+disponibles al reanudar. No se reutilizó esa ejecución como evidencia verde. La
+nueva ejecución bajo umask 077 descubrió un fallo de lectura de secrets por UID
+no privilegiado. Se corrigió la provisión, se añadieron regresiones de privacidad/
+no sobrescritura y se repitió CI completo. Resultado: **1300 backend, 156 frontend,
+7 proxy y 46 scripts**, builds/tipos/lint/smoke y **cuatro imágenes sin hallazgos**.
+Logs conservados dentro de `.local/validation/` y SBOM/reportes privados en
+`.local/image-reports/190edf7cfcb548a982f9e1e4842df587/`. Restauración completa y
+validación TLS temporal pasan con las nuevas imágenes.
+
+Inspección SSH adicional confirma los tres contenedores antiguos activos y
+aproximadamente 75,3 GiB libres. El usuario reiteró que se retiren los proyectos
+anteriores, conservando el nuevo y la infraestructura necesaria, después del
+respaldo recuperable y comprobación del despliegue. No hubo mutaciones remotas.
+Sigue respaldo/release/TLS y aceptación real; no declarar el objetivo completo.

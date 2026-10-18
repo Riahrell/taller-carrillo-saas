@@ -1,7 +1,7 @@
 import SecurityPanel from "@/components/security-panel";
 export default function Page() {
   return (
-    <main id="contenido">
+    <main id="contenido" className="identity-page">
       <SecurityPanel />
     </main>
   );

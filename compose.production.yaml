@@ -1,12 +1,15 @@
 # Reviewed TLS overlay; do not use until provider/keys/restore acceptance passes.
 services:
   backend:
+    image: ${BACKEND_IMAGE:?Configure the validated backend release image}
     environment:
       APP_ENV: production
     restart: unless-stopped
   frontend:
+    image: ${FRONTEND_IMAGE:?Configure the validated frontend release image}
     restart: unless-stopped
   proxy:
+    image: ${PROXY_IMAGE:?Configure the validated proxy release image}
     ports:
       - "80:8080"
       - "443:8443"
@@ -17,6 +20,7 @@ services:
       - tls_certificate
       - tls_private_key
   db:
+    image: ${POSTGRES_IMAGE:?Configure the validated database release image}
     restart: unless-stopped
 configs:
   proxy_config:

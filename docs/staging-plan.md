@@ -77,3 +77,13 @@ El dominio público es contexto documental,
 no un origen codificado en la aplicación: configurar el origen final por entorno.
 No hay contraseñas, IPs públicas o
 credenciales predeterminadas codificadas en este documento.
+
+## Autorización de retirada actualizada
+
+El usuario confirmó de nuevo el 18 de octubre que pueden eliminarse los proyectos
+anteriores y sus archivos, conservando este proyecto. La limpieza se ejecutará
+al efectuar el despliegue, después de inventariar recursos, guardar un respaldo
+recuperable y comprobar la nueva instalación. Conservar el sistema operativo,
+SSH y los servicios de infraestructura necesarios; no equivale a borrar el
+filesystem del servidor ni a ejecutar prune global indiscriminado. Todavía no
+se han retirado contenedores, volúmenes o archivos remotos.

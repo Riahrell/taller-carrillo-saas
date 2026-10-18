@@ -13,7 +13,9 @@ Resultados y comandos reales en [seguimiento](access-closure-work.md).
 
 Generar exclusivamente por comando explícito `python3 -m scripts.setup_identity
 --output /directorio-privado/identity_keys`. El directorio padre debe existir y
-ser privado (0700). No sobrescribe archivos. El JSON contiene keyrings AES-256
+ser privado (0700), pertenecer al operador y no ser un enlace. No sobrescribe
+archivos. Los archivos de mount quedan 0444 de forma explícita incluso con umask
+077; el padre privado protege su acceso desde el host. El JSON contiene keyrings AES-256
 separados para semillas/correo y clave HMAC de cuotas estable. No se imprime su
 contenido. Montarlo read-only como `IDENTITY_KEYS_FILE`; nunca en imagen/Git/chat.
 Guardar copia cifrada externa separada de la DB y probar ambas juntas. Perder la

@@ -3,58 +3,36 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.38, emisión interna de reset cifrado; web sin segundo factor
+## Estado: acceso integrado; aceptación operativa pendiente
 
-API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
-del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
-selección de empresa y logout con cookies privadas. Modelos de empresas,
-usuarios y membresías migrados, con
-consulta interna de membresía activa probada en PostgreSQL. Sesiones internas
-revocables con hash de token y expiración probadas. Autenticación interna con
-límites compartidos por cuenta/IP. La API ya exige origen/CSRF firmado en
-peticiones con efectos y tiene política de cookies probada. La selección interna
-multiempresa exige contraseña verificada y un estado temporal ligado al navegador,
-con caducidad y uso único probados. Login/logout, selección, consulta de sesión
-y emisión/renovación CSRF ya funcionan por HTTP con cookies privadas. La IP se
-obtiene de Nginx verificado en una red interna separada, con pruebas reales de
-cabeceras falsificadas. Formulario probado en navegador con identidades sintéticas
-y PostgreSQL aislado. El servicio interno de administración ya verifica sesión
-y rol actual, cambia rol/estado de una membresía, conserva un administrador activo
-y confirma auditoría/revocaciones en una transacción. Ya tiene consulta y cambio
-por HTTP con sesión/CSRF y precondición If-Match. El listado paginado ya limita
-resultados a la empresa autorizada y al perfil admin. La pantalla `/membresias`
-permite revisar y confirmar cambios sobre accesos existentes. Las operaciones
-comerciales siguen pendientes. El servicio interno ya puede crear una cuenta
-nueva y su membresía con autorización y auditoría atómicas. Ya está conectado a
-POST administrativo con sesión/CSRF y contexto obligatorio. El formulario de
-alta asistida ya está en `/membresias/nueva`, con revisión y confirmación separadas.
-Bootstrap CLI atómico y hashing Argon2id
-disponibles; no se creó una cuenta real automáticamente.
-La fundación tiene validación integral local y workflow CI preparado. Su primera
-ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
+Login con TOTP administrativo, selección de empresa, verificación de buzón,
+recuperación de contraseña conservando MFA, códigos offline, cambio de factor,
+reautenticación y cierre global ya están integrados en API/interfaz. El servidor
+obtiene empresa y rol de la sesión; los cambios de acceso revocan globalmente las
+sesiones afectadas. No hay cuentas ni contraseñas predeterminadas.
 
-- [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md), [última entrega 2.38](docs/deliveries/access-2.38.md)
-  y [contrato de diseño 2.20](docs/deliveries/access-2.20.md).
-- [MFA y recuperación](docs/mfa-recovery-contract.md): TOTP, incorporación,
-  códigos offline y separación de recuperación por correo. Primitivas internas
-  implementadas en [2.21](docs/deliveries/access-2.21.md), persistencia/consumo
-  transaccional en [2.22](docs/deliveries/access-2.22.md) y auditoría global
-  de consumos en [2.23](docs/deliveries/access-2.23.md). [Cuotas 2.24](docs/mfa-verification-contract.md)
-  independientes de contraseña; integración de autenticación pendiente.
-- [Escaneos de seguridad](docs/security-scanning.md): secretos en archivos/historial,
-  dependencias Python/npm y excepción temporal dev-only visible hasta 2026-10-31.
-- [Contrato de confirmación reciente](docs/reauthentication-contract.md): servicio
-  y POST `/api/auth/reauthenticate`, formulario y guardia obligatoria dentro de
-  las transacciones de alta/cambio administrativos. Sin prueba vigente: 428.
-- [Revisión de seguridad](docs/security-review.md) y [pruebas remotas](docs/staging-plan.md).
-- [Recuperación por correo](docs/email-recovery-design.md): diseño solicitado,
-  pendiente de implementación junto con verificación de correo y MFA.
-- [Revisión del nuevo Plan Maestro v1.1](docs/reviews/plan-maestro-v1.1.md):
-  diferencias, mejoras propuestas y adaptación de hitos; revisión documental,
-  sin implementación del alcance nuevo ni cambios de servidor.
-- Las entregas 1.1/1.2 son registros históricos; el acceso actual usa el proxy
-  en 8080, y el arranque requiere DB.
+La implementación local no equivale a despliegue aprobado. Siguen pendientes el
+respaldo remoto recuperable, HTTPS/renovación y la aceptación real de los recorridos
+por correo y teléfono. No iniciar inventario hasta cerrar los criterios acordados.
+El despliegue anterior de Contabo todavía no se ha sustituido.
+
+- [Entrega 2.39](docs/deliveries/access-2.39.md) y
+  [seguimiento/evidencia actuales](docs/access-closure-work.md).
+- [Criterios antes de inventario](docs/access-security-closure.md) y
+  [operación de identidad](docs/identity-operations.md).
+- [Imágenes y SBOM](docs/container-security.md), [escaneos de código/locks](docs/security-scanning.md)
+  y excepción temporal dev-only SEC-2026-001, hasta 2026-10-31.
+- [Decisiones](docs/decisions.md), [modelo inicial](docs/data-model.md),
+  [permisos](docs/permissions.md) y [MFA/recuperación](docs/mfa-recovery-contract.md).
+- [Plan Maestro v1.1 revisado](docs/reviews/plan-maestro-v1.1.md) y
+  [despliegue remoto](docs/staging-plan.md).
+- Las entregas numeradas y los contratos anteriores conservan el estado histórico
+  de cada fase. La integración actual utiliza confirmación por contraseña y TOTP;
+  no interpretar una entrega antigua como garantía de la versión desplegada.
+
+El comando integral es `python3 -m scripts.ci`: usa identidades sintéticas,
+PostgreSQL efímero e imágenes únicas por ejecución. La primera ejecución remota
+en GitHub sigue pendiente; el workflow preparado no demuestra que haya ocurrido.
 
 ## Requisitos
 
@@ -73,7 +51,7 @@ Actualizarlas requiere revisión y pruebas, no se actualizan en cada arranque.
 Generar el entorno **una sola vez**:
 
 ```bash
-python3 scripts/setup_local.py development
+python3 -m scripts.setup_local development
 ```
 
 Genera credenciales aleatorias independientes de bootstrap, migraciones y
@@ -102,7 +80,7 @@ csrf_signing_key y PUBLIC_ORIGIN si falta. No sobrescribe ninguna credencial.
 Construir imagen, iniciar DB, aplicar migración y arrancar API, en este orden:
 
 ```bash
-docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml build backend frontend frontend-tests
+docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml build db proxy backend frontend frontend-tests
 docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml up -d --wait db
 docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml run --rm migrate
 docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml up -d --wait proxy
@@ -117,12 +95,12 @@ La API comprueba la conexión al arrancar y dispone su engine al detenerse.
 Liveness indica vida del proceso, no disponibilidad continua de DB o versión de
 esquema. Las migraciones no se ejecutan desde la API.
 
-La revisión actual `0007_membership_creation_audit` amplía la auditoría de
-`0006_membership_audit` con eventos tipados de alta. Ambas se apoyan en
-`0005_login_challenges` (selección temporal de empresa),
-`0004_login_throttles` (contadores), `0003_sessions` (sesiones) y
-`0002_access` (identidades). No inserta cuentas. Los roles
-son `admin`, `cashier`, `mechanic` y `read_only`, sin rol predeterminado.
+La revisión actual es `0029_mfa_rotation`. Las migraciones 0025–0029 completan
+identidad, reset, auditoría y cambio de factor. La 0026 exige incorporación MFA
+a administradores anteriores y revoca sesiones; no aplicarla sobre un entorno
+operativo sin claves externas, correo configurado y procedimiento de recuperación.
+No se insertan cuentas por migrar. Los roles son `admin`, `cashier`, `mechanic` y
+`read_only`, sin rol predeterminado.
 La consulta interna de membresía comprueba los tres estados activos en DB;
 requiere IDs obtenidos por el servidor y no concede permisos de módulo.
 El contrato de acceso HTTP está en docs/auth-http-contract.md. Argon2id se usa
@@ -159,7 +137,7 @@ rechaza cualquier registro de acceso existente, incluso inactivo. Crea empresa,
 usuario y membresía administradora en un commit; un fallo revierte los tres.
 Un bloqueo transaccional coordina otros bootstraps, con espera máxima de 5s.
 Una repetición falla sin modificar datos ni restablecer contraseñas. No borres
-registros para repetirlo; recuperación y administración se implementarán después.
+registros para repetirlo; utilizar los recorridos de recuperación y administración autorizados.
 No ejecutar junto con migraciones o escrituras SQL manuales.
 
 Ayuda, sin crear registros:
@@ -172,8 +150,11 @@ Códigos de salida: 0 completado/ayuda, 1 fallo de operación y 2 entrada invál
 o cancelación. Los handlers de acceso ya emiten cookies y pruebas CSRF; el
 formulario web ya los utiliza. Límites compartidos, cookies y revocación se
 validan también por proxy real en el CI aislado.
-Después del bootstrap, ingresar en http://localhost:8080 con esos datos. No se
-crearon usuarios reales automáticamente ni existe una contraseña de reserva.
+Después del bootstrap, ingresar en http://localhost:8080 con esos datos. El
+administrador debe verificar su buzón y activar el autenticador antes de obtener
+una sesión. Configurar el transporte y worker según
+[operación de identidad](docs/identity-operations.md); abrir la página o introducir
+solo la contraseña no completa la incorporación. No hay una contraseña de reserva.
 
 Detener conservando los datos de desarrollo:
 
@@ -181,14 +162,15 @@ Detener conservando los datos de desarrollo:
 docker compose --project-name carrillo-dev --env-file .local/development/compose.env -f compose.yaml -f compose.dev.yaml down
 ```
 
-No agregar `--volumes` para conservar datos. Backups y producción siguen pendientes.
+No agregar `--volumes` para conservar datos. El ensayo de restauración aislado
+no sustituye el respaldo recuperable del despliegue remoto pendiente.
 
 ## Pruebas completas con PostgreSQL real
 
 Generar las credenciales de pruebas una sola vez, distintas de desarrollo:
 
 ```bash
-python3 scripts/setup_local.py test
+python3 -m scripts.setup_local test
 ```
 
 Ejecutar en otro proyecto y con almacenamiento efímero:
@@ -245,6 +227,8 @@ Definir exactamente una fuente de URL mediante entorno o `.env` local.
 El esquema actual exige host, base, usuario y contraseña; rechaza otros drivers
 y parámetros query. TLS remoto necesitará diseño explícito antes de habilitarse.
 La clave HTTP se monta en backend/tests, no en DB, frontend ni migraciones.
+Las claves de identidad se montan en API, pruebas y worker como archivos externos;
+producción exige las cuatro referencias de imágenes de release explícitas.
 Los comandos CLI/migraciones no requieren origen ni clave HTTP; create_app sí.
 Las claves desconocidas de `.env` se rechazan. En Compose no hace falta `.env`:
 se usan el archivo generado de interpolación y montajes de secretos.

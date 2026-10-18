@@ -66,6 +66,8 @@ def main():
             os.open(args.output, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o444), "w"
         ) as output:
             output.write(value)
+            output.flush()
+            os.fchmod(output.fileno(), 0o444)
     except (OSError, ValueError):
         parser.exit(1, "TLS configuration refused; no existing file overwritten.\n")
     print("TLS proxy configuration created; review before deployment.")

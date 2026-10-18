@@ -18,6 +18,10 @@ PROJECT_PATTERN = re.compile(r"carrillo-ci-[0-9a-f]{12}")
 def isolated_environment() -> dict[str, str]:
     """Do not let local Compose or application settings override test config."""
     excluded = {
+        "BACKEND_IMAGE",
+        "FRONTEND_IMAGE",
+        "POSTGRES_IMAGE",
+        "PROXY_IMAGE",
         "APP_ENV",
         "DB_NAME",
         "DB_SECRETS_DIR",
@@ -113,7 +117,15 @@ class Pipeline:
             or ports[0].get("published") not in (None, "", "0", 0)
         ):
             raise RuntimeError("CI proxy must use an ephemeral loopback port")
-        for name in ("backend", "tests", "migrate", "frontend", "frontend-tests"):
+        for name in (
+            "db",
+            "proxy",
+            "backend",
+            "tests",
+            "migrate",
+            "frontend",
+            "frontend-tests",
+        ):
             if not services[name]["image"].startswith(self.project + "-"):
                 raise RuntimeError("Refusing shared development image tags")
 
@@ -123,7 +135,14 @@ class Pipeline:
         self.run([sys.executable, "-m", "scripts.security"], timeout=900)
         self.run(["sh", "-n", "ops/postgres/init.sh"])
         self.compose(
-            "build", "backend", "tests", "frontend", "frontend-tests", timeout=1200
+            "build",
+            "db",
+            "proxy",
+            "backend",
+            "tests",
+            "frontend",
+            "frontend-tests",
+            timeout=1200,
         )
         self.compose("run", "--rm", "--no-deps", "workflow-lint")
         self.compose("run", "--rm", "--no-deps", "backend-lint")
@@ -159,6 +178,17 @@ class Pipeline:
             ]
         )
 
+        self.scan_runtime_images()
+
+    def scan_runtime_images(self) -> None:
+        config = json.loads(
+            self.compose("config", "--format", "json", capture=True).stdout
+        )
+        arguments = [sys.executable, "-m", "scripts.image_security"]
+        for name in ("backend", "frontend", "db", "proxy"):
+            arguments.extend(["--image", config["services"][name]["image"]])
+        self.run(arguments, timeout=1200)
+
     def bind_origin(self, address: str) -> None:
         if not re.fullmatch(r"127\.0\.0\.1:[0-9]+", address):
             raise RuntimeError("Unexpected CI proxy address")
@@ -183,7 +213,14 @@ class Pipeline:
         self.compose(
             "down", "--volumes", "--remove-orphans", "--timeout", "5", timeout=90
         )
-        for suffix in ("backend", "backend-tests", "frontend", "frontend-tests"):
+        for suffix in (
+            "backend",
+            "backend-tests",
+            "frontend",
+            "frontend-tests",
+            "postgres",
+            "proxy",
+        ):
             subprocess.run(
                 ["docker", "image", "rm", f"{self.project}-{suffix}:ci"],
                 cwd=self.root,
@@ -217,7 +254,7 @@ def main() -> int:
         return 1
     print(
         "CI passed: security scans, workflow, lint, format, types, tests, "
-        "builds and HTTP smoke."
+        "builds, HTTP smoke and runtime image/SBOM scans."
     )
     return 0
 

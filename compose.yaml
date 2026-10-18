@@ -1,7 +1,7 @@
 name: taller-carrillo
 
 x-backend: &backend
-  image: taller-carrillo-backend:dev
+  image: ${BACKEND_IMAGE:-taller-carrillo-backend:dev}
   build:
     context: ./backend
     target: runtime
@@ -32,7 +32,15 @@ x-backend: &backend
 
 services:
   db:
-    image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    image: ${POSTGRES_IMAGE:-taller-carrillo-postgres:dev}
+    build:
+      context: ./ops/postgres
+    user: "70:70"
+    read_only: true
+    tmpfs: [/tmp, /var/run/postgresql]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 90s
     environment:
       POSTGRES_USER: carrillo_bootstrap
       POSTGRES_DB: ${DB_NAME:?Generate the local environment first}
@@ -69,7 +77,7 @@ services:
       start_period: 5s
 
   frontend:
-    image: taller-carrillo-frontend:dev
+    image: ${FRONTEND_IMAGE:-taller-carrillo-frontend:dev}
     build:
       context: ./frontend
       target: runtime
@@ -97,7 +105,9 @@ services:
     network_mode: none
 
   proxy:
-    image: nginx:stable-alpine@sha256:970364228b1e4f932abc22d321932816782cca8a20b85a77552a7cfe9acfb3b5
+    image: ${PROXY_IMAGE:-taller-carrillo-proxy:dev}
+    build:
+      context: ./ops/proxy
     user: "101:101"
     entrypoint: ["nginx", "-g", "daemon off;"]
     configs:

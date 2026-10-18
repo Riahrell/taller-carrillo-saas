@@ -2,10 +2,11 @@
 
 import argparse
 import json
-import os
 import secrets
 import uuid
 from pathlib import Path
+
+from scripts.private_files import write_mount_secret
 
 
 def rotate(source: Path, destination: Path):
@@ -33,10 +34,7 @@ def rotate(source: Path, destination: Path):
     raw = json.dumps(data) + "\n"
     if len(raw) > 16384:
         raise ValueError("Retire old keys only after backup review")
-    with os.fdopen(
-        os.open(destination, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o444), "w"
-    ) as stream:
-        stream.write(raw)
+    write_mount_secret(destination, raw)
 
 
 def main():
