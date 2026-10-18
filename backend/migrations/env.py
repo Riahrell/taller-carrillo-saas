@@ -5,6 +5,7 @@ from alembic import context
 from app.core.config import load_settings
 from app.core.database import Base, build_engine, connect_safely
 from app.modules.access import models  # noqa: F401 -- register mapped tables
+from app.modules.catalog import models as catalog_models  # noqa: F401
 
 config = context.config
 target_metadata = Base.metadata

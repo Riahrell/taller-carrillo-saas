@@ -18,8 +18,9 @@ en local con catálogo e inventario. Los pendientes externos siguen siendo
 requisitos antes de publicar; esta decisión no declara cerrada la seguridad.
 El despliegue anterior de Contabo todavía no se ha sustituido.
 
-Inventario comienza con [cantidades exactas, entrega 3.1](docs/deliveries/inventory-3.1.md):
-validación interna probada, todavía sin pantallas ni operaciones de stock.
+Inventario incorpora [cantidades exactas, entrega 3.1](docs/deliveries/inventory-3.1.md)
+y [persistencia del catálogo, entrega 3.2](docs/deliveries/inventory-3.2.md).
+Todavía sin pantallas ni operaciones de stock habilitadas.
 
 - [Entrega 2.39](docs/deliveries/access-2.39.md) y
   [seguimiento/evidencia actuales](docs/access-closure-work.md).

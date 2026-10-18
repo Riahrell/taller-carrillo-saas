@@ -1,5 +1,10 @@
 # Modelo inicial y límites transaccionales
 
+Inventario 3.2 incorpora `categories` y `products` mediante `0030_catalog`.
+Contrato físico y límites actuales en `catalog-contract.md`. Solo persistencia:
+todavía sin rutas ni casos de uso comerciales. Las entidades restantes de la
+tabla objetivo de abajo siguen siendo diseño pendiente de implementar.
+
 Este documento distingue el modelo objetivo y los contratos implementados por
 entrega. Acceso 2.1 incorporó `tenants`, `users` y `tenant_memberships` mediante
 `0002_access`; las ampliaciones hasta 2.14 se detallan al final. La interfaz 2.15
