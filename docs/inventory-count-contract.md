@@ -20,7 +20,8 @@ corresponde el histórico y cuando no hay entrada. Conteo igual conserva exactam
 cantidad y valor: debe guardar evidencia, sin generar movimiento ficticio.
 
 Los componentes de entrada/valoración son puros. El servicio 3.9 descrito abajo
-los conecta con autorización y persistencia; todavía no existe HTTP de stock.
+los conecta con autorización y persistencia. 3.10 agrega HTTP privado según
+`inventory-http-contract.md`, todavía sin formulario de stock.
 
 ## Persistencia implementada en 3.8
 
@@ -93,10 +94,10 @@ rol admin y confirmación reciente. El módulo preexistente `access/administrati
 permanece intacto. La transacción usa los límites existentes de bloqueo/sentencia.
 
 La reconciliación cantidad/valor del libro frente al saldo se comprueba en pruebas;
-todavía no existe una herramienta operativa de reconciliación. HTTP, consulta
-paginada de existencias/movimientos e interfaz siguen pendientes. Los errores de
-valoración (por ejemplo falta de costo) aún son rechazos internos `ValueError`;
-el adaptador HTTP deberá traducirlos explícitamente sin publicar detalles internos.
+todavía no existe una herramienta operativa de reconciliación. 3.10 incorpora
+saldo y consulta paginada de conteos por producto; la interfaz sigue pendiente.
+Los errores de valoración (por ejemplo falta de costo) se traducen a
+`InventoryInvalid` y JSON 422 genérico sin publicar detalles internos.
 
 ## Pruebas de persistencia requeridas
 
@@ -106,5 +107,6 @@ misma clave igual/distinta; fallo de inserción de evidencia/movimiento/saldo y 
 commit; no-op con evidencia; conservación y reconciliación de cantidad/valor;
 prohibición SQL de editar evidencia; migración y downgrade que rechace borrar datos.
 Las pruebas de servicio ejecutan autorización, rollback y transacciones concurrentes
-en PostgreSQL. Antes de habilitar HTTP/formulario faltan sus pruebas de origen,
-CSRF, cookies, límite de cuerpo, contexto de navegador y errores seguros.
+en PostgreSQL. 3.10 añade pruebas HTTP de origen, CSRF, cookies, límite de cuerpo,
+contexto y errores seguros. El formulario necesitará validación propia antes de
+habilitar operaciones de inventario desde la interfaz.

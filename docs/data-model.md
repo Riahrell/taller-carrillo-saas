@@ -11,6 +11,9 @@ mediante `0032_stock_counts`. El esquema registra evidencia de conteo y vincula
 el movimiento a sus diferencias exactas por FK compuesta; no habilita aún un
 servicio ni HTTP de stock en esa entrega. 3.9 añade el servicio transaccional
 interno de conteos, sin rutas nuevas. Contrato en `inventory-count-contract.md`.
+3.10 conecta HTTP privado y agrega `0033_stock_history`, índice para historial
+cronológico por empresa/producto. No cambia las reglas de valoración ni crea
+existencias al consultar; contrato en `inventory-http-contract.md`.
 
 Las imágenes de producto se almacenarán en Object Storage de Contabo; la relación
 prevista `product_images` guardará referencias privadas y metadatos con vínculo

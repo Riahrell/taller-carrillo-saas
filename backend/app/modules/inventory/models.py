@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKeyConstraint,
+    Index,
     Numeric,
     String,
     UniqueConstraint,
@@ -43,6 +44,7 @@ class StockBalance(Base):
 class StockCountRecord(Base):
     __tablename__ = "stock_counts"
     __table_args__ = (
+        Index("ix_stock_counts_history", "tenant_id", "product_id", "created_at", "id"),
         UniqueConstraint("tenant_id", "operation_key"),
         UniqueConstraint(
             "tenant_id",

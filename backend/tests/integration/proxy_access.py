@@ -32,6 +32,7 @@ from app.modules.access.models import (
 )
 from app.modules.access.reauthentication import require_recent_administrator
 from app.modules.catalog.models import Category, Product
+from app.modules.inventory.models import StockBalance, StockCountRecord, StockMovement
 
 pytestmark = [
     pytest.mark.integration,
@@ -200,6 +201,91 @@ def test_private_catalog_creation_and_tenant_scope_through_real_proxy(http_ident
     finally:
         with state["owner"].begin() as connection:
             for model in (AuditEvent, Product, Category):
+                connection.execute(
+                    delete(model).where(
+                        model.tenant_id.in_([state["tenant"], state["other"]])
+                    )
+                )
+
+
+def test_inventory_count_replay_and_balance_through_real_proxy(http_identity):
+    from sqlalchemy import delete
+
+    state = http_identity
+    browser = Browser(state)
+    try:
+        with Session(state["runtime"]) as session, session.begin():
+            product = Product(
+                tenant_id=state["tenant"], name="Proxy stock", price="1.00"
+            )
+            foreign = Product(
+                tenant_id=state["other"], name="Hidden stock", price="1.00"
+            )
+            session.add_all([product, foreign])
+            session.flush()
+            product_id, foreign_id = str(product.id), str(foreign.id)
+        assert browser.request("/auth/csrf", headers=READ)[0] == 204
+        assert (
+            browser.request(
+                "/auth/login",
+                body={
+                    "email": state["email"],
+                    "password": state["password"].get_secret_value(),
+                },
+            )[0]
+            == 200
+        )
+        expected = {
+            "X-Expected-Membership": str(state["membership"]),
+            "Idempotency-Key": str(uuid4()),
+        }
+        body = {
+            "product_id": product_id,
+            "counted_quantity": "2",
+            "declared_unit_cost": "3",
+            "reason": "Proxy count",
+        }
+        status, evidence, headers = browser.request(
+            "/inventory/counts", body=body, headers=expected
+        )
+        assert status == 200 and evidence["after_value"] == "6.000000"
+        assert headers["Cache-Control"] == "no-store"
+        assert headers["X-Access-Membership"] == str(state["membership"])
+        assert (
+            browser.request("/inventory/counts", body=body, headers=expected)[1]
+            == evidence
+        )
+        assert browser.request(
+            f"/inventory/products/{product_id}/balance", headers=READ
+        )[1] == {
+            "product_id": product_id,
+            "quantity": "2.000",
+            "value": "6.000000",
+            "average_unit_cost": "3.000000",
+        }
+        assert browser.request(
+            f"/inventory/products/{product_id}/counts", headers=READ
+        )[1] == {
+            "items": [evidence],
+            "next_after": None,
+        }
+        assert (
+            browser.request(f"/inventory/products/{foreign_id}/balance", headers=READ)[
+                0
+            ]
+            == 403
+        )
+        assert (
+            browser.request(
+                "/inventory/counts",
+                body=body | {"reason": CANARY * 1000},
+                headers=expected,
+            )[0]
+            == 413
+        )
+    finally:
+        with state["owner"].begin() as connection:
+            for model in (StockMovement, StockCountRecord, StockBalance, Product):
                 connection.execute(
                     delete(model).where(
                         model.tenant_id.in_([state["tenant"], state["other"]])

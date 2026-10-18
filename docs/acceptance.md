@@ -6,6 +6,17 @@ aceptación externa antes de inventario quedan sustituidas en ese punto. Mantene
 las pruebas de permisos, aislamiento y consistencia de cada módulo; HTTPS,
 recuperación remota y aceptación operativa siguen pendientes antes de publicar.
 
+Requisitos de producto confirmados el 2026-10-18: ficha privada con imagen en
+Object Storage de Contabo, nombre/SKU/categoría/estado, existencia, costo promedio,
+precio de venta, valoración total e historial. La API 3.10 aporta saldo/costo y
+conteos; catálogo aporta datos comerciales. Imagen y ficha visual siguen pendientes.
+Sin existencia, costo promedio no calculable se representa como null; costo cero
+explícito con existencia es cero. Cambiar precio de venta no altera valoración.
+Área privada prevista en `panel.taller-carrillo.com/inventario`, vitrina pública
+en `taller-carrillo.com/productos`: solo productos publicados y datos autorizados,
+sin costos o cantidades exactas. Crear producto interno no lo publica. Verificar
+estos límites también en HTTP y medios, no solo ocultando columnas de interfaz.
+
 Estado: hito 0 documentado y fundación 1.4 implementada y validada integralmente
 en local. Workflow CI comprobado con actionlint; primera ejecución en GitHub
 pendiente porque no hay remoto configurado. Ese resultado remoto no se presume.

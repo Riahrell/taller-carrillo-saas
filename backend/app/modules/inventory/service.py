@@ -6,8 +6,8 @@ from datetime import datetime
 from decimal import ROUND_HALF_UP, Context, Decimal, localcontext
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
-from sqlalchemy import Engine, select
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_serializer
+from sqlalchemy import Engine, select, tuple_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -20,7 +20,7 @@ from app.modules.access.authentication import _limit_transaction
 from app.modules.access.membership import AccessDenied
 from app.modules.access.sessions import _database_now
 from app.modules.catalog.models import Product
-from app.modules.inventory.inputs import PhysicalCount
+from app.modules.inventory.inputs import CountPageQuery, PhysicalCount
 from app.modules.inventory.models import StockBalance, StockCountRecord, StockMovement
 from app.modules.inventory.valuation import StockValue
 
@@ -37,6 +37,10 @@ class InventoryUnavailable(RuntimeError):
     """Safe persistence failure; repeat only with the same operation key."""
 
 
+class InventoryInvalid(Exception):
+    """Requested count cannot be valued under the current stock rules."""
+
+
 class CountView(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     id: UUID
@@ -51,6 +55,42 @@ class CountView(BaseModel):
     reason: str
     declared_unit_cost: Decimal | None
     created_at: datetime
+    actor_membership_id: UUID = Field(exclude=True, repr=False)
+
+    @field_serializer(
+        "before_quantity", "after_quantity", "quantity_delta", when_used="json"
+    )
+    def quantity_json(self, value: Decimal) -> str:
+        return format(value, ".3f")
+
+    @field_serializer(
+        "before_value",
+        "after_value",
+        "value_delta",
+        "declared_unit_cost",
+        when_used="json",
+    )
+    def value_json(self, value: Decimal | None) -> str | None:
+        return format(value, ".6f") if value is not None else None
+
+
+class BalanceView(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    product_id: UUID
+    quantity: Decimal
+    value: Decimal
+    average_unit_cost: Decimal | None
+    actor_membership_id: UUID = Field(exclude=True, repr=False)
+
+    @field_serializer("average_unit_cost", when_used="json")
+    def cost_json(self, value: Decimal | None) -> str | None:
+        return format(value, ".6f") if value is not None else None
+
+
+class CountPage(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    items: tuple[CountView, ...]
+    next_after: UUID | None
     actor_membership_id: UUID = Field(exclude=True, repr=False)
 
 
@@ -86,9 +126,17 @@ class InventoryAdministrator:
         self._factory = create_session_factory(engine)
 
     @staticmethod
-    def _authorize(session: Session, token: SecretStr, expected_actor: UUID):
+    def _authorize(
+        session: Session,
+        token: SecretStr,
+        expected_actor: UUID | None,
+        *,
+        recent: bool = True,
+    ):
         try:
-            return authorize_administrator(session, token, expected_actor)
+            return authorize_administrator(
+                session, token, expected_actor, recent=recent
+            )
         except AdministrativeDenied:
             raise InventoryDenied("Access denied") from None
 
@@ -159,10 +207,13 @@ class InventoryAdministrator:
                         if balance
                         else StockValue(Decimal(0), Decimal(0))
                     )
-                    after = before.recount(
-                        data.counted_quantity,
-                        declared_unit_cost=data.declared_unit_cost,
-                    )
+                    try:
+                        after = before.recount(
+                            data.counted_quantity,
+                            declared_unit_cost=data.declared_unit_cost,
+                        )
+                    except ValueError:
+                        raise InventoryInvalid("Invalid physical count") from None
                     with localcontext(Context(prec=80, rounding=ROUND_HALF_UP)):
                         quantity_delta = after.quantity - before.quantity
                         value_delta = after.value - before.value
@@ -208,6 +259,99 @@ class InventoryAdministrator:
                     session.flush()
                     self._authorize(session, token, expected_actor)
                     result = self._view(record, actor.membership_id)
+            return result
+        except SQLAlchemyError:
+            raise InventoryUnavailable("Inventory unavailable") from None
+
+    @staticmethod
+    def _require_product(session: Session, tenant_id: UUID, product_id: UUID):
+        if not isinstance(product_id, UUID):
+            raise InventoryDenied("Access denied")
+        product = session.scalar(
+            select(Product.id).where(
+                Product.tenant_id == tenant_id,
+                Product.id == product_id,
+            )
+        )
+        if product is None:
+            raise InventoryDenied("Access denied")
+
+    def current_balance(
+        self,
+        token: SecretStr,
+        *,
+        product_id: UUID,
+        expected_actor: UUID | None = None,
+    ) -> BalanceView:
+        try:
+            with self._factory.begin() as session:
+                _limit_transaction(session)
+                actor = self._authorize(session, token, expected_actor, recent=False)
+                self._require_product(session, actor.tenant_id, product_id)
+                balance = session.get(StockBalance, (actor.tenant_id, product_id))
+                average_unit_cost = None
+                if balance is not None and balance.quantity > 0:
+                    with localcontext(Context(prec=80, rounding=ROUND_HALF_UP)):
+                        average_unit_cost = (balance.value / balance.quantity).quantize(
+                            Decimal("0.000001")
+                        )
+                result = BalanceView(
+                    product_id=product_id,
+                    quantity=balance.quantity if balance else Decimal("0.000"),
+                    value=balance.value if balance else Decimal("0.000000"),
+                    average_unit_cost=average_unit_cost,
+                    actor_membership_id=actor.membership_id,
+                )
+            return result
+        except SQLAlchemyError:
+            raise InventoryUnavailable("Inventory unavailable") from None
+
+    def list_counts(
+        self,
+        token: SecretStr,
+        *,
+        product_id: UUID,
+        query: CountPageQuery,
+        expected_actor: UUID | None = None,
+    ) -> CountPage:
+        if type(query) is not CountPageQuery:
+            raise InventoryDenied("Access denied")
+        query = CountPageQuery.model_validate(query.model_dump())
+        try:
+            with self._factory.begin() as session:
+                _limit_transaction(session)
+                actor = self._authorize(session, token, expected_actor, recent=False)
+                self._require_product(session, actor.tenant_id, product_id)
+                statement = select(StockCountRecord).where(
+                    StockCountRecord.tenant_id == actor.tenant_id,
+                    StockCountRecord.product_id == product_id,
+                )
+                if query.after is not None:
+                    cursor = session.scalar(
+                        statement.where(StockCountRecord.id == query.after)
+                    )
+                    if cursor is None:
+                        raise InventoryDenied("Access denied")
+                    statement = statement.where(
+                        tuple_(StockCountRecord.created_at, StockCountRecord.id)
+                        < (cursor.created_at, cursor.id)
+                    )
+                rows = list(
+                    session.scalars(
+                        statement.order_by(
+                            StockCountRecord.created_at.desc(),
+                            StockCountRecord.id.desc(),
+                        ).limit(query.limit + 1)
+                    )
+                )
+                items = tuple(
+                    self._view(row, actor.membership_id) for row in rows[: query.limit]
+                )
+                result = CountPage(
+                    items=items,
+                    next_after=items[-1].id if len(rows) > query.limit else None,
+                    actor_membership_id=actor.membership_id,
+                )
             return result
         except SQLAlchemyError:
             raise InventoryUnavailable("Inventory unavailable") from None

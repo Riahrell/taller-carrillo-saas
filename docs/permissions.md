@@ -12,6 +12,15 @@ concesiones por módulo y edición siguen pendientes.
 Contrato vigente: `catalog-contract.md`; las secciones numeradas de acceso son
 históricas y no sustituyen las garantías de la integración actual.
 
+Inventario 3.10: saldo, valoración/costo promedio e historial de conteos son
+consulta administrativa privada; registrar conteos exige además confirmación
+reciente y clave idempotente. Esta API no concede consulta operativa a cajero,
+mecánico ni solo lectura. La matriz inferior expresa el alcance objetivo; sus
+vistas operativas sin costos se implementarán por separado con sus restricciones.
+La vitrina pública tendrá únicamente productos publicados y datos autorizados,
+sin reutilizar los DTO internos de costo o existencias exactas. Ver
+`inventory-http-contract.md`.
+
 | Acción | Administrador | Cajero | Mecánico | Solo lectura |
 | --- | --- | --- | --- | --- |
 | Empresa, usuarios y roles | Sí | No | No | No |

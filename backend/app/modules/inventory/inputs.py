@@ -1,5 +1,6 @@
 """Desired physical count; prior stock, tenant and valuation remain server-owned."""
 
+import re
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
@@ -49,3 +50,18 @@ class PhysicalCount(BaseModel):
         ):
             raise ValueError("Cost outside exact NUMERIC(28,6) bounds")
         return cost
+
+
+class CountPageQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    limit: int = Field(default=25, ge=1, le=100, strict=True)
+    after: UUID | None = None
+
+    @field_validator("limit", mode="before")
+    @classmethod
+    def canonical_limit(cls, value: object) -> object:
+        if isinstance(value, str):
+            if re.fullmatch(r"[1-9][0-9]{0,2}", value, flags=re.ASCII) is None:
+                raise ValueError("Invalid page limit")
+            return int(value)
+        return value

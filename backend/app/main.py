@@ -38,6 +38,14 @@ from app.modules.catalog.service import (
     CatalogDenied,
     CatalogUnavailable,
 )
+from app.modules.inventory.routes import router as inventory_router
+from app.modules.inventory.service import (
+    InventoryAdministrator,
+    InventoryConflict,
+    InventoryDenied,
+    InventoryInvalid,
+    InventoryUnavailable,
+)
 
 
 class LivenessResponse(BaseModel):
@@ -61,6 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.access = await run_in_threadpool(HttpAccess, engine)
             app.state.membership_administrator = MembershipAdministrator(engine)
             app.state.catalog = CatalogAdministrator(engine)
+            app.state.inventory = InventoryAdministrator(engine)
             app.state.identity = IdentityAccess(
                 engine, configuration.identity_keys_file
             )
@@ -84,6 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(identity_router)
     application.include_router(administration_router)
     application.include_router(catalog_router)
+    application.include_router(inventory_router)
     application.add_middleware(HttpSecurityMiddleware, policy=http_security)
 
     def domain_error(status: int, detail: str) -> JSONResponse:
@@ -96,6 +106,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @application.exception_handler(CatalogDenied)
     async def catalog_denied(_request: Request, _error: CatalogDenied):
         return domain_error(403, "Access denied")
+
+    @application.exception_handler(InventoryDenied)
+    async def inventory_denied(_request: Request, _error: InventoryDenied):
+        return domain_error(403, "Access denied")
+
+    @application.exception_handler(InventoryConflict)
+    async def inventory_conflict(_request: Request, _error: InventoryConflict):
+        return domain_error(409, "Operation key conflict")
+
+    @application.exception_handler(InventoryInvalid)
+    async def inventory_invalid(_request: Request, _error: InventoryInvalid):
+        return domain_error(422, "Invalid physical count")
+
+    @application.exception_handler(InventoryUnavailable)
+    async def inventory_unavailable(_request: Request, _error: InventoryUnavailable):
+        return domain_error(503, "Inventory unavailable")
 
     @application.exception_handler(CatalogConflict)
     async def catalog_conflict(_request: Request, _error: CatalogConflict):
