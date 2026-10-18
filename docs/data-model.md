@@ -6,6 +6,11 @@ incorporó solo persistencia; 3.3 añade altas auditadas, 3.4 su API administrat
 y 3.5 la interfaz de catálogo. Las entidades restantes de la
 tabla objetivo de abajo siguen siendo diseño pendiente de implementar.
 
+Las imágenes de producto se almacenarán en Object Storage de Contabo; la relación
+prevista `product_images` guardará referencias privadas y metadatos con vínculo
+compuesto a empresa/producto. Contrato en `product-images-contract.md`, aún sin
+migración ni cambios de API. Se separa de las galerías de publicación pública.
+
 3.3 añade `0031_catalog_audit`: eventos tipados de alta de categoría/producto
 en `audit_events`, con FK compuestas, snapshots iniciales y protección de evidencia
 al revertir. Detalles y límites en `catalog-contract.md`. No añade stock.

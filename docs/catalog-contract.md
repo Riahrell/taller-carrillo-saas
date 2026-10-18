@@ -6,6 +6,10 @@ alta con autorización y auditoría. 3.4 conecta consultas y altas administrativ
 por HTTP; contrato en `catalog-http-contract.md`. 3.5 agrega la interfaz
 administrativa descrita en `catalog-ui-contract.md`.
 
+Requisito posterior confirmado: imágenes de producto en Object Storage de
+Contabo. Diseño y pruebas pendientes en `product-images-contract.md`; la
+ausencia de imágenes en la tabla actual no las excluye del alcance del catálogo.
+
 ## Persistencia 3.2
 
 - `categories`: UUID servidor, empresa, nombre, estado activo y creación UTC.
