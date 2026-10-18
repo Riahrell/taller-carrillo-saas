@@ -669,6 +669,58 @@ h1 span {
     flex-wrap: wrap;
   }
 }
+.catalog-toolbar,
+.catalog-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.catalog-manager {
+  overflow-wrap: anywhere;
+}
+.catalog-toolbar {
+  justify-content: space-between;
+  margin: 28px 0;
+}
+.catalog-tabs [aria-pressed="true"] {
+  background: var(--ink);
+  color: #fff;
+}
+.catalog-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 16px;
+}
+.catalog-list > li {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 24px;
+  border: 1px solid #cdd3c6;
+  border-radius: 12px;
+  padding: 24px;
+  background: #fff;
+  overflow-wrap: anywhere;
+}
+.catalog-list h3 {
+  margin: 0 0 8px;
+}
+.catalog-list dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin: 0;
+}
+.catalog-list dd {
+  margin: 6px 0 0;
+}
+.catalog-manager input,
+.catalog-manager select {
+  max-width: 100%;
+  min-width: 0;
+}
 @media (max-width: 760px) {
   .site-header {
     padding: 22px 6%;

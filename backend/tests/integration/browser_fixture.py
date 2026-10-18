@@ -9,13 +9,20 @@ from uuid import uuid4
 
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.modules.access.identity_http import IdentityAccess
 from app.modules.access.mfa_crypto import generate_totp_seed
-from app.modules.access.models import MfaCredential, Tenant, TenantMembership, User
+from app.modules.access.models import (
+    AuditEvent,
+    MfaCredential,
+    Tenant,
+    TenantMembership,
+    User,
+)
 from app.modules.access.passwords import hash_password
+from app.modules.catalog.models import Category, Product
 
 pytestmark = [
     pytest.mark.integration,
@@ -99,3 +106,10 @@ def test_hold_browser_identity(new_identity_scope):
             time.sleep(0.25)
     finally:
         target.unlink(missing_ok=True)
+        with state["owner"].begin() as connection:
+            for model in (AuditEvent, Product, Category):
+                connection.execute(
+                    delete(model).where(
+                        model.tenant_id.in_([state["tenant"], state["other"]])
+                    )
+                )

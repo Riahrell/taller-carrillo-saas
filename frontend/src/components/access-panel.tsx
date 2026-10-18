@@ -428,6 +428,11 @@ export default function AccessPanel() {
             </div>
           </dl>
           {view.session.role === "admin" && (
+            <Link className="action membership-link" href="/catalogo">
+              Administrar catálogo
+            </Link>
+          )}
+          {view.session.role === "admin" && (
             <Link className="action membership-link" href="/membresias">
               Administrar membresías
             </Link>

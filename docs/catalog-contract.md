@@ -3,7 +3,8 @@
 Fuente: alcance de catálogo del Plan Maestro v1.1, modelo y decisiones existentes.
 Se implementa por partes: 3.2 incorpora persistencia y 3.3 servicios internos de
 alta con autorización y auditoría. 3.4 conecta consultas y altas administrativas
-por HTTP; contrato en `catalog-http-contract.md`. Interfaz todavía pendiente.
+por HTTP; contrato en `catalog-http-contract.md`. 3.5 agrega la interfaz
+administrativa descrita en `catalog-ui-contract.md`.
 
 ## Persistencia 3.2
 

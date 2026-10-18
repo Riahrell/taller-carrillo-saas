@@ -1,8 +1,9 @@
 # Modelo inicial y límites transaccionales
 
 Inventario 3.2 incorpora `categories` y `products` mediante `0030_catalog`.
-Contrato físico y límites actuales en `catalog-contract.md`. Solo persistencia:
-todavía sin rutas ni casos de uso comerciales. Las entidades restantes de la
+Contrato físico y límites actuales en `catalog-contract.md`. Aquella entrega
+incorporó solo persistencia; 3.3 añade altas auditadas, 3.4 su API administrativa
+y 3.5 la interfaz de catálogo. Las entidades restantes de la
 tabla objetivo de abajo siguen siendo diseño pendiente de implementar.
 
 3.3 añade `0031_catalog_audit`: eventos tipados de alta de categoría/producto

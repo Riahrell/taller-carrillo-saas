@@ -24,7 +24,9 @@ La [entrega 3.3](docs/deliveries/inventory-3.3.md) añade altas internas con per
 precio exacto y auditoría atómica.
 La [entrega 3.4](docs/deliveries/inventory-3.4.md) conecta altas y consultas
 administrativas por API, con empresa de sesión y paginación limitada.
-Todavía sin pantallas ni operaciones de stock habilitadas.
+La [entrega 3.5](docs/deliveries/inventory-3.5.md) añade la pantalla `/catalogo`
+para listar y crear productos/categorías con revisión y confirmación de identidad.
+Todavía sin operaciones de stock habilitadas.
 
 - [Entrega 2.39](docs/deliveries/access-2.39.md) y
   [seguimiento/evidencia actuales](docs/access-closure-work.md).

@@ -6,6 +6,7 @@ import { identityApi } from "@/lib/access/identity";
 import { ApiError } from "@/lib/api/client";
 
 type Props = {
+  purpose?: string;
   session: SessionContext;
   onWriting: (value: boolean) => void;
   onChanged: () => void;
@@ -14,6 +15,7 @@ type Props = {
 };
 
 export default function IdentityConfirmation({
+  purpose = "administrar accesos",
   session,
   onWriting,
   onChanged,
@@ -118,8 +120,8 @@ export default function IdentityConfirmation({
       <p className="panel-step">PROTECCIÓN DE ACCESOS</p>
       <h2>Confirma tu identidad</h2>
       <p id="identity-help" className="field-help">
-        Para administrar accesos, escribe tu contraseña actual. La confirmación
-        dura como máximo cinco minutos y no prolonga tu sesión.
+        Para {purpose}, escribe tu contraseña actual. La confirmación dura como
+        máximo cinco minutos y no prolonga tu sesión.
       </p>
       {message && (
         <p className="access-message" role="alert" ref={notice} tabIndex={-1}>

@@ -47,7 +47,10 @@ informes iniciales; no se crearon excepciones para hacerlos pasar.
   del escáner. La inicialización de roles, permisos, migraciones y restauración
   debe probarse con ese usuario. Volúmenes anteriores con propietarios diferentes
   necesitan una migración operativa revisada; no ejecutar chown global.
-- El proxy incorpora libexpat 2.9.0-r0; las cuatro imágenes incorporan zlib
+- El proxy incorpora libexpat 2.9.0-r0 y, desde inventario 3.5, libx11 1.8.14-r0
+  y libxpm 3.5.20-r0. El escaneo con base del 2026-10-18T18:32:29Z detectó
+  nuevos avisos en las versiones anteriores: se aplican paquetes corregidos de
+  la distribución, sin excepción de runtime. Las cuatro imágenes incorporan zlib
   1.3.2-r1; PostgreSQL añade nghttp2-libs 1.70.0-r0. Versiones exactas mediante
   los repositorios firmados de Alpine. Si dejan de estar disponibles, el build
   falla y exige revisar los pins.
