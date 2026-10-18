@@ -976,3 +976,25 @@ revocación entre última validación y envío puede permitir que salga un corre
 ya inválido: el consumo vuelve a exigir estado vigente, sin autoridad del envío.
 Los futuros adaptadores deben imponer deadline total y usar origen HTTPS canónico;
 no pueden mapear fallos genéricos a NOT_SENT ni registrar el payload.
+
+## Acceso 2.33: incorporación TOTP inicial
+
+Intercambiar permiso de buzón una vez por setup cifrado, ligado al mismo navegador
+y al plazo de quince minutos desde contraseña. No revelar semilla de nuevo; si
+se pierde la respuesta, reiniciar el flujo explícitamente. La autoridad del setup
+no es la posesión de un ID: al activar se releen identidad, revisión, contraseña,
+correo exacto, prueba original y ausencia de todo historial de factor.
+
+Usar perfil/clave TOTP existentes; AAD usuario/UUID reservado del futuro factor.
+Reencriptar con la clave activa al confirmar y retirar ciphertext del setup.
+Compartir cuota MFA global IP/cuenta antes de locks de identidad. Código incorrecto
+gasta cuota, éxito no la reinicia. Consumir primer OTP, crear factor y diez hashes
+offline, avanzar revisión/revocar sesiones/pendientes y auditar en un commit.
+Sin sesión automática ni relectura de códigos. Pérdida de la respuesta tras commit
+requiere login MFA y futura regeneración segura, no replay de setup.
+
+No se añade marca User.email_verified ni backfill. La evidencia persistida de
+buzón está vinculada al valor exacto vigente durante la incorporación; su uso
+para elegibilidad de reset de contraseña debe integrarse explícitamente.
+Cierre/purga de setups conserva metadatos y retira payload; backups/WAL tienen
+retención propia, no se afirma borrado seguro de memoria o almacenamiento.

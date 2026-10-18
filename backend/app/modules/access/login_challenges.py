@@ -17,6 +17,7 @@ from app.modules.access.membership import AccessDenied
 from app.modules.access.models import (
     EnrollmentEmailChallenge,
     LoginChallenge,
+    MfaEnrollment,
     MfaPending,
     Tenant,
     TenantMembership,
@@ -104,6 +105,36 @@ def _close_pending(session: Session, user_id: UUID) -> None:
         session.flush()
 
 
+def _close_enrollments(
+    session: Session, user_id: UUID, binding_hash: str | None
+) -> None:
+    query = (
+        select(MfaEnrollment)
+        .join(
+            EnrollmentEmailChallenge,
+            EnrollmentEmailChallenge.id == MfaEnrollment.challenge_id,
+        )
+        .join(MfaPending, MfaPending.id == EnrollmentEmailChallenge.pending_id)
+        .where(
+            EnrollmentEmailChallenge.user_id == user_id,
+            MfaEnrollment.closed_at.is_(None),
+        )
+    )
+    if binding_hash is not None:
+        query = query.where(MfaPending.binding_hash == binding_hash)
+    rows = session.scalars(
+        query.order_by(MfaEnrollment.id)
+        .with_for_update(of=MfaEnrollment)
+        .execution_options(populate_existing=True)
+    ).all()
+    if rows:
+        now = _database_now(session)
+        for row in rows:
+            row.closed_at = max(now, row.created_at)
+            row.key_id = row.nonce = row.ciphertext = None
+        session.flush()
+
+
 def _close_enrollment_emails(
     session: Session, user_id: UUID, *, binding_hash: str | None = None
 ) -> None:
@@ -129,6 +160,7 @@ def _close_enrollment_emails(
             row.closed_at = max(now, row.created_at, row.consumed_at or row.created_at)
             discard_mail(session, row.id, row.closed_at)
         session.flush()
+    _close_enrollments(session, user_id, binding_hash)
 
 
 def revoke_user_challenges(session: Session, user_id: UUID) -> None:

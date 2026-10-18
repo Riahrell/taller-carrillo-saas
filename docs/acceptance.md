@@ -174,3 +174,10 @@ revalidación antes de enviar, límites exactos de lease/reintento/caducidad, ex
 y lease abandonado sin reenvío, rollback de claim/autorización y ACK fallido sin
 reintento. Confirmación de buzón/sesión no se deriva de aceptación de transporte.
 Seguridad sigue antes de inventario: criterios en access-security-closure.md.
+
+Acceso 2.33: setup solo con permiso fresco de buzón/navegador, cifrado y sin
+factor aún. Activar consume primer OTP, crea diez hashes offline ligados al
+usuario/conjunto, revoca globalmente y audita en un commit. Semilla/códigos solo
+tras commit y sin relectura. Probar cuotas compartidas, estado actual/plazo
+original, claves/AEAD, rollback, exclusión concurrente real y retención/purga.
+No atribuir a esto activación pública, QR/HTTPS o flujos de recuperación terminados.

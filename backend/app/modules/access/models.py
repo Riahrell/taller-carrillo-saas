@@ -300,6 +300,48 @@ class EnrollmentEmailChallenge(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class MfaEnrollment(Base):
+    """First-factor setup only; closed stages keep evidence without seed payload."""
+
+    __tablename__ = "mfa_enrollments"
+    __table_args__ = (
+        CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="token_hash_sha256"),
+        CheckConstraint(
+            "expires_at > created_at AND expires_at <= created_at + "
+            "interval '15 minutes'",
+            name="lifetime_bounds",
+        ),
+        CheckConstraint(
+            "(closed_at IS NULL AND activated_at IS NULL AND key_id IS NOT NULL "
+            "AND key_id ~ '^[A-Za-z0-9_-]{1,64}$' AND nonce IS NOT NULL AND "
+            "octet_length(nonce) = 12 AND ciphertext IS NOT NULL AND "
+            "octet_length(ciphertext) = 36) OR (closed_at IS NOT NULL AND "
+            "closed_at >= created_at AND key_id IS NULL AND nonce IS NULL AND "
+            "ciphertext IS NULL AND (activated_at IS NULL OR "
+            "(activated_at = closed_at AND activated_at < expires_at)))",
+            name="stage_state",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    challenge_id: Mapped[UUID] = mapped_column(
+        ForeignKey(
+            "enrollment_email_challenges.id",
+            ondelete="RESTRICT",
+            name="fk_mfa_enrollment_mail",
+        ),
+        unique=True,
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    key_id: Mapped[str | None] = mapped_column(String(64))
+    nonce: Mapped[bytes | None] = mapped_column(LargeBinary)
+    ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class EnrollmentMailOutbox(Base):
     """Encrypted initial MFA mail only; no plaintext token/address or SMTP state."""
 
@@ -543,6 +585,8 @@ class SecurityEvent(Base):
             "AND security_revision IS NOT NULL AND security_revision > 0) OR "
             "(action = 'mfa_enrollment_email_confirmed' AND credential_id IS NULL "
             "AND security_revision IS NOT NULL AND security_revision >= 0) OR "
+            "(action = 'mfa_enrolled' AND credential_id IS NOT NULL AND "
+            "security_revision IS NOT NULL AND security_revision > 0) OR "
             "(action IN ('mfa_totp_consumed', 'mfa_recovery_consumed') "
             "AND credential_id IS NOT NULL AND security_revision IS NULL)",
             name="action_state",
@@ -555,7 +599,8 @@ class SecurityEvent(Base):
         ),
         CheckConstraint(
             "action IN ('mfa_totp_consumed', 'mfa_recovery_consumed', "
-            "'security_revision_advanced', 'mfa_enrollment_email_confirmed')",
+            "'security_revision_advanced', 'mfa_enrollment_email_confirmed', "
+            "'mfa_enrolled')",
             name="action_allowed",
         ),
         CheckConstraint(

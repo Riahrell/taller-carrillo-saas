@@ -328,3 +328,11 @@ excepciones o respuesta del proveedor. Estados leased/retry/accepted/uncertain/
 rejected/cancelled; accepted significa aceptación del transporte, nunca buzón
 confirmado. DELETE runtime denegado y downgrade con cualquier fila rechazado.
 No es un historial por intento ni reemplaza eventos de seguridad.
+
+Acceso 2.33 (0019): mfa_enrollments referencia al desafío de buzón, tiene UUID
+reservado del futuro factor, hash del token de setup, fechas y semilla AEAD
+formato v1. Cerrado/activado conserva metadatos, sin key-ID/nonce/ciphertext.
+Un desafío por setup y token único. DELETE runtime denegado; downgrade con
+setup/evento mfa_enrolled rechazado incluso si está cerrado. SecurityEvent exige
+factor y revisión positiva para mfa_enrolled. Sin backfill, campos comerciales
+o verificación histórica de correo inventada.

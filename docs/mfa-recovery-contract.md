@@ -288,7 +288,11 @@ Se divide la entrega para revisar primero persistencia, claves y rollback.
 Ver [entrega 2.31](deliveries/access-2.31.md).
 2.32 implementa consumidor interno/leases con transporte simulado y revalidación,
 sin SMTP o worker operativo. Ver [entrega](deliveries/access-2.32.md).
-Sigue incorporación TOTP completa, recuperación,
+2.33 añade incorporación TOTP interna con permiso de buzón, setup cifrado, primer
+OTP consumido y diez códigos/revocación/auditoría en un commit (0019). El permiso
+se intercambia una vez por setup restringido; activar revalida toda la prueba
+original y conserva la caducidad. Sin sesión automática, HTTP o claves operativas.
+Sigue recuperación restringida con código offline,
 hooks de roles/factores y último admin, reautenticación MFA, UI y operación.
 Mantener el alcance de la puerta de seguridad previa al inventario.
 

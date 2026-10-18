@@ -9,6 +9,7 @@ from pathlib import Path
 from threading import Event
 from uuid import uuid4
 
+import pyotp
 import pytest
 from alembic import command
 from alembic.config import Config
@@ -22,11 +23,15 @@ from app.modules.access import (
     email_outbox,
     login_challenges,
     mail_delivery,
+    mfa_consumption,
+    mfa_enrollment,
     mfa_pending,
+    mfa_verification,
     security_state,
     sessions,
 )
 from app.modules.access import enrollment_email as service
+from app.modules.access.mfa_crypto import match_recovery_code
 from app.modules.access.mfa_sessions import MfaSessionIssuer
 from app.modules.access.models import (
     EnrollmentEmailChallenge,
@@ -36,7 +41,11 @@ from app.modules.access.models import (
     LoginChallenge,
     LoginThrottle,
     MfaCredential,
+    MfaEnrollment,
     MfaPending,
+    MfaRecoveryCode,
+    MfaRecoverySet,
+    MfaThrottle,
     SecurityEvent,
     SessionRecord,
     Tenant,
@@ -93,6 +102,24 @@ def state(mfa_state, monkeypatch):
         yield state
     finally:
         with state["owner"].begin() as connection:
+            connection.execute(delete(MfaEnrollment))
+            connection.execute(
+                delete(SecurityEvent).where(SecurityEvent.user_id == state["identity"])
+            )
+            connection.execute(
+                delete(MfaRecoveryCode).where(
+                    MfaRecoveryCode.set_id.in_(
+                        select(MfaRecoverySet.id).where(
+                            MfaRecoverySet.user_id == state["identity"]
+                        )
+                    )
+                )
+            )
+            connection.execute(
+                delete(MfaRecoverySet).where(
+                    MfaRecoverySet.user_id == state["identity"]
+                )
+            )
             connection.execute(delete(EnrollmentMailDelivery))
             connection.execute(
                 delete(EnrollmentMailOutbox).where(
@@ -1147,3 +1174,433 @@ def test_dispatch_delete_permissions_constraints_and_downgrade_guard(state, disp
         config.attributes["connection"] = connection
         command.downgrade(config, "0017_enrollment_mail_outbox")
     assert delivery_rows(state)[0].state == "accepted"
+
+
+@pytest.fixture
+def enrollment(state, monkeypatch):
+    monkeypatch.setattr(mfa_enrollment, "_database_now", lambda session: state["now"])
+    monkeypatch.setattr(mfa_verification, "_now", lambda session: state["now"])
+    monkeypatch.setattr(mfa_consumption, "_database_now", lambda session: state["now"])
+    # Synthetic fixture seed already avoids TOTP collisions across tested windows.
+    monkeypatch.setattr(mfa_enrollment, "generate_totp_seed", lambda: state["seed"])
+    worker = mfa_enrollment.MfaEnrollmentService(
+        state["runtime"], keyring=state["keyring"]
+    )
+    permit = confirm(state, issue(state))
+    return worker, permit
+
+
+def setup_factor(state, enrollment):
+    worker, permit = enrollment
+    return worker.begin(permit_token=permit.token, browser_binding=state["binding"])
+
+
+def otp_for(state, setup):
+    return SecretStr(
+        pyotp.TOTP(setup.seed.base32().get_secret_value()).at(state["now"])
+    )
+
+
+def activate_factor(state, enrollment, setup, **changes):
+    return enrollment[0].activate(
+        **(
+            dict(
+                setup_token=setup.token,
+                browser_binding=state["binding"],
+                code=otp_for(state, setup),
+                client_ip=ip_address("127.0.0.1"),
+            )
+            | changes
+        )
+    )
+
+
+def enrollment_rows(state):
+    with Session(state["runtime"]) as session:
+        return list(session.scalars(select(MfaEnrollment)))
+
+
+def test_enrollment_setup_requires_mail_proof_and_does_not_activate_or_reveal_again(
+    state, enrollment
+):
+    setup = setup_factor(state, enrollment)
+    assert setup.expires_at == state["pending"].expires_at
+    assert setup_factor(state, enrollment) is None
+    (stage,) = enrollment_rows(state)
+    assert setup.seed.base32().get_secret_value() not in repr(setup)
+    assert setup.seed.value.get_secret_value() not in stage.ciphertext
+    assert (
+        stage.token_hash != setup.token.get_secret_value() and stage.closed_at is None
+    )
+    with Session(state["runtime"]) as session:
+        assert (
+            session.scalar(
+                select(MfaCredential).where(MfaCredential.user_id == state["identity"])
+            )
+            is None
+        )
+
+
+def test_enrollment_activates_first_totp_offline_hashes_and_revokes_global_access(
+    state, enrollment
+):
+    setup = setup_factor(state, enrollment)
+    other_binding = SecretStr(secrets.token_urlsafe(32))
+    other_pending = start(state, binding=other_binding)
+    with Session(state["runtime"]) as session, session.begin():
+        old_session = SessionRecord(
+            tenant_id=state["tenant"],
+            membership_id=state["member"],
+            token_hash=secrets.token_hex(32),
+            security_revision=1,
+            created_at=state["now"],
+            last_seen_at=state["now"],
+            expires_at=state["now"] + timedelta(hours=8),
+        )
+        session.add(old_session)
+        session.flush()
+        old_session_id = old_session.id
+    bundle = activate_factor(state, enrollment, setup)
+    assert len(bundle.codes) == 10 and bundle.security_revision == 2
+    raw = [c.value.get_secret_value() for c in bundle.codes]
+    assert len(set(raw)) == 10 and all(value not in repr(bundle) for value in raw)
+    (stage,) = enrollment_rows(state)
+    assert stage.activated_at == stage.closed_at == state["now"]
+    assert stage.ciphertext is stage.nonce is stage.key_id is None
+    assert activate_factor(state, enrollment, setup) is None
+    with Session(state["runtime"]) as session:
+        factor = session.get(MfaCredential, bundle.credential_id)
+        assert factor.last_counter == int(state["now"].timestamp()) // 30
+        assert factor.last_verified_at == state["now"]
+        recovery_set = session.scalar(
+            select(MfaRecoverySet).where(MfaRecoverySet.credential_id == factor.id)
+        )
+        hashes = list(
+            session.scalars(
+                select(MfaRecoveryCode).where(MfaRecoveryCode.set_id == recovery_set.id)
+            )
+        )
+        assert len(hashes) == 10 and all(
+            row.used_at is None and len(row.code_hash) == 32 for row in hashes
+        )
+        assert all(
+            match_recovery_code(
+                bundle.codes[row.position],
+                row.code_hash,
+                user_id=state["identity"],
+                set_id=recovery_set.id,
+            )
+            for row in hashes
+        )
+        assert session.get(SessionRecord, old_session_id).revoked_at == state["now"]
+        assert all(
+            row.finished_at is not None
+            for row in session.scalars(
+                select(MfaPending).where(MfaPending.user_id == state["identity"])
+            )
+        )
+        events = list(
+            session.scalars(
+                select(SecurityEvent).where(SecurityEvent.action == "mfa_enrolled")
+            )
+        )
+        assert len(events) == 1 and events[0].security_revision == 2
+        assert events[0].credential_id == factor.id
+        assert (
+            service._consume_permit(
+                session, token=enrollment[1].token, browser_binding=state["binding"]
+            )
+            is None
+        )
+    # First OTP cannot also be used to log in; next normal login requires TOTP.
+    with Session(state["runtime"]) as session, session.begin():
+        assert (
+            mfa_consumption.consume_totp(
+                session,
+                user_id=state["identity"],
+                credential_id=bundle.credential_id,
+                code=otp_for(state, setup),
+                keyring=state["keyring"],
+            )
+            is None
+        )
+    next_pending = start(state)
+    assert next_pending.purpose == mfa_pending.PendingPurpose.LOGIN_TOTP
+    assert other_pending.token != next_pending.token
+
+
+def test_enrollment_bad_otp_commits_shared_failures_without_activating(
+    state, enrollment
+):
+    setup = setup_factor(state, enrollment)
+    otp = pyotp.TOTP(setup.seed.base32().get_secret_value())
+    invalid = next(
+        f"{i:06d}"
+        for i in range(10)
+        if f"{i:06d}"
+        not in {
+            otp.at(state["now"] + timedelta(seconds=offset)) for offset in (-30, 0, 30)
+        }
+    )
+    for _ in range(5):
+        assert (
+            activate_factor(state, enrollment, setup, code=SecretStr(invalid)) is None
+        )
+    assert activate_factor(state, enrollment, setup) is None
+    assert enrollment_rows(state)[0].activated_at is None
+    with Session(state["runtime"]) as session:
+        assert {r.failures for r in session.scalars(select(MfaThrottle))} == {5}
+        assert (
+            session.scalar(
+                select(MfaCredential).where(MfaCredential.user_id == state["identity"])
+            )
+            is None
+        )
+
+
+@pytest.mark.parametrize(
+    "what", ["binding", "token", "email", "password", "revision", "inactive", "expired"]
+)
+def test_enrollment_revalidates_current_identity_proof_browser_and_deadline(
+    state, enrollment, what
+):
+    setup = setup_factor(state, enrollment)
+    changes = {}
+    if what == "binding":
+        changes["browser_binding"] = SecretStr(secrets.token_urlsafe(32))
+    elif what == "token":
+        changes["setup_token"] = enrollment[1].token
+    elif what == "expired":
+        state["now"] = setup.expires_at
+    else:
+        with Session(state["runtime"]) as session, session.begin():
+            user = session.get(User, state["identity"])
+            if what == "email":
+                user.email = secrets.token_hex(6) + "@example.invalid"
+            elif what == "password":
+                user.password_hash = hash_password(SecretStr(secrets.token_urlsafe(32)))
+            elif what == "revision":
+                user.security_revision += 1
+            else:
+                user.is_active = False
+    assert activate_factor(state, enrollment, setup, **changes) is None
+    assert enrollment_rows(state)[0].activated_at is None
+
+
+@pytest.mark.parametrize("reason", ["browser", "global", "expired"])
+def test_enrollment_revocation_and_expiry_purge_remove_staged_seed(
+    state, enrollment, reason
+):
+    setup = setup_factor(state, enrollment)
+    if reason == "browser":
+        start(state)
+    elif reason == "global":
+        with Session(state["runtime"]) as session, session.begin():
+            login_challenges.revoke_user_challenges(session, state["identity"])
+    else:
+        state["now"] = setup.expires_at
+        assert mfa_enrollment.purge_expired_enrollments(state["runtime"], limit=1) == 1
+        assert mfa_enrollment.purge_expired_enrollments(state["runtime"]) == 0
+    (stage,) = enrollment_rows(state)
+    assert stage.closed_at is not None and stage.ciphertext is None
+    assert activate_factor(state, enrollment, setup) is None
+
+
+@pytest.mark.parametrize("stage", ["begin", "activate"])
+def test_enrollment_commit_failure_never_publishes_seed_codes_or_partial_factor(
+    state, enrollment, stage
+):
+    worker, _ = enrollment
+    setup = setup_factor(state, enrollment) if stage == "activate" else None
+
+    def fail(session):
+        raise SQLAlchemyError("Synthetic enrollment commit failure")
+
+    event.listen(worker._factory, "before_commit", fail, once=True)
+    with pytest.raises(mfa_enrollment.MfaEnrollmentUnavailable):
+        activate_factor(state, enrollment, setup) if setup else setup_factor(
+            state, enrollment
+        )
+    with Session(state["runtime"]) as session:
+        assert (
+            session.scalar(
+                select(MfaCredential).where(MfaCredential.user_id == state["identity"])
+            )
+            is None
+        )
+        user = session.get(User, state["identity"])
+        assert user.security_revision == 1
+    if stage == "begin":
+        assert not enrollment_rows(state)
+        assert setup_factor(state, enrollment) is not None
+    else:
+        assert enrollment_rows(state)[0].closed_at is None
+        assert activate_factor(state, enrollment, setup) is not None
+
+
+@pytest.mark.parametrize(
+    "table", ["security_events", "mfa_recovery_codes", "mfa_credentials"]
+)
+def test_enrollment_real_write_failure_rolls_back_activation_and_revocation(
+    state, enrollment, table
+):
+    setup = setup_factor(state, enrollment)
+    with state["owner"].begin() as connection:
+        connection.execute(text(f"REVOKE INSERT ON {table} FROM carrillo_app"))
+    try:
+        with pytest.raises(mfa_enrollment.MfaEnrollmentUnavailable):
+            activate_factor(state, enrollment, setup)
+        assert enrollment_rows(state)[0].closed_at is None
+        with Session(state["runtime"]) as session:
+            assert session.get(User, state["identity"]).security_revision == 1
+            assert (
+                session.scalar(
+                    select(MfaCredential).where(
+                        MfaCredential.user_id == state["identity"]
+                    )
+                )
+                is None
+            )
+    finally:
+        with state["owner"].begin() as connection:
+            connection.execute(text(f"GRANT INSERT ON {table} TO carrillo_app"))
+    assert activate_factor(state, enrollment, setup) is not None
+
+
+def test_enrollment_concurrent_activation_returns_codes_once(
+    state, enrollment, monkeypatch
+):
+    worker, _ = enrollment
+    setup = setup_factor(state, enrollment)
+    entered, release, started = Event(), Event(), Event()
+    pids = []
+    original = mfa_verification._lock_bucket
+
+    def observe(session, scope, key_hash):
+        if entered.is_set() and not release.is_set():
+            pids.append(session.scalar(text("SELECT pg_backend_pid()")))
+            started.set()
+        return original(session, scope, key_hash)
+
+    def pause(session):
+        if not entered.is_set():
+            entered.set()
+            if not release.wait(10):
+                raise TimeoutError("Synthetic activation contention")
+
+    event.listen(worker._factory, "before_commit", pause)
+    monkeypatch.setattr(mfa_verification, "_lock_bucket", observe)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(activate_factor, state, enrollment, setup)
+        try:
+            assert entered.wait(5)
+            second = pool.submit(activate_factor, state, enrollment, setup)
+            assert started.wait(5)
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                with state["owner"].connect() as connection:
+                    if connection.scalar(
+                        text("SELECT cardinality(pg_blocking_pids(:pid)) > 0"),
+                        {"pid": pids[0]},
+                    ):
+                        break
+                time.sleep(0.01)
+            else:
+                pytest.fail("Second activation did not block on the shared MFA gate")
+        finally:
+            release.set()
+        assert first.result(timeout=5) is not None and second.result(timeout=5) is None
+    with Session(state["runtime"]) as session:
+        assert (
+            len(
+                list(
+                    session.scalars(
+                        select(SecurityEvent).where(
+                            SecurityEvent.action == "mfa_enrolled"
+                        )
+                    )
+                )
+            )
+            == 1
+        )
+
+
+def test_enrollment_delete_checks_and_downgrade_preserve_staged_evidence(
+    state, enrollment
+):
+    setup_factor(state, enrollment)
+    with pytest.raises(DBAPIError), state["runtime"].begin() as connection:
+        connection.execute(delete(MfaEnrollment))
+    with pytest.raises(IntegrityError), state["runtime"].begin() as connection:
+        connection.execute(update(MfaEnrollment).values(ciphertext=None))
+    config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    with (
+        pytest.raises(DBAPIError, match="Downgrade refused"),
+        state["owner"].begin() as connection,
+    ):
+        config.attributes["connection"] = connection
+        command.downgrade(config, "0018_mail_delivery")
+
+
+@pytest.mark.parametrize("failure", ["missing_key", "tamper"])
+def test_enrollment_seed_protection_failure_never_activates_factor(
+    state, enrollment, failure
+):
+    setup = setup_factor(state, enrollment)
+    if failure == "missing_key":
+        from app.modules.access.mfa_crypto import SeedKeyring
+
+        enrollment[0]._keyring = SeedKeyring(
+            {"other": SecretBytes(secrets.token_bytes(32))}, active_key_id="other"
+        )
+    else:
+        (row,) = enrollment_rows(state)
+        with state["runtime"].begin() as connection:
+            connection.execute(
+                update(MfaEnrollment).values(
+                    ciphertext=bytes([row.ciphertext[0] ^ 1]) + row.ciphertext[1:]
+                )
+            )
+    with pytest.raises(
+        mfa_enrollment.MfaEnrollmentUnavailable, match="^MFA enrollment unavailable$"
+    ):
+        activate_factor(state, enrollment, setup)
+    assert enrollment_rows(state)[0].closed_at is None
+    with Session(state["runtime"]) as session:
+        assert session.get(User, state["identity"]).security_revision == 1
+        assert (
+            session.scalar(
+                select(MfaCredential).where(MfaCredential.user_id == state["identity"])
+            )
+            is None
+        )
+        assert not list(session.scalars(select(MfaThrottle)))
+
+
+def test_enrollment_expiry_after_activation_work_rolls_back_every_effect(
+    state, enrollment, monkeypatch
+):
+    setup = setup_factor(state, enrollment)
+    count = 0
+
+    def clock(session):
+        nonlocal count
+        count += 1
+        return setup.expires_at if count == 3 else state["now"]
+
+    monkeypatch.setattr(mfa_enrollment, "_database_now", clock)
+    assert activate_factor(state, enrollment, setup) is None
+    assert count == 3 and enrollment_rows(state)[0].closed_at is None
+    with Session(state["runtime"]) as session:
+        assert session.get(User, state["identity"]).security_revision == 1
+        assert (
+            session.scalar(
+                select(MfaCredential).where(MfaCredential.user_id == state["identity"])
+            )
+            is None
+        )
+        assert not list(
+            session.scalars(
+                select(SecurityEvent).where(SecurityEvent.action == "mfa_enrolled")
+            )
+        )

@@ -284,9 +284,10 @@ class EnrollmentEmailService:
 def _consume_permit(
     session: Session, *, token: SecretStr, browser_binding: SecretStr
 ) -> EnrollmentAuthorization | None:
-    """Compose with initial-factor activation in the SAME owning transaction.
+    """Compose with restricted setup creation or activation in the owning transaction.
 
     This does not activate a factor. Caller must roll back any later failure.
+    A persisted setup must revalidate the original proof on every later action.
     """
     token_hash = _hash(token, "enrollment-mail-permit-v1:")
     binding_hash = _hash(browser_binding, "mfa-pending-browser-v1:")

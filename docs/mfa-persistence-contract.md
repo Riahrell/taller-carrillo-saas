@@ -137,3 +137,17 @@ base/head/base/head se conserva; no eliminar evidencia para forzarlo.
 2.25 amplía security_events con security_revision_advanced: factor nulo, revisión
 positiva y FK directa al sujeto. Los eventos MFA conservan factor obligatorio y
 revisión nula. Ver `deliveries/access-2.25.md`; no hay auditoría histórica inventada.
+
+## Actualización 2.33
+
+0019 agrega setup inicial cifrado separado del factor. El permiso de buzón se
+consume al crear ese setup en un commit; activar revalida la prueba original,
+navegador, revisión, contraseña, dirección, ausencia de historial de factor y
+plazo original. No confiar en un contexto de autorización devuelto por otra
+transacción sin esa revalidación.
+
+Activación confirma el primer OTP y exactamente diez hashes, cierra/limpia setup,
+avanza revisión/revoca acceso global y audita mfa_enrolled en un commit. Ese evento
+exige factor y revisión positiva; no es sesión ni consumo de código offline.
+No repetir semilla/códigos por lectura o reenvío de respuesta.
+Ver deliveries/access-2.33.md; las secciones 2.22–2.25 anteriores son históricas.
