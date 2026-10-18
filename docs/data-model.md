@@ -5,6 +5,10 @@ Contrato físico y límites actuales en `catalog-contract.md`. Solo persistencia
 todavía sin rutas ni casos de uso comerciales. Las entidades restantes de la
 tabla objetivo de abajo siguen siendo diseño pendiente de implementar.
 
+3.3 añade `0031_catalog_audit`: eventos tipados de alta de categoría/producto
+en `audit_events`, con FK compuestas, snapshots iniciales y protección de evidencia
+al revertir. Detalles y límites en `catalog-contract.md`. No añade stock.
+
 Este documento distingue el modelo objetivo y los contratos implementados por
 entrega. Acceso 2.1 incorporó `tenants`, `users` y `tenant_memberships` mediante
 `0002_access`; las ampliaciones hasta 2.14 se detallan al final. La interfaz 2.15

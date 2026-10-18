@@ -1,6 +1,7 @@
 """Access persistence. No credentials, initial users or privileged role defaults."""
 
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 from uuid import UUID, uuid4
 
@@ -14,6 +15,7 @@ from sqlalchemy import (
     Index,
     Integer,
     LargeBinary,
+    Numeric,
     String,
     UniqueConstraint,
     false,
@@ -24,6 +26,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from app.core.database import Base
+from app.modules.catalog import models as catalog_models  # noqa: F401 -- audit FK targets
 
 
 class MembershipRole(StrEnum):
@@ -941,13 +944,18 @@ class AuditEvent(Base):
             name="fk_audit_events_target_membership",
         ),
         CheckConstraint(
-            "action IN ('membership_changed', 'membership_created')",
+            "action IN ('membership_changed', 'membership_created', "
+            "'catalog_category_created', 'catalog_product_created')",
             name="action_allowed",
         ),
         CheckConstraint(
+            "(action IN ('membership_changed', 'membership_created') AND "
+            "after_role IS NOT NULL AND "
             "(before_role IS NULL OR before_role IN "
             "('admin', 'cashier', 'mechanic', 'read_only')) AND "
-            "after_role IN ('admin', 'cashier', 'mechanic', 'read_only')",
+            "after_role IN ('admin', 'cashier', 'mechanic', 'read_only')) OR "
+            "(action IN ('catalog_category_created', 'catalog_product_created') "
+            "AND before_role IS NULL AND after_role IS NULL)",
             name="roles_allowed",
         ),
         CheckConstraint(
@@ -955,21 +963,57 @@ class AuditEvent(Base):
             "AND before_active IS NOT NULL AND "
             "(before_role <> after_role OR before_active <> after_active)) OR "
             "(action = 'membership_created' AND before_role IS NULL "
+            "AND before_active IS NULL AND after_active IS TRUE) OR "
+            "(action IN ('catalog_category_created', 'catalog_product_created') "
             "AND before_active IS NULL AND after_active IS TRUE)",
             name="state_changed",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "catalog_category_id"],
+            ["categories.tenant_id", "categories.id"],
+            ondelete="RESTRICT",
+            name="fk_audit_events_catalog_category",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "catalog_product_id"],
+            ["products.tenant_id", "products.id"],
+            ondelete="RESTRICT",
+            name="fk_audit_events_catalog_product",
+        ),
+        CheckConstraint(
+            "(action IN ('membership_changed', 'membership_created') AND "
+            "target_membership_id IS NOT NULL AND catalog_category_id IS NULL "
+            "AND catalog_product_id IS NULL AND catalog_name IS NULL "
+            "AND catalog_sku IS NULL AND catalog_price IS NULL) OR "
+            "(action = 'catalog_category_created' AND target_membership_id IS NULL "
+            "AND catalog_category_id IS NOT NULL AND catalog_product_id IS NULL "
+            "AND catalog_name IS NOT NULL AND length(trim(catalog_name)) > 0 "
+            "AND catalog_sku IS NULL AND catalog_price IS NULL) OR "
+            "(action = 'catalog_product_created' AND target_membership_id IS NULL "
+            "AND catalog_product_id IS NOT NULL AND catalog_name IS NOT NULL "
+            "AND length(trim(catalog_name)) > 0 AND catalog_price IS NOT NULL "
+            "AND catalog_price >= 0 AND catalog_price < 'Infinity'::numeric "
+            "AND (catalog_sku IS NULL OR (catalog_sku = trim(catalog_sku) "
+            "AND length(catalog_sku) > 0)))",
+            name="target_shape",
         ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     tenant_id: Mapped[UUID] = mapped_column(index=True)
     actor_membership_id: Mapped[UUID] = mapped_column()
-    target_membership_id: Mapped[UUID] = mapped_column()
+    target_membership_id: Mapped[UUID | None] = mapped_column()
     action: Mapped[str] = mapped_column(String(32))
     before_role: Mapped[str | None] = mapped_column(String(16))
-    after_role: Mapped[str] = mapped_column(String(16))
+    after_role: Mapped[str | None] = mapped_column(String(16))
     before_active: Mapped[bool | None] = mapped_column(Boolean)
     after_active: Mapped[bool] = mapped_column(Boolean)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    catalog_category_id: Mapped[UUID | None] = mapped_column()
+    catalog_product_id: Mapped[UUID | None] = mapped_column()
+    catalog_name: Mapped[str | None] = mapped_column(String(200))
+    catalog_sku: Mapped[str | None] = mapped_column(String(100))
+    catalog_price: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
 
 
 class MfaCredential(Base):

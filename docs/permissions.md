@@ -3,6 +3,13 @@
 Permisos comprobados en backend y con tenant autorizado en todas las operaciones.
 Lo no concedido se deniega. Los controles de interfaz solo acompañan esa decisión.
 
+Catálogo 3.3: solo servicios internos de alta de productos/categorías, exigen
+sesión admin y confirmación reciente dentro de su transacción, con auditoría.
+No están expuestos por HTTP. Cajero/mecánico/solo lectura no pueden crear.
+Consulta de catálogo, concesiones por módulo y edición siguen pendientes.
+Contrato vigente: `catalog-contract.md`; las secciones numeradas de acceso son
+históricas y no sustituyen las garantías de la integración actual.
+
 | Acción | Administrador | Cajero | Mecánico | Solo lectura |
 | --- | --- | --- | --- | --- |
 | Empresa, usuarios y roles | Sí | No | No | No |

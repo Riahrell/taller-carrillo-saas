@@ -20,6 +20,8 @@ El despliegue anterior de Contabo todavía no se ha sustituido.
 
 Inventario incorpora [cantidades exactas, entrega 3.1](docs/deliveries/inventory-3.1.md)
 y [persistencia del catálogo, entrega 3.2](docs/deliveries/inventory-3.2.md).
+La [entrega 3.3](docs/deliveries/inventory-3.3.md) añade altas internas con permisos,
+precio exacto y auditoría atómica.
 Todavía sin pantallas ni operaciones de stock habilitadas.
 
 - [Entrega 2.39](docs/deliveries/access-2.39.md) y

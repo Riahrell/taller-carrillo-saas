@@ -74,6 +74,8 @@ def upgrade():
 
 def downgrade():
     # Never silently erase an operational catalog to downgrade the application.
+    # Freeze writes before inspecting emptiness, closing the check/drop race.
+    op.execute("LOCK TABLE products, categories IN ACCESS EXCLUSIVE MODE")
     connection = op.get_bind()
     if connection.execute(
         sa.text(
