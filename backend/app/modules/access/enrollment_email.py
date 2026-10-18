@@ -5,7 +5,6 @@ Issuance composes encrypted staging/quota atomically; no worker sends messages.
 A permit authorizes only the future initial factor use case.
 """
 
-import hashlib
 import hmac
 import secrets
 from dataclasses import dataclass
@@ -27,6 +26,10 @@ from app.modules.access.email_outbox import (
     reserve_mail,
 )
 from app.modules.access.login_challenges import _password_fingerprint
+from app.modules.access.mailbox_verification import (
+    enrollment_address_fingerprint as _email_fingerprint,
+)
+from app.modules.access.mailbox_verification import record_confirmed_mailbox
 from app.modules.access.membership import AccessDenied
 from app.modules.access.models import (
     EnrollmentEmailChallenge,
@@ -43,6 +46,10 @@ class EnrollmentEmailUnavailable(RuntimeError):
     """Generic DB/time failure; never publish a secret before commit."""
 
 
+class _ConfirmationExpired(Exception):
+    """Roll back proof and eligibility when the original deadline is exceeded."""
+
+
 @dataclass(frozen=True)
 class EmailDeliveryDraft:
     recipient: SecretStr
@@ -57,15 +64,6 @@ class EnrollmentAuthorization:
     user_id: UUID
     challenge_id: UUID
     expires_at: datetime
-
-
-def _email_fingerprint(user: User) -> str:
-    return hashlib.sha256(
-        b"carrillo:enrollment-mail-address:v1\x00"
-        + user.id.bytes
-        + b"\x00"
-        + user.email.encode("utf-8")
-    ).hexdigest()
 
 
 def _initial_factor_allowed(session: Session, user: User) -> bool:
@@ -265,6 +263,7 @@ class EnrollmentEmailService:
                     token, "enrollment-mail-permit-v1:"
                 )
                 discard_mail(session, row.id, now)
+                record_confirmed_mailbox(session, user=user, challenge=row, now=now)
                 session.add(
                     SecurityEvent(
                         user_id=user.id,
@@ -275,8 +274,15 @@ class EnrollmentEmailService:
                     )
                 )
                 session.flush()
+                finished_at = _database_now(session)
+                if finished_at < now:
+                    raise EnrollmentEmailUnavailable("Enrollment email unavailable")
+                if finished_at >= row.expires_at:
+                    raise _ConfirmationExpired
                 result = mfa_pending.PendingToken(token, row.expires_at)
             return result
+        except _ConfirmationExpired:
+            return None
         except SQLAlchemyError:
             raise EnrollmentEmailUnavailable("Enrollment email unavailable") from None
 

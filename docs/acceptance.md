@@ -199,3 +199,7 @@ No se atribuye regeneración voluntaria, UI o recuperación excepcional completa
 ## 2.36 — Regeneración interna de códigos
 
 Sesión con prueba persistida de contraseña/TOTP vigentes; rechazo de expiración exacta, cambios de contraseña/revisión/actividad/membresía/factor/conjunto y sesión sin MFA. Diez hashes nuevos, factor/contador intactos, conjunto viejo invalidado, revocación/revisión/evento atómicos; rollback por commit/escritura/caducidad final y un único resultado concurrente. Sin relectura tras éxito; downgrade preserva evidencia. Ver entrega para resultados ejecutados.
+
+## 2.37 — Elegibilidad del buzón
+
+Sin elegibilidad por existencia del usuario, emisión/inspección/envío; confirmación nueva crea prueba con propietario exacto. Rechazar cuenta inactiva, hashes incoherentes, fecha futura e invalidación. Conservar evidencia tras caducidad/cierre/password/revisión, sin sesiones o factores nuevos. Cambio de correo invalida, reversión no revive, rollback revierte invalidación; confirmación concurrente al cambio no acredita dirección antigua. Confirmación y evidencia atómicas ante fallo SQL/commit/plazo final. Restricciones DB y downgrade preservan evidencia. Resultados ejecutados en entrega 2.37.

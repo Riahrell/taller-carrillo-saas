@@ -88,10 +88,44 @@ servicios ahora. Tener el proveedor pendiente no bloquea el diseño/pruebas loca
 En la entrega inicial, solo documentación. Comando ejecutado: `git diff --check`; resultado exit 0,
 sin errores de whitespace. No se ejecutan ni se atribuyen pruebas funcionales
 nuevas a este diseño.
-La entrega ejecutable vigente es 2.35; «Olvidé mi contraseña» sigue sin estar
+La entrega ejecutable vigente es 2.37; «Olvidé mi contraseña» sigue sin estar
 disponible. 2.31 añade staging cifrado/cuotas para incorporación, aún sin emisor.
 2.32 añade consumidor con transporte simulado, sin envío real.
 2.33 confirma TOTP/códigos internamente; reset de contraseña sigue pendiente.
 2.34 inicia recuperación con código offline, sin usar correo como segundo factor.
 2.35 confirma el factor sustituto con TOTP nuevo, sin usar correo como segundo factor.
 Resultados de esta base interna en `deliveries/access-2.35.md`.
+
+## Elegibilidad persistida 2.37
+
+Una confirmación nueva de incorporación MFA registra `verified_mailboxes` en el
+mismo commit que el consumo, permiso restringido, descarte de outbox y evento
+`mfa_enrollment_email_confirmed`. La prueba previa ya exige contraseña, navegador
+y control del buzón exacto. No se convierten registros históricos ni correos
+actuales en verificados por migración/backfill. No basta emitir, inspeccionar o
+recibir aceptación del transporte. El registro no contiene token o dirección en
+claro: guarda hash por usuario/dirección, fecha y desafío fuente propietario.
+
+El lector interno `lock_eligible_mailbox` conserva lock del usuario y revalida
+cuenta activa, dirección exacta, fecha y origen confirmado. Su resultado solo
+vale dentro de la transacción; no permite reset, emitir sesión, elegir empresa o
+omitir MFA. Verificación histórica del buzón sobrevive cierre/caducidad del
+desafío, cambio de contraseña/revisión y factor; la prueba fresca para un reset
+deberá ser su propio token de propósito separado. No reactivar cuenta/membresía.
+Una membresía deshabilitada no impide acreditar el buzón global, pero nunca se
+habilita ni concede acceso como resultado de este lector.
+
+Un trigger transaccional invalida la evidencia vigente cuando cambia `users.email`,
+incluso con UPDATE directo; volver a la dirección anterior no la reactiva. No
+implementa un flujo de cambio de correo autorizado, sus revocaciones/avisos ni
+defensa ante un actor SQL privilegiado. Una confirmación posterior conserva
+historia e invalida la evidencia anterior. Runtime no puede borrarla; downgrade
+con cualquier evidencia, incluso invalidada, está bloqueado.
+
+Esta entrega cubre cuentas que confirmen el buzón durante incorporación MFA.
+La verificación general ligada a sesión para cuentas sin MFA sigue pendiente: no
+se les habilita recuperación por una dirección todavía no probada. Tampoco se
+requiere haber configurado MFA para diseñar ese futuro recorrido. Próxima tarea:
+emisión/consumo transaccional del reset para buzones elegibles, conservando MFA y
+códigos sin usar, con correo cifrado y cuotas por propósito coordinadas. No
+reutilizar el permiso de incorporación como token de reset.

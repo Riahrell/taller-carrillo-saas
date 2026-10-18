@@ -141,3 +141,7 @@ rutas/QR/UI o factores reales habilitados por esta entrega.
 ## 2.36 — Regeneración interna
 
 Códigos nuevos solo después del commit, prueba combinada del login menor de cinco minutos, sesión/revisión/factor/membresía vigentes del servidor. Sin secretos nuevos que verificar ni bypass de cuotas del login. Factor conservado; revisión/revocación evitan replay. HTTP/UI, reautenticación, avisos, reset/eligibilidad de buzón, hooks de rol/último admin y operación siguen abiertos. Próxima tarea: elegibilidad explícita del correo para reset; no usar una marca histórica o permitir email-only MFA.
+
+## 2.37 — Elegibilidad de correo
+
+Registro interno de evidencia exacta al confirmar buzón, separado de permiso MFA y futuro reset. Sin backfill. Trigger de cambio de dirección, revalidación bajo lock, fecha y propietario; confirmación revierte si vence al terminar. No habilita recuperación por sí solo ni elimina MFA/códigos. Falta reset/cola propia, verificación general para cuentas sin MFA, avisos, integración HTTP/UI y operación. Conservar excepción SEC-2026-001 sin ampliarla.

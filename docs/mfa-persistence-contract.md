@@ -187,3 +187,7 @@ Ver deliveries/access-2.35.md; regeneración y rotación voluntaria siguen separ
 ## 2.36 — Regeneración conservando factor
 
 Servicio interno propietario de transacción: usuario → sesión validada → factor/conjunto actual; las demás operaciones globales comparten lock de usuario antes de hijos. Invalida conjunto, inserta diez hashes, avanza revisión/revoca y audita juntos. La evidencia de login persistida valida ambos factores, huella y revisión; plazo cinco minutos desde el más antiguo, comprobado tras locks y al terminar. No hay TOTP adicional ni cambio de contador. 0022 conserva evento tipado y bloquea downgrade con evidencia.
+
+## 2.37 — Evidencia duradera del buzón
+
+La confirmación de incorporación añade verified_mailboxes junto a consumo/permiso/outbox/evento existente. Fuente con FK compuesta por usuario/desafío, hash de dirección separado por dominio y fecha exacta del consumo. El lector de elegibilidad toma usuario → desafío → evidencia y revalida; no autoriza reset ni sesión. El trigger de cambio de correo toma usuario → evidencia; todas las escrituras del mismo titular se serializan bajo usuario. Retener evidencia no conserva vigentes los permisos de incorporación: mantienen su plazo y propósito originales.

@@ -355,3 +355,7 @@ Downgrade con setup/evento, incluso cerrado, rechazado. Sin backfill o endpoint.
 ## 2.36 — Auditoría de regeneración
 
 0022 amplía security_events con mfa_codes_regenerated: credencial propietaria obligatoria y revisión positiva. No añade tablas ni campos comerciales. Downgrade rechaza evidencia de regeneración existente. Conjuntos/códigos mantienen restricciones de propietario y conjunto vigente único.
+
+## 2.37 — verified_mailboxes
+
+0023 añade id, user_id/challenge_id con FK compuesta de propietario, address_hash SHA-256 con dominio/usuario/dirección, verified_at e invalidated_at. Un desafío fuente único y a lo sumo una evidencia vigente por usuario mediante índice parcial. No guarda token o copia de correo en claro. Trigger AFTER UPDATE OF email invalida evidencia actual; retiene historia, no borra automáticamente. Runtime sin DELETE; downgrade con datos rechazado. Sin backfill ni campos comerciales.

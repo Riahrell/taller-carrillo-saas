@@ -251,11 +251,45 @@ class MfaPending(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class VerifiedMailbox(Base):
+    """Durable exact-address evidence, not a reset token or an MFA permission."""
+
+    __tablename__ = "verified_mailboxes"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["user_id", "challenge_id"],
+            ["enrollment_email_challenges.user_id", "enrollment_email_challenges.id"],
+            name="fk_verified_mailbox_challenge_owner",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("address_hash ~ '^[0-9a-f]{64}$'", name="address_hash_sha256"),
+        CheckConstraint(
+            "verified_at >= '1970-01-01 00:00:00+00'::timestamptz AND "
+            "(invalidated_at IS NULL OR invalidated_at >= verified_at)",
+            name="verification_window",
+        ),
+        Index(
+            "uq_verified_mailboxes_current_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("invalidated_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID]
+    challenge_id: Mapped[UUID] = mapped_column(unique=True)
+    address_hash: Mapped[str] = mapped_column(String(64))
+    verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class EnrollmentEmailChallenge(Base):
     """Initial MFA mailbox proof only, never password reset or an auth session."""
 
     __tablename__ = "enrollment_email_challenges"
     __table_args__ = (
+        UniqueConstraint("user_id", "id", name="uq_enrollment_mail_user_id_id"),
         ForeignKeyConstraint(
             ["user_id", "pending_id"],
             ["mfa_pendings.user_id", "mfa_pendings.id"],

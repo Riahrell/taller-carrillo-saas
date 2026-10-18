@@ -23,6 +23,7 @@ from app.modules.access import (
     email_outbox,
     login_challenges,
     mail_delivery,
+    mailbox_verification,
     mfa_consumption,
     mfa_enrollment,
     mfa_pending,
@@ -51,6 +52,7 @@ from app.modules.access.models import (
     Tenant,
     TenantMembership,
     User,
+    VerifiedMailbox,
 )
 from app.modules.access.passwords import hash_password
 
@@ -71,6 +73,7 @@ def state(mfa_state, monkeypatch):
         (mfa_pending, "_database_now"),
         (service, "_database_now"),
         (email_outbox, "_database_now"),
+        (mailbox_verification, "_database_now"),
         (security_state, "_database_now"),
         (sessions, "_database_now"),
         (login_challenges, "_database_now"),
@@ -102,6 +105,7 @@ def state(mfa_state, monkeypatch):
         yield state
     finally:
         with state["owner"].begin() as connection:
+            connection.execute(delete(VerifiedMailbox))
             connection.execute(delete(MfaEnrollment))
             connection.execute(
                 delete(SecurityEvent).where(SecurityEvent.user_id == state["identity"])
@@ -1604,3 +1608,262 @@ def test_enrollment_expiry_after_activation_work_rolls_back_every_effect(
                 select(SecurityEvent).where(SecurityEvent.action == "mfa_enrolled")
             )
         )
+
+
+def eligible(state, user_id=None):
+    with Session(state["runtime"]) as session, session.begin():
+        record = mailbox_verification.lock_eligible_mailbox(
+            session, user_id=user_id or state["identity"]
+        )
+        return record.id if record else None
+
+
+def test_mailbox_requires_explicit_confirmation_not_issuance_or_inspection(state):
+    assert eligible(state) is None
+    draft = issue(state)
+    assert eligible(state) is None
+    assert confirm(state, draft, inspect=True) is True
+    assert eligible(state) is None
+    permit = confirm(state, draft)
+    assert permit is not None
+    identity = eligible(state)
+    assert identity is not None
+    assert confirm(state, draft) is None
+    assert eligible(state) == identity
+    assert eligible(state, state["user"]) is None
+    with Session(state["runtime"]) as session:
+        row = session.get(VerifiedMailbox, identity)
+        challenge = session.get(EnrollmentEmailChallenge, row.challenge_id)
+        assert row.verified_at == challenge.consumed_at == state["now"]
+        assert row.user_id == challenge.user_id == state["identity"]
+        assert row.address_hash == mailbox_verification._address_hash(
+            session.get(User, row.user_id)
+        )
+        assert row.address_hash != challenge.email_fingerprint
+        assert row.invalidated_at is None
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["password", "revision", "closed-source", "expired-source", "inactive-member"],
+)
+def test_verified_mailbox_survives_authentication_lifecycle_without_granting_access(
+    state, change
+):
+    assert confirm(state, issue(state)) is not None
+    identity = eligible(state)
+    with state["owner"].begin() as connection:
+        if change == "password":
+            connection.execute(
+                update(User)
+                .where(User.id == state["identity"])
+                .values(
+                    password_hash=hash_password(SecretStr(secrets.token_urlsafe(32)))
+                )
+            )
+        elif change == "revision":
+            connection.execute(
+                update(User)
+                .where(User.id == state["identity"])
+                .values(security_revision=2)
+            )
+        elif change == "closed-source":
+            connection.execute(
+                update(EnrollmentEmailChallenge)
+                .where(EnrollmentEmailChallenge.user_id == state["identity"])
+                .values(closed_at=state["now"])
+            )
+        elif change == "inactive-member":
+            connection.execute(
+                update(TenantMembership)
+                .where(TenantMembership.id == state["member"])
+                .values(is_active=False)
+            )
+        else:
+            state["now"] += timedelta(hours=1)
+    assert eligible(state) == identity
+    with Session(state["runtime"]) as session:
+        assert session.scalar(select(SessionRecord.id)) is None
+        assert (
+            session.scalar(
+                select(MfaCredential.id).where(
+                    MfaCredential.user_id == state["identity"]
+                )
+            )
+            is None
+        )
+
+
+@pytest.mark.parametrize(
+    "change", ["inactive", "address-hash", "origin-hash", "clock", "invalidated"]
+)
+def test_mailbox_eligibility_rejects_inactive_or_inconsistent_evidence(state, change):
+    assert confirm(state, issue(state)) is not None
+    with state["owner"].begin() as connection:
+        if change == "inactive":
+            connection.execute(
+                update(User).where(User.id == state["identity"]).values(is_active=False)
+            )
+        elif change == "address-hash":
+            connection.execute(update(VerifiedMailbox).values(address_hash="a" * 64))
+        elif change == "origin-hash":
+            connection.execute(
+                update(EnrollmentEmailChallenge)
+                .where(EnrollmentEmailChallenge.user_id == state["identity"])
+                .values(email_fingerprint="a" * 64)
+            )
+        elif change == "clock":
+            state["now"] -= timedelta(microseconds=1)
+        else:
+            connection.execute(
+                update(VerifiedMailbox).values(invalidated_at=state["now"])
+            )
+    assert eligible(state) is None
+
+
+def test_email_change_invalidates_atomically_and_reverting_does_not_revive_proof(state):
+    assert confirm(state, issue(state)) is not None
+    identity = eligible(state)
+    with state["runtime"].begin() as connection:
+        connection.execute(
+            update(User)
+            .where(User.id == state["identity"])
+            .values(email="changed@example.invalid")
+        )
+    assert eligible(state) is None
+    with state["runtime"].begin() as connection:
+        connection.execute(
+            update(User)
+            .where(User.id == state["identity"])
+            .values(email=state["email"])
+        )
+    assert eligible(state) is None
+    with Session(state["runtime"]) as session:
+        assert session.get(VerifiedMailbox, identity).invalidated_at is not None
+
+
+def test_email_change_rollback_and_unchanged_address_preserve_verification(state):
+    assert confirm(state, issue(state)) is not None
+    identity = eligible(state)
+    with pytest.raises(RuntimeError), state["runtime"].begin() as connection:
+        connection.execute(
+            update(User)
+            .where(User.id == state["identity"])
+            .values(email="rollback@example.invalid")
+        )
+        raise RuntimeError("Synthetic rollback")
+    assert eligible(state) == identity
+    with state["runtime"].begin() as connection:
+        connection.execute(
+            update(User)
+            .where(User.id == state["identity"])
+            .values(email=state["email"])
+        )
+    assert eligible(state) == identity
+
+
+@pytest.mark.parametrize("failure", ["commit", "insert", "expiry"])
+def test_mailbox_record_and_confirmation_are_atomic(state, monkeypatch, failure):
+    draft = issue(state)
+    if failure == "commit":
+
+        def fail(session):
+            raise SQLAlchemyError("Synthetic commit failure")
+
+        event.listen(state["mail"]._factory, "before_commit", fail, once=True)
+    elif failure == "insert":
+        with state["owner"].begin() as connection:
+            connection.execute(
+                text("REVOKE INSERT ON verified_mailboxes FROM carrillo_app")
+            )
+    else:
+        original = service.record_confirmed_mailbox
+
+        def expire(*args, **kwargs):
+            original(*args, **kwargs)
+            state["now"] = state["pending"].expires_at
+
+        monkeypatch.setattr(service, "record_confirmed_mailbox", expire)
+    try:
+        if failure == "expiry":
+            assert confirm(state, draft) is None
+        else:
+            with pytest.raises(service.EnrollmentEmailUnavailable):
+                confirm(state, draft)
+        assert eligible(state) is None
+        with Session(state["runtime"]) as session:
+            row = session.scalar(
+                select(EnrollmentEmailChallenge).where(
+                    EnrollmentEmailChallenge.user_id == state["identity"]
+                )
+            )
+            assert row.consumed_at is row.permit_token_hash is None
+            assert session.scalar(select(VerifiedMailbox.id)) is None
+            assert (
+                session.scalar(
+                    select(SecurityEvent.id).where(
+                        SecurityEvent.action == "mfa_enrollment_email_confirmed"
+                    )
+                )
+                is None
+            )
+    finally:
+        if failure == "insert":
+            with state["owner"].begin() as connection:
+                connection.execute(
+                    text("GRANT INSERT ON verified_mailboxes TO carrillo_app")
+                )
+
+
+def test_verification_database_constraints_owner_retention_and_downgrade(state):
+    assert confirm(state, issue(state)) is not None
+    with pytest.raises(IntegrityError), state["runtime"].begin() as connection:
+        connection.execute(update(VerifiedMailbox).values(user_id=state["user"]))
+    with pytest.raises(IntegrityError), state["runtime"].begin() as connection:
+        connection.execute(update(VerifiedMailbox).values(address_hash="invalid"))
+    with pytest.raises(DBAPIError), state["runtime"].begin() as connection:
+        connection.execute(delete(VerifiedMailbox))
+    config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    with (
+        pytest.raises(DBAPIError, match="verified mailbox evidence"),
+        state["owner"].begin() as connection,
+    ):
+        config.attributes["connection"] = connection
+        command.downgrade(config, "0022_mfa_code_regeneration")
+
+
+def test_new_confirmation_supersedes_evidence_without_deleting_history(state):
+    assert confirm(state, issue(state)) is not None
+    previous = eligible(state)
+    state["now"] += timedelta(seconds=61)
+    state["pending"] = start(state)
+    assert confirm(state, issue(state)) is not None
+    assert eligible(state) not in (None, previous)
+    with Session(state["runtime"]) as session:
+        assert session.get(VerifiedMailbox, previous).invalidated_at == state["now"]
+        assert len(list(session.scalars(select(VerifiedMailbox)))) == 2
+
+
+def test_confirmation_waiting_for_changed_email_cannot_verify_old_address(
+    state, monkeypatch
+):
+    draft = issue(state)
+    reached = Event()
+    original = mfa_pending._lock_user
+
+    def observe(session, identity):
+        reached.set()
+        return original(session, identity)
+
+    monkeypatch.setattr(mfa_pending, "_lock_user", observe)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with state["runtime"].begin() as connection:
+            connection.execute(
+                update(User)
+                .where(User.id == state["identity"])
+                .values(email="race@example.invalid")
+            )
+            waiting = pool.submit(confirm, state, draft)
+            assert reached.wait(timeout=3)
+        assert waiting.result(timeout=5) is None
+    assert eligible(state) is None

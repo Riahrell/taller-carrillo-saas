@@ -1043,3 +1043,7 @@ como si fuera recuperación; esta entrega exige el permiso offline específico.
 ## 2.36 — Regeneración con evidencia combinada reciente
 
 Se reutiliza el login MFA completo dentro de cinco minutos desde la prueba más antigua, conforme al contrato; no basta contraseña confirmada o sesión antigua. Operación propia global, independiente del rol. Regenerar conserva factor/contador, invalida el conjunto anterior, avanza revisión y cierra todas las sesiones para impedir replay/concurrencia. Sin cuota adicional por propósito porque no evalúa secretos nuevos; login conserva sus cuotas. Nueva evidencia de reautenticación y adaptación HTTP/UI pendientes.
+
+## 2.37 — Evidencia explícita del buzón
+
+Guardar evidencia histórica al confirmar contraseña/navegador/token de incorporación, sin backfill. No equiparar evidencia del buzón con permiso de reset o segundo factor; cada propósito tendrá token propio. Cambio de contraseña/revisión no borra evidencia; cambio de dirección sí la invalida mediante trigger en la misma transacción y no revive por revertir correo. No exigir membresía activa para consultar identidad global, pero nunca reactivarla ni emitir sesión por esta consulta. Verificación general para cuentas sin MFA pendiente.
