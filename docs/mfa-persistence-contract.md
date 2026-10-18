@@ -191,3 +191,7 @@ Servicio interno propietario de transacción: usuario → sesión validada → f
 ## 2.37 — Evidencia duradera del buzón
 
 La confirmación de incorporación añade verified_mailboxes junto a consumo/permiso/outbox/evento existente. Fuente con FK compuesta por usuario/desafío, hash de dirección separado por dominio y fecha exacta del consumo. El lector de elegibilidad toma usuario → desafío → evidencia y revalida; no autoriza reset ni sesión. El trigger de cambio de correo toma usuario → evidencia; todas las escrituras del mismo titular se serializan bajo usuario. Retener evidencia no conserva vigentes los permisos de incorporación: mantienen su plazo y propósito originales.
+
+## 2.38 — Reset emitido no cambia MFA
+
+Emisión de reset verifica identidad del buzón bajo lock de usuario y enlaza verificación por propietario. Token/AEAD con dominio de reset, sin aceptar permiso de incorporación o MFA como reset. No cambia factores, códigos, revisión ni sesiones; siguientes acciones deberán volver a validar contraseña/revisión/evidencia actual. El futuro cambio de contraseña conserva factor/códigos pero revoca permisos de recuperación restringida mediante revocación global.

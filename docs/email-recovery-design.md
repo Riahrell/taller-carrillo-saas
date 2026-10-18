@@ -1,7 +1,8 @@
 # Recuperación de acceso mediante correo
 
 Decisión solicitada por el usuario el 2026-10-17. Recuperación de contraseña
-aún sin formulario, endpoint o migración propia; no hay proveedor/envío activo.
+con emisión interna y migración propia 2.38, todavía sin consumo, formulario,
+endpoint o proveedor/envío activo.
 Escaneos integrados y contrato conjunto en `mfa-recovery-contract.md`.
 2.30 implementa solo desafíos internos de buzón para incorporación MFA, no reset
 de contraseña ni envío. Ver `deliveries/access-2.30.md`. No se acreditan correos
@@ -88,7 +89,7 @@ servicios ahora. Tener el proveedor pendiente no bloquea el diseño/pruebas loca
 En la entrega inicial, solo documentación. Comando ejecutado: `git diff --check`; resultado exit 0,
 sin errores de whitespace. No se ejecutan ni se atribuyen pruebas funcionales
 nuevas a este diseño.
-La entrega ejecutable vigente es 2.37; «Olvidé mi contraseña» sigue sin estar
+La entrega ejecutable vigente es 2.38; «Olvidé mi contraseña» sigue sin estar
 disponible. 2.31 añade staging cifrado/cuotas para incorporación, aún sin emisor.
 2.32 añade consumidor con transporte simulado, sin envío real.
 2.33 confirma TOTP/códigos internamente; reset de contraseña sigue pendiente.
@@ -129,3 +130,46 @@ requiere haber configurado MFA para diseñar ese futuro recorrido. Próxima tare
 emisión/consumo transaccional del reset para buzones elegibles, conservando MFA y
 códigos sin usar, con correo cifrado y cuotas por propósito coordinadas. No
 reutilizar el permiso de incorporación como token de reset.
+
+## Emisión interna de reset 2.38
+
+Se entrega primero emisión/persistencia para revisar propósito, cuotas y rollback
+antes de habilitar una escritura de contraseña. `PasswordResetIssuer.issue` solo
+acepta dirección validada/normalizada como el login e IP de peer confiable. Todas
+las salidas normales son `None`, incluso desconocida, no verificada, inactiva o
+limitada. Nunca retorna token, destinatario o decisión de elegibilidad. No es una
+API pública ni prueba de igualdad temporal: faltan transporte HTTP/antienumeración
+y análisis de tiempos. Errores de infraestructura son genéricos y no equivalen
+a confirmar que exista una cuenta. No generar URLs hasta cerrar origen HTTPS.
+
+Cuotas persistentes propias, separadas de login/MFA/incorporación: veinte
+solicitudes por IP y tres por dirección en quince minutos, con sesenta segundos
+entre solicitudes aceptadas para una dirección. Son decisiones del proyecto.
+También cuentan direcciones desconocidas/no elegibles; la IP cuenta intentos
+rechazados por cooldown/límite de dirección. IP → dirección antes del usuario;
+clave HMAC por ámbito/dirección o IP, sin correo en claro y con clave estable
+independiente de cifrado. IPv4 mapeada en IPv6 comparte IP. El límite no se
+renueva por un rechazo y nunca modifica cuotas de contraseña o MFA.
+
+Una dirección elegible produce un token opaco aleatorio de 256 bits, hash con
+dominio `password-reset-token-v1:`, propietario y evidencia de buzón ligados por
+FK, revisión/huella de contraseña y plazo absoluto de quince minutos desde emitir.
+El contenido destinatario/token se cifra con AES-GCM usando propósito de reset
+distinto al de incorporación y AAD ligada a usuario/id/plazo/key id. La cola es
+el propio registro de desafío, no una segunda copia en claro. No hay transporte
+de reset ni consumidor; el existente de incorporación no consulta esta tabla.
+Claves inyectadas, sin defaults; reset rechaza protección de incorporación. El
+formato anterior de incorporación conserva su dominio y compatibilidad.
+
+Pedir otro enlace no cierra sesiones, pendientes ni enlaces anteriores, no cambia
+contraseña/revisión, no elimina MFA ni consume/regenera códigos. Evita que una
+solicitud no autenticada invalide un enlace todavía útil. El futuro consumo
+confirmado invalidará todos los enlaces, sesiones y pendientes en la transacción
+del cambio y aviso. La revisión/huella y evidencia se deberán revalidar al enviar
+y consumir; tener ciphertext no autoriza enviarlo ni cambiar contraseña.
+
+Purga explícita acotada cierra/cancela payload caducado conservando metadatos y
+cuotas. No está programada ni equivale a borrado seguro de memoria/backups/WAL.
+Runtime sin DELETE de desafíos; downgrade con solicitudes/cuotas retenidas
+rechazado. Retención/purga de cuotas, avisos, consumo, proveedor, verificación
+general sin MFA y HTTP/UI siguen pendientes. No afirmar recuperación disponible.

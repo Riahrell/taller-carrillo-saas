@@ -359,3 +359,7 @@ Downgrade con setup/evento, incluso cerrado, rechazado. Sin backfill o endpoint.
 ## 2.37 — verified_mailboxes
 
 0023 añade id, user_id/challenge_id con FK compuesta de propietario, address_hash SHA-256 con dominio/usuario/dirección, verified_at e invalidated_at. Un desafío fuente único y a lo sumo una evidencia vigente por usuario mediante índice parcial. No guarda token o copia de correo en claro. Trigger AFTER UPDATE OF email invalida evidencia actual; retiene historia, no borra automáticamente. Runtime sin DELETE; downgrade con datos rechazado. Sin backfill ni campos comerciales.
+
+## 2.38 — Reset emitido y cuotas
+
+0024 añade password_reset_challenges: id/propietario, verification_id con FK compuesta a verified_mailboxes, token_hash, password_fingerprint, security_revision, created_at/expires_at exactos +15min, cierre/consumo y payload AES-GCM con descarte. Contenido secreto solo cifrado, sin token/correo en claro. password_reset_throttles conserva ámbito ip/address y HMAC, ventana, contador y última solicitud. Fuente verificada permanece independiente del reset; no hay tablas de negocio nuevas.

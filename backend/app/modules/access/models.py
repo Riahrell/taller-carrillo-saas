@@ -251,11 +251,93 @@ class MfaPending(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class PasswordResetChallenge(Base):
+    """Purpose-specific reset authority and encrypted staging; no sending yet."""
+
+    __tablename__ = "password_reset_challenges"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["user_id", "verification_id"],
+            ["verified_mailboxes.user_id", "verified_mailboxes.id"],
+            ondelete="RESTRICT",
+            name="fk_password_reset_verified_owner",
+        ),
+        CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="token_hash_sha256"),
+        CheckConstraint(
+            "password_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="password_fingerprint_sha256",
+        ),
+        CheckConstraint("security_revision >= 0", name="revision_bounds"),
+        CheckConstraint(
+            "expires_at = created_at + interval '15 minutes'", name="absolute_lifetime"
+        ),
+        CheckConstraint(
+            "(closed_at IS NULL OR closed_at >= created_at) AND "
+            "(consumed_at IS NULL OR (closed_at IS NOT NULL AND consumed_at = "
+            "closed_at AND consumed_at >= created_at AND consumed_at < expires_at)) "
+            "AND (closed_at IS NULL OR discarded_at IS NOT NULL)",
+            name="closure_state",
+        ),
+        CheckConstraint(
+            "(discarded_at IS NULL AND key_id IS NOT NULL AND "
+            "key_id ~ '^[A-Za-z0-9_-]{1,64}$' AND nonce IS NOT NULL AND "
+            "octet_length(nonce) = 12 AND ciphertext IS NOT NULL AND "
+            "octet_length(ciphertext) BETWEEN 64 AND 2048) OR "
+            "(discarded_at IS NOT NULL AND discarded_at >= created_at AND "
+            "key_id IS NULL AND nonce IS NULL AND ciphertext IS NULL)",
+            name="payload_state",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(index=True)
+    verification_id: Mapped[UUID]
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    password_fingerprint: Mapped[str] = mapped_column(String(64))
+    security_revision: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    key_id: Mapped[str | None] = mapped_column(String(64))
+    nonce: Mapped[bytes | None] = mapped_column(LargeBinary)
+    ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
+    discarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PasswordResetThrottle(Base):
+    """All reset requests, including unknown addresses; independent from login."""
+
+    __tablename__ = "password_reset_throttles"
+    __table_args__ = (
+        CheckConstraint("scope IN ('address', 'ip')", name="scope_allowed"),
+        CheckConstraint("key_hash ~ '^[0-9a-f]{64}$'", name="key_hash_sha256"),
+        CheckConstraint(
+            "requested >= 0 AND requested <= "
+            "CASE WHEN scope = 'address' THEN 3 ELSE 20 END",
+            name="requested_bounds",
+        ),
+        CheckConstraint(
+            "(requested = 0 AND last_requested_at IS NULL) OR "
+            "(requested > 0 AND last_requested_at IS NOT NULL AND "
+            "last_requested_at >= window_started_at)",
+            name="request_state",
+        ),
+    )
+
+    scope: Mapped[str] = mapped_column(String(7), primary_key=True)
+    key_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    requested: Mapped[int] = mapped_column(Integer)
+    last_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class VerifiedMailbox(Base):
     """Durable exact-address evidence, not a reset token or an MFA permission."""
 
     __tablename__ = "verified_mailboxes"
     __table_args__ = (
+        UniqueConstraint("user_id", "id", name="uq_verified_mailboxes_user_id_id"),
         ForeignKeyConstraint(
             ["user_id", "challenge_id"],
             ["enrollment_email_challenges.user_id", "enrollment_email_challenges.id"],

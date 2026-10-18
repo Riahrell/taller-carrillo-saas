@@ -1047,3 +1047,7 @@ Se reutiliza el login MFA completo dentro de cinco minutos desde la prueba más 
 ## 2.37 — Evidencia explícita del buzón
 
 Guardar evidencia histórica al confirmar contraseña/navegador/token de incorporación, sin backfill. No equiparar evidencia del buzón con permiso de reset o segundo factor; cada propósito tendrá token propio. Cambio de contraseña/revisión no borra evidencia; cambio de dirección sí la invalida mediante trigger en la misma transacción y no revive por revertir correo. No exigir membresía activa para consultar identidad global, pero nunca reactivarla ni emitir sesión por esta consulta. Verificación general para cuentas sin MFA pendiente.
+
+## 2.38 — Solicitar reset sin cambiar acceso
+
+Dividir emisión de consumo para revisar primero autoridad/propósito/cifrado/cuotas. Respuesta interna None para todas las solicitudes normales, sin token ni elegibilidad. Cuota propia IP20/dirección3 en 15 minutos y cooldown60 segundos; desconocidos también cuentan, IP incluye denegaciones de dirección. Nuevos enlaces no invalidan anteriores ni sesiones. El consumo futuro deberá cambiar contraseña/revocar/auditar/encolar aviso juntos. Misma biblioteca AES-GCM con propósito configurado del servidor y dominios separados, conservando el dominio de incorporación.

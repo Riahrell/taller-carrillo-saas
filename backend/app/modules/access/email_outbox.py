@@ -11,6 +11,7 @@ import re
 import secrets
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from ipaddress import IPv4Address, IPv6Address
 from types import MappingProxyType
 from uuid import UUID
@@ -31,6 +32,11 @@ WINDOW = timedelta(minutes=15)
 COOLDOWN = timedelta(seconds=60)
 
 
+class MailPurpose(StrEnum):
+    ENROLLMENT = "enrollment"
+    PASSWORD_RESET = "password_reset"
+
+
 class MailProtectionError(ValueError):
     """No key identifiers, payload or encryption internals in errors."""
 
@@ -48,7 +54,13 @@ class MailEnvelope(BaseModel):
     ciphertext: bytes = Field(min_length=64, max_length=2048, repr=False)
 
 
-def _aad(user_id: UUID, challenge_id: UUID, expires_at: datetime, key_id: str):
+def _aad(
+    user_id: UUID,
+    challenge_id: UUID,
+    expires_at: datetime,
+    key_id: str,
+    purpose: MailPurpose,
+):
     if (
         not isinstance(user_id, UUID)
         or not isinstance(challenge_id, UUID)
@@ -57,7 +69,10 @@ def _aad(user_id: UUID, challenge_id: UUID, expires_at: datetime, key_id: str):
     ):
         raise MailProtectionError("Mail protection unavailable")
     return (
-        b"carrillo:enrollment-mail:v1\x00"
+        {
+            MailPurpose.ENROLLMENT: b"carrillo:enrollment-mail:v1\x00",
+            MailPurpose.PASSWORD_RESET: b"carrillo:password-reset-mail:v1\x00",
+        }[purpose]
         + user_id.bytes
         + challenge_id.bytes
         + expires_at.astimezone(UTC).isoformat(timespec="microseconds").encode("ascii")
@@ -91,9 +106,11 @@ class MailProtection:
         *,
         active_key_id: str,
         quota_key: SecretBytes,
+        purpose: MailPurpose = MailPurpose.ENROLLMENT,
     ):
         if (
-            not keys
+            not isinstance(purpose, MailPurpose)
+            or not keys
             or active_key_id not in keys
             or not isinstance(quota_key, SecretBytes)
             or len(quota_key.get_secret_value()) != 32
@@ -112,6 +129,39 @@ class MailProtection:
         self._keys = MappingProxyType(dict(keys))
         self._active = active_key_id
         self._quota_key = quota_key
+        self._purpose = purpose
+
+    @property
+    def purpose(self) -> MailPurpose:
+        return self._purpose
+
+    def request_scopes(self, email: SecretStr, client_ip: IPv4Address | IPv6Address):
+        """Reset request keys include unknown addresses; never persist them in clear."""
+        if (
+            self.purpose != MailPurpose.PASSWORD_RESET
+            or not isinstance(email, SecretStr)
+            or not isinstance(client_ip, (IPv4Address, IPv6Address))
+        ):
+            raise MailProtectionError("Mail protection unavailable")
+        if isinstance(client_ip, IPv6Address) and client_ip.ipv4_mapped is not None:
+            client_ip = client_ip.ipv4_mapped
+        return [
+            (
+                scope,
+                hmac.new(
+                    self._quota_key.get_secret_value(),
+                    b"carrillo:password-reset-request-quota:v1\x00"
+                    + scope.encode("ascii")
+                    + b"\x00"
+                    + identity,
+                    hashlib.sha256,
+                ).hexdigest(),
+            )
+            for scope, identity in (
+                ("ip", client_ip.packed),
+                ("address", email.get_secret_value().encode("utf-8")),
+            )
+        ]
 
     def encrypt(
         self,
@@ -133,7 +183,9 @@ class MailProtection:
         ).encode("ascii")
         nonce = secrets.token_bytes(12)
         ciphertext = AESGCM(self._keys[self._active].get_secret_value()).encrypt(
-            nonce, raw, _aad(user_id, challenge_id, expires_at, self._active)
+            nonce,
+            raw,
+            _aad(user_id, challenge_id, expires_at, self._active, self.purpose),
         )
         return MailEnvelope(key_id=self._active, nonce=nonce, ciphertext=ciphertext)
 
@@ -151,7 +203,7 @@ class MailProtection:
             raw = AESGCM(self._keys[envelope.key_id].get_secret_value()).decrypt(
                 envelope.nonce,
                 envelope.ciphertext,
-                _aad(user_id, challenge_id, expires_at, envelope.key_id),
+                _aad(user_id, challenge_id, expires_at, envelope.key_id, self.purpose),
             )
             data = json.loads(raw)
             if not isinstance(data, dict) or set(data) != {"recipient", "token"}:
@@ -161,7 +213,9 @@ class MailProtection:
             raise MailProtectionError("Mail protection unavailable") from None
 
     def scopes(self, user_id: UUID, client_ip: IPv4Address | IPv6Address):
-        if not isinstance(client_ip, (IPv4Address, IPv6Address)):
+        if self.purpose != MailPurpose.ENROLLMENT or not isinstance(
+            client_ip, (IPv4Address, IPv6Address)
+        ):
             raise MailProtectionError("Mail protection unavailable")
         if isinstance(client_ip, IPv6Address) and client_ip.ipv4_mapped is not None:
             client_ip = client_ip.ipv4_mapped

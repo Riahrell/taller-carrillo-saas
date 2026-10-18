@@ -145,3 +145,7 @@ Códigos nuevos solo después del commit, prueba combinada del login menor de ci
 ## 2.37 — Elegibilidad de correo
 
 Registro interno de evidencia exacta al confirmar buzón, separado de permiso MFA y futuro reset. Sin backfill. Trigger de cambio de dirección, revalidación bajo lock, fecha y propietario; confirmación revierte si vence al terminar. No habilita recuperación por sí solo ni elimina MFA/códigos. Falta reset/cola propia, verificación general para cuentas sin MFA, avisos, integración HTTP/UI y operación. Conservar excepción SEC-2026-001 sin ampliarla.
+
+## 2.38 — Emisión de reset
+
+Claves obligatorias fuera del repositorio, propósito de reset separado de incorporación; sin retorno de secretos/eligibilidad y sin transporte. Cuotas por solicitudes también desconocidas, IP primero antes del usuario; no comparten ni bloquean login/MFA. Nueva solicitud no revoca acceso. Consumo/aviso atómicos, revalidación antes de envío/consumo, retención de cuotas, purgas programadas, HTTP/antienumeración temporal, verificación general y operación pendientes. SEC-2026-001 se conserva sin extender.

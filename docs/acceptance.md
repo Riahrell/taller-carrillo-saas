@@ -203,3 +203,7 @@ Sesión con prueba persistida de contraseña/TOTP vigentes; rechazo de expiraci�
 ## 2.37 — Elegibilidad del buzón
 
 Sin elegibilidad por existencia del usuario, emisión/inspección/envío; confirmación nueva crea prueba con propietario exacto. Rechazar cuenta inactiva, hashes incoherentes, fecha futura e invalidación. Conservar evidencia tras caducidad/cierre/password/revisión, sin sesiones o factores nuevos. Cambio de correo invalida, reversión no revive, rollback revierte invalidación; confirmación concurrente al cambio no acredita dirección antigua. Confirmación y evidencia atómicas ante fallo SQL/commit/plazo final. Restricciones DB y downgrade preservan evidencia. Resultados ejecutados en entrega 2.37.
+
+## 2.38 — Emisión interna de reset
+
+Igual salida normal sin revelar elegibilidad; direcciones desconocidas/no verificadas/inactivas/invalidadas cuentan cuota sin staging. Payload cifrado con propósito/AAD propios y hash de token distinto a incorporación. Concurrencia/cooldown/límites, ventana exacta, IPv4 mapeada; no invalidar enlaces previos ni renovar su plazo. Fallo real de INSERT, commit, cifrado y plazo/reloj revierte fila/payload/cuotas. Sesión MFA real, contraseña, revisión, factor y códigos conservados. Purga al vencer conserva evidencia y cuotas; ownership/constraints/DELETE/downgrade probados. No incluye consumo, entrega real o análisis temporal HTTP.

@@ -3,7 +3,7 @@
 Sistema web de gestión integral en construcción incremental. Monolito modular
 FastAPI y Next.js, PostgreSQL y Docker Compose.
 
-## Estado: acceso 2.37, evidencia de buzón interna; web sin segundo factor
+## Estado: acceso 2.38, emisión interna de reset cifrado; web sin segundo factor
 
 API mínima, PostgreSQL privado, SQLAlchemy/Alembic, Next.js/TypeScript y proxy
 del mismo origen, con pruebas aisladas. La pantalla inicial permite login,
@@ -34,7 +34,7 @@ La fundación tiene validación integral local y workflow CI preparado. Su prime
 ejecución en GitHub está pendiente: no hay remoto configurado. No usar en producción.
 
 - [Decisiones](docs/decisions.md), [modelo](docs/data-model.md) y [permisos](docs/permissions.md).
-- [Aceptación](docs/acceptance.md), [última entrega 2.37](docs/deliveries/access-2.37.md)
+- [Aceptación](docs/acceptance.md), [última entrega 2.38](docs/deliveries/access-2.38.md)
   y [contrato de diseño 2.20](docs/deliveries/access-2.20.md).
 - [MFA y recuperación](docs/mfa-recovery-contract.md): TOTP, incorporación,
   códigos offline y separación de recuperación por correo. Primitivas internas
@@ -684,3 +684,7 @@ Siguiente: elegibilidad de correo para reset de contraseña, preservando MFA.
 cambiar dirección; sin backfill ni permiso de reset. Recuperación por correo,
 verificación general para cuentas sin MFA y HTTP/UI siguen pendientes.
 [Entrega 2.37](docs/deliveries/access-2.37.md).
+
+2.38 añade emisión interna de reset para buzones elegibles, cifrado por propósito
+y cuotas propias; no cambia contraseñas, sesiones o MFA. Faltan consumo/avisos,
+transporte y HTTP/UI. [Entrega 2.38](docs/deliveries/access-2.38.md).

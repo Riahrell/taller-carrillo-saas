@@ -28,6 +28,7 @@ from app.modules.access import (
     mfa_enrollment,
     mfa_pending,
     mfa_verification,
+    password_reset,
     security_state,
     sessions,
 )
@@ -47,6 +48,8 @@ from app.modules.access.models import (
     MfaRecoveryCode,
     MfaRecoverySet,
     MfaThrottle,
+    PasswordResetChallenge,
+    PasswordResetThrottle,
     SecurityEvent,
     SessionRecord,
     Tenant,
@@ -105,6 +108,8 @@ def state(mfa_state, monkeypatch):
         yield state
     finally:
         with state["owner"].begin() as connection:
+            connection.execute(delete(PasswordResetChallenge))
+            connection.execute(delete(PasswordResetThrottle))
             connection.execute(delete(VerifiedMailbox))
             connection.execute(delete(MfaEnrollment))
             connection.execute(
@@ -1867,3 +1872,382 @@ def test_confirmation_waiting_for_changed_email_cannot_verify_old_address(
             assert reached.wait(timeout=3)
         assert waiting.result(timeout=5) is None
     assert eligible(state) is None
+
+
+@pytest.fixture
+def reset(state, monkeypatch):
+    monkeypatch.setattr(password_reset, "_database_now", lambda session: state["now"])
+    protection = email_outbox.MailProtection(
+        {"reset-test": SecretBytes(secrets.token_bytes(32))},
+        active_key_id="reset-test",
+        quota_key=SecretBytes(secrets.token_bytes(32)),
+        purpose=email_outbox.MailPurpose.PASSWORD_RESET,
+    )
+    return password_reset.PasswordResetIssuer(
+        state["runtime"], protection=protection
+    ), protection
+
+
+def request_reset(state, reset, *, email=None, address="127.0.0.1"):
+    return reset[0].issue(
+        password_reset.PasswordResetRequest(email=email or state["email"]),
+        client_ip=ip_address(address),
+    )
+
+
+def reset_rows(state):
+    with Session(state["runtime"]) as session:
+        return list(
+            session.scalars(
+                select(PasswordResetChallenge).order_by(
+                    PasswordResetChallenge.created_at
+                )
+            )
+        )
+
+
+def reset_quotas(state):
+    with Session(state["runtime"]) as session:
+        return list(
+            session.scalars(
+                select(PasswordResetThrottle).order_by(PasswordResetThrottle.scope)
+            )
+        )
+
+
+def test_reset_issue_stages_only_encrypted_purpose_bound_payload_without_authority(
+    state, reset
+):
+    assert confirm(state, issue(state)) is not None
+    before = snapshot(state)
+    with Session(state["runtime"]) as session:
+        original = session.get(User, state["identity"])
+        snapshot_user = (
+            original.password_hash,
+            original.security_revision,
+            original.mfa_required,
+        )
+    assert request_reset(state, reset) is None
+    (row,) = reset_rows(state)
+    payload = reset[1].decrypt(
+        email_outbox.MailEnvelope(
+            key_id=row.key_id, nonce=row.nonce, ciphertext=row.ciphertext
+        ),
+        user_id=row.user_id,
+        challenge_id=row.id,
+        expires_at=row.expires_at,
+    )
+    assert payload.recipient.get_secret_value() == state["email"]
+    assert row.token_hash == mfa_pending._hash(
+        payload.token, "password-reset-token-v1:"
+    )
+    assert row.created_at == state["now"] and row.expires_at == state[
+        "now"
+    ] + timedelta(minutes=15)
+    assert row.consumed_at is row.closed_at is row.discarded_at is None
+    assert payload.token.get_secret_value().encode() not in row.ciphertext
+    assert state["email"].encode() not in row.ciphertext
+    assert payload.model_dump() == {}
+    assert snapshot(state) == before
+    with Session(state["runtime"]) as session:
+        user = session.get(User, state["identity"])
+        assert (
+            user.password_hash,
+            user.security_revision,
+            user.mfa_required,
+        ) == snapshot_user
+        assert session.scalar(select(SessionRecord.id)) is None
+    # The token has no enrollment purpose or session authority.
+    assert service._hash(payload.token, "enrollment-mail-permit-v1:") != row.token_hash
+    with Session(state["runtime"]) as session, session.begin():
+        assert (
+            service._consume_permit(
+                session, token=payload.token, browser_binding=state["binding"]
+            )
+            is None
+        )
+
+
+@pytest.mark.parametrize("kind", ["unknown", "unverified", "inactive", "invalidated"])
+def test_reset_issue_returns_same_result_and_counts_requests_without_eligibility(
+    state, reset, kind
+):
+    email = state["email"]
+    if kind == "unknown":
+        email = "missing@example.com"
+    elif kind != "unverified":
+        assert confirm(state, issue(state)) is not None
+        with state["runtime"].begin() as connection:
+            if kind == "inactive":
+                connection.execute(
+                    update(User)
+                    .where(User.id == state["identity"])
+                    .values(is_active=False)
+                )
+            else:
+                connection.execute(
+                    update(User)
+                    .where(User.id == state["identity"])
+                    .values(email="new@example.com")
+                )
+                email = "new@example.com"
+    assert request_reset(state, reset, email=email) is None
+    assert not reset_rows(state)
+    assert [r.requested for r in reset_quotas(state)] == [1, 1]
+    assert all(email not in r.key_hash for r in reset_quotas(state))
+
+
+def test_reset_address_quota_cooldown_and_fixed_window_do_not_revoke_existing_links(
+    state, reset
+):
+    assert confirm(state, issue(state)) is not None
+    request_reset(state, reset)
+    first = reset_rows(state)[0]
+    request_reset(
+        state,
+        reset,
+        email="  " + state["email"].upper() + "  ",
+        address="::ffff:127.0.0.1",
+    )
+    assert len(reset_rows(state)) == 1
+    assert [r.requested for r in reset_quotas(state)] == [1, 2]
+    for _ in range(2):
+        state["now"] += timedelta(seconds=60)
+        request_reset(state, reset, address="127.0.0.2")
+    state["now"] += timedelta(seconds=60)
+    request_reset(state, reset, address="127.0.0.3")
+    assert len(reset_rows(state)) == 3
+    assert all(row.closed_at is None for row in reset_rows(state))
+    state["now"] = first.created_at + timedelta(minutes=15)
+    request_reset(state, reset)
+    assert len(reset_rows(state)) == 4
+    # A later request never extends an earlier link's absolute deadline.
+    assert reset_rows(state)[0].expires_at == first.expires_at
+
+
+def test_reset_ip_quota_counts_unknown_addresses_and_address_cooldown_denials(
+    state, reset
+):
+    for _ in range(20):
+        assert request_reset(state, reset, email="missing@example.com") is None
+    assert sorted(r.requested for r in reset_quotas(state)) == [1, 20]
+    request_reset(state, reset, email="another@example.com")
+    assert len(reset_quotas(state)) == 2
+    assert not reset_rows(state)
+    with Session(state["runtime"]) as session:
+        assert (
+            session.scalar(select(LoginThrottle.scope)) is not None
+        )  # Existing login only.
+        assert session.scalar(select(MfaThrottle.scope)) is None
+
+
+def test_reset_protection_is_separate_from_enrollment_and_binds_all_aad_fields(
+    state, reset
+):
+    keys = {"shared-test": SecretBytes(secrets.token_bytes(32))}
+    quota_key = SecretBytes(secrets.token_bytes(32))
+    enrollment_protection = email_outbox.MailProtection(
+        keys, active_key_id="shared-test", quota_key=quota_key
+    )
+    reset_protection = email_outbox.MailProtection(
+        keys,
+        active_key_id="shared-test",
+        quota_key=quota_key,
+        purpose=email_outbox.MailPurpose.PASSWORD_RESET,
+    )
+    values = dict(
+        recipient=SecretStr(state["email"]),
+        token=SecretStr(secrets.token_urlsafe(32)),
+        user_id=state["identity"],
+        challenge_id=uuid4(),
+        expires_at=state["now"] + timedelta(minutes=15),
+    )
+    envelope = reset_protection.encrypt(**values)
+    aad = {key: values[key] for key in ("user_id", "challenge_id", "expires_at")}
+    assert reset_protection.decrypt(envelope, **aad).token == values["token"]
+    for changes in (
+        {},
+        {"user_id": state["user"]},
+        {"challenge_id": uuid4()},
+        {"expires_at": values["expires_at"] + timedelta(microseconds=1)},
+    ):
+        reader = enrollment_protection if not changes else reset_protection
+        with pytest.raises(
+            email_outbox.MailProtectionError, match="^Mail protection unavailable$"
+        ):
+            reader.decrypt(envelope, **(aad | changes))
+    with pytest.raises(password_reset.PasswordResetUnavailable):
+        password_reset.PasswordResetIssuer(
+            state["runtime"], protection=enrollment_protection
+        )
+
+
+@pytest.mark.parametrize("failure", ["commit", "insert", "crypto", "expiry", "clock"])
+def test_reset_issue_rolls_back_challenge_payload_and_quota_on_failure(
+    state, reset, monkeypatch, failure
+):
+    assert confirm(state, issue(state)) is not None
+    before = snapshot(state)
+    if failure == "commit":
+
+        def fail(session):
+            raise SQLAlchemyError("Synthetic commit failure")
+
+        event.listen(reset[0]._factory, "before_commit", fail, once=True)
+    elif failure == "insert":
+        with state["owner"].begin() as connection:
+            connection.execute(
+                text("REVOKE INSERT ON password_reset_challenges FROM carrillo_app")
+            )
+    elif failure == "crypto":
+
+        def fail(**kwargs):
+            raise email_outbox.MailProtectionError("Synthetic protection failure")
+
+        monkeypatch.setattr(reset[1], "encrypt", fail)
+    else:
+        real = reset[1].encrypt
+
+        def shift(**kwargs):
+            result = real(**kwargs)
+            state["now"] += (
+                timedelta(minutes=15) if failure == "expiry" else -timedelta(seconds=1)
+            )
+            return result
+
+        monkeypatch.setattr(reset[1], "encrypt", shift)
+    try:
+        with pytest.raises(
+            password_reset.PasswordResetUnavailable,
+            match="^Password reset unavailable$",
+        ):
+            request_reset(state, reset)
+        assert not reset_rows(state) and not reset_quotas(state)
+        assert snapshot(state) == before
+    finally:
+        if failure == "insert":
+            with state["owner"].begin() as connection:
+                connection.execute(
+                    text("GRANT INSERT ON password_reset_challenges TO carrillo_app")
+                )
+
+
+def test_reset_issuance_concurrency_has_one_payload_and_shared_cooldown(state, reset):
+    assert confirm(state, issue(state)) is not None
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert list(pool.map(lambda _: request_reset(state, reset), range(2))) == [
+            None,
+            None,
+        ]
+    assert len(reset_rows(state)) == 1
+    assert [row.requested for row in reset_quotas(state)] == [1, 2]
+
+
+def test_reset_purge_has_exact_expiry_clears_ciphertext_and_retains_quotas(
+    state, reset
+):
+    assert confirm(state, issue(state)) is not None
+    request_reset(state, reset)
+    assert password_reset.purge_expired_resets(state["runtime"]) == 0
+    state["now"] += timedelta(minutes=15)
+    assert password_reset.purge_expired_resets(state["runtime"], limit=1) == 1
+    (row,) = reset_rows(state)
+    assert row.key_id is row.nonce is row.ciphertext is None
+    assert row.closed_at == row.discarded_at == state["now"]
+    assert row.consumed_at is None and row.token_hash
+    assert password_reset.purge_expired_resets(state["runtime"]) == 0
+    assert [r.requested for r in reset_quotas(state)] == [1, 1]
+
+
+def test_reset_database_constraints_and_downgrade_preserve_payload_and_quota(
+    state, reset
+):
+    assert confirm(state, issue(state)) is not None
+    request_reset(state, reset)
+    with pytest.raises(IntegrityError), state["runtime"].begin() as connection:
+        connection.execute(update(PasswordResetChallenge).values(user_id=state["user"]))
+    with pytest.raises(IntegrityError), state["runtime"].begin() as connection:
+        connection.execute(update(PasswordResetChallenge).values(ciphertext=None))
+    with pytest.raises(DBAPIError), state["runtime"].begin() as connection:
+        connection.execute(delete(PasswordResetChallenge))
+    config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    with (
+        pytest.raises(DBAPIError, match="password reset evidence and quotas"),
+        state["owner"].begin() as connection,
+    ):
+        config.attributes["connection"] = connection
+        command.downgrade(config, "0023_verified_mailboxes")
+
+
+def test_reset_requests_preserve_active_mfa_codes_and_real_session(
+    state, reset, enrollment
+):
+    bundle = activate_factor(state, enrollment, setup_factor(state, enrollment))
+    assert bundle is not None
+    state["now"] += timedelta(seconds=30)
+    source = start(state)
+    proof = mfa_verification.MfaVerifier(
+        state["runtime"], keyring=state["keyring"]
+    ).verify_login_totp(
+        token=source.token,
+        browser_binding=state["binding"],
+        code=SecretStr(
+            pyotp.TOTP(state["seed"].base32().get_secret_value()).at(state["now"])
+        ),
+        client_ip=ip_address("127.0.0.1"),
+    )
+    issued = MfaSessionIssuer(state["runtime"]).select_membership(
+        proof_token=proof.token,
+        browser_binding=state["binding"],
+        membership_id=state["member"],
+    )
+    assert issued is not None
+    with Session(state["runtime"]) as session:
+        user = session.get(User, state["identity"])
+        prior = (user.password_hash, user.security_revision, user.mfa_required)
+        counter = session.get(MfaCredential, bundle.credential_id).last_counter
+    assert request_reset(state, reset) is None
+    with Session(state["runtime"]) as session, session.begin():
+        assert (
+            sessions.resolve_session(session, issued.token).user_id == state["identity"]
+        )
+        user = session.get(User, state["identity"])
+        assert (user.password_hash, user.security_revision, user.mfa_required) == prior
+        factor = session.get(MfaCredential, bundle.credential_id)
+        assert factor.last_counter == counter and factor.revoked_at is None
+        current = session.scalar(
+            select(MfaRecoverySet).where(MfaRecoverySet.credential_id == factor.id)
+        )
+        assert current.invalidated_at is None
+        assert all(
+            row.used_at is None
+            for row in session.scalars(
+                select(MfaRecoveryCode).where(MfaRecoveryCode.set_id == current.id)
+            )
+        )
+
+
+def test_reset_issue_waiting_on_account_does_not_queue_after_email_changes(
+    state, reset, monkeypatch
+):
+    assert confirm(state, issue(state)) is not None
+    reached = Event()
+    original = password_reset.lock_eligible_mailbox
+
+    def observe(session, **kwargs):
+        reached.set()
+        return original(session, **kwargs)
+
+    monkeypatch.setattr(password_reset, "lock_eligible_mailbox", observe)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with state["runtime"].begin() as connection:
+            connection.execute(
+                update(User)
+                .where(User.id == state["identity"])
+                .values(email="race-reset@example.com")
+            )
+            waiting = pool.submit(request_reset, state, reset)
+            assert reached.wait(timeout=3)
+        assert waiting.result(timeout=5) is None
+    assert not reset_rows(state)
+    assert [row.requested for row in reset_quotas(state)] == [1, 1]
