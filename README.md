@@ -26,6 +26,12 @@ La [entrega 3.4](docs/deliveries/inventory-3.4.md) conecta altas y consultas
 administrativas por API, con empresa de sesión y paginación limitada.
 La [entrega 3.5](docs/deliveries/inventory-3.5.md) añade la pantalla `/catalogo`
 para listar y crear productos/categorías con revisión y confirmación de identidad.
+Las entregas [3.6](docs/deliveries/inventory-3.6.md) y
+[3.7](docs/deliveries/inventory-3.7.md) incorporan valoración exacta y conteos;
+[3.8](docs/deliveries/inventory-3.8.md) agrega su persistencia y libro de movimientos.
+El servicio transaccional de stock está pendiente. Las imágenes de producto se
+integrarán con Object Storage de Contabo según el
+[contrato de imágenes](docs/product-images-contract.md), todavía sin conexión real.
 Todavía sin operaciones de stock habilitadas.
 
 - [Entrega 2.39](docs/deliveries/access-2.39.md) y

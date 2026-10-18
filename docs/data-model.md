@@ -6,6 +6,11 @@ incorporó solo persistencia; 3.3 añade altas auditadas, 3.4 su API administrat
 y 3.5 la interfaz de catálogo. Las entidades restantes de la
 tabla objetivo de abajo siguen siendo diseño pendiente de implementar.
 
+Inventario 3.8 incorpora `stock_balances`, `stock_counts` y `stock_movements`
+mediante `0032_stock_counts`. El esquema registra evidencia de conteo y vincula
+el movimiento a sus diferencias exactas por FK compuesta; no habilita aún un
+servicio ni HTTP de stock. Contrato en `inventory-count-contract.md`.
+
 Las imágenes de producto se almacenarán en Object Storage de Contabo; la relación
 prevista `product_images` guardará referencias privadas y metadatos con vínculo
 compuesto a empresa/producto. Contrato en `product-images-contract.md`, aún sin

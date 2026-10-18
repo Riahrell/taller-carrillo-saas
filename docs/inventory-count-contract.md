@@ -21,7 +21,10 @@ cantidad y valor: debe guardar evidencia, sin generar movimiento ficticio.
 
 Estos componentes son puros. No autorizan usuarios, escriben tablas ni exponen HTTP.
 
-## Persistencia siguiente, aún sin implementar
+## Persistencia implementada en 3.8
+
+Migración `0032_stock_counts`, aplicada únicamente en las bases efímeras de
+validación. Sin backfill, datos demo ni modificación de existencias operativas.
 
 - `stock_balances`: clave única empresa/producto, cantidad NUMERIC(18,3) y valor
   NUMERIC(28,6), no negativos y finitos; cantidad cero implica valor cero.
@@ -36,12 +39,25 @@ Estos componentes son puros. No autorizan usuarios, escriben tablas ni exponen H
   una compra o venta. Un movimiento por conteo con diferencia; ninguno si es igual.
   Incorporar otros orígenes con relaciones tipadas en sus respectivos hitos.
 
-El runtime no podrá editar o borrar conteos/movimientos. El saldo materializado
+Cada conteo almacena además las diferencias firmadas y CHECK exige que sean las
+restas de los snapshots. La FK del movimiento incluye empresa/producto/conteo y
+ambas diferencias, por lo que no puede vincular otra valoración al mismo origen.
+La unicidad de conteo en movimientos impide duplicarlo; el CHECK no admite un
+movimiento de cantidad cero. El esquema permite conservar conteos sin diferencia.
+CHECK exige costo declarado en entradas sin valoración histórica utilizable, y
+su ausencia cuando corresponde el histórico o no hay entrada.
+
+El runtime no puede editar o borrar conteos/movimientos, ni borrar saldos. El saldo materializado
 sí se actualiza exclusivamente desde el servicio autorizado. FK y CHECK no bastan
 para probar igualdad entre libro y saldo: pruebas de transacciones y reconciliación
 deben verificarla. No se promete aislamiento ante SQL arbitrario del rol runtime.
 
-## Transacción prevista
+Downgrade bloquea escrituras e inspecciona las tres tablas; rechaza revertir si
+cualquiera tiene datos, incluso un saldo cero. La reversión de esquema vacío
+conserva el contrato previo. PostgreSQL NUMERIC puede redondear SQL directo; las
+entradas de aplicación deben pasar por los validadores exactos existentes.
+
+## Transacción prevista, servicio todavía pendiente
 
 Una sola transacción: autorizar sesión admin y confirmación reciente; bloquear
 empresa, usuario/sesión y producto en orden compatible con catálogo/accesos;

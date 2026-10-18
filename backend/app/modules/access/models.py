@@ -27,6 +27,7 @@ from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from app.core.database import Base
 from app.modules.catalog import models as catalog_models  # noqa: F401 -- audit FK targets
+from app.modules.inventory import models as inventory_models  # noqa: F401 -- stock FK targets
 
 
 class MembershipRole(StrEnum):
