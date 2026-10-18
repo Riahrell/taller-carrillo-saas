@@ -31,8 +31,10 @@ Las entregas [3.6](docs/deliveries/inventory-3.6.md) y
 [3.8](docs/deliveries/inventory-3.8.md) agrega su persistencia y libro de movimientos.
 La [entrega 3.9](docs/deliveries/inventory-3.9.md) incorpora conteos internos
 atómicos e idempotentes. La [entrega 3.10](docs/deliveries/inventory-3.10.md)
-añade API privada de conteos, saldo e historial por producto; la pantalla sigue
-pendiente. Las imágenes de producto se
+añade API privada de conteos, saldo e historial por producto.
+La [entrega 3.11](docs/deliveries/inventory-3.11.md) conecta `/inventario` con
+ficha privada, costo/precio separados, historial y conteos revisados.
+Las imágenes de producto se
 integrarán con Object Storage de Contabo según el
 [contrato de imágenes](docs/product-images-contract.md), todavía sin conexión real.
 Las nuevas rutas requieren la versión y migraciones correspondientes; todavía no

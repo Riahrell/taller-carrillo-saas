@@ -14,6 +14,8 @@ interno de conteos, sin rutas nuevas. Contrato en `inventory-count-contract.md`.
 3.10 conecta HTTP privado y agrega `0033_stock_history`, índice para historial
 cronológico por empresa/producto. No cambia las reglas de valoración ni crea
 existencias al consultar; contrato en `inventory-http-contract.md`.
+3.11 conecta la pantalla privada y conteos revisados sin cambios de esquema;
+contrato en `inventory-ui-contract.md`. Imágenes/publicación siguen pendientes.
 
 Las imágenes de producto se almacenarán en Object Storage de Contabo; la relación
 prevista `product_images` guardará referencias privadas y metadatos con vínculo

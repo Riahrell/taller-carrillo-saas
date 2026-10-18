@@ -20,6 +20,9 @@ vistas operativas sin costos se implementarán por separado con sus restriccione
 La vitrina pública tendrá únicamente productos publicados y datos autorizados,
 sin reutilizar los DTO internos de costo o existencias exactas. Ver
 `inventory-http-contract.md`.
+3.11 aplica esas guardias a la pantalla `/inventario`: no monta datos antes de
+sesión admin, retira la vista al perder contexto y exige identidad/revisión para
+conteos. La conservación temporal de un pendiente no concede permiso de reintento.
 
 | Acción | Administrador | Cajero | Mecánico | Solo lectura |
 | --- | --- | --- | --- | --- |

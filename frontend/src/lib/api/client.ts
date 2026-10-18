@@ -37,6 +37,7 @@ async function request<T>(
     method?: "PATCH";
     etag?: string;
     actor?: string;
+    operationKey?: string;
   },
 ): Promise<T> {
   const url = apiPath(path);
@@ -62,6 +63,9 @@ async function request<T>(
                 ...(mutation.etag ? { "If-Match": mutation.etag } : {}),
                 ...(mutation.actor
                   ? { "X-Expected-Membership": mutation.actor }
+                  : {}),
+                ...(mutation.operationKey
+                  ? { "Idempotency-Key": mutation.operationKey }
                   : {}),
               }
             : {}),
@@ -155,4 +159,16 @@ export function createJson<T>(
   options: RequestOptions = {},
 ): Promise<T> {
   return request(path, decode, options, { body, csrf, actor });
+}
+
+export function operationJson<T>(
+  path: string,
+  body: unknown,
+  csrf: string,
+  actor: string,
+  operationKey: string,
+  decode: (value: unknown, status: number, headers: Headers) => T,
+  options: RequestOptions = {},
+): Promise<T> {
+  return request(path, decode, options, { body, csrf, actor, operationKey });
 }

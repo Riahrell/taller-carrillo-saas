@@ -23,6 +23,7 @@ from app.modules.access.models import (
 )
 from app.modules.access.passwords import hash_password
 from app.modules.catalog.models import Category, Product
+from app.modules.inventory.models import StockBalance, StockCountRecord, StockMovement
 
 pytestmark = [
     pytest.mark.integration,
@@ -107,7 +108,14 @@ def test_hold_browser_identity(new_identity_scope):
     finally:
         target.unlink(missing_ok=True)
         with state["owner"].begin() as connection:
-            for model in (AuditEvent, Product, Category):
+            for model in (
+                StockMovement,
+                StockCountRecord,
+                StockBalance,
+                AuditEvent,
+                Product,
+                Category,
+            ):
                 connection.execute(
                     delete(model).where(
                         model.tenant_id.in_([state["tenant"], state["other"]])

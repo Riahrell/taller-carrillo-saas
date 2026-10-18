@@ -2,8 +2,8 @@
 
 Rutas públicas a través del proxy `/api/inventory`; FastAPI recibe `/inventory`.
 Operaciones administrativas de la empresa elegida en sesión. No son catálogo
-público, ventas, pagos ni edición libre de stock. La pantalla de inventario sigue
-pendiente. El propietario delegó las decisiones técnicas; estas rutas conectan
+público, ventas, pagos ni edición libre de stock. 3.11 conecta la pantalla privada
+según `inventory-ui-contract.md`. El propietario delegó las decisiones técnicas; estas rutas conectan
 el conteo físico ya definido, sin añadir reglas comerciales nuevas.
 
 Separación confirmada con el propietario: área privada de inventario prevista en

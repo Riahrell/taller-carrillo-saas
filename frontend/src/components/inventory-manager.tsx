@@ -1,0 +1,757 @@
+"use client";
+
+import Link from "next/link";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
+import IdentityConfirmation from "@/components/identity-confirmation";
+import { accessApi, type SessionContext } from "@/lib/access/api";
+import { ApiError } from "@/lib/api/client";
+import {
+  catalogApi,
+  displayPrice,
+  type Page,
+  type Product,
+} from "@/lib/catalog/api";
+import {
+  inventoryApi,
+  quantityInput,
+  costInput,
+  reasonInput,
+  displayDecimal,
+  type Balance,
+  type Count,
+  type CountInput,
+  type PendingCount,
+} from "@/lib/inventory/api";
+
+export type ScopedPending = { session: SessionContext; command: PendingCount };
+export const uncertainInventory =
+  "El conteo puede haberse guardado. Comprueba el acceso y resuelve la operación pendiente con la misma clave; no registres otra para sustituirla.";
+export function sameInventorySession(a: SessionContext, b: SessionContext) {
+  return (
+    a.user_id === b.user_id &&
+    a.membership_id === b.membership_id &&
+    a.tenant_id === b.tenant_id &&
+    a.role === "admin" &&
+    b.role === "admin"
+  );
+}
+type Selection = {
+  product: Product;
+  balance: Balance;
+  history: Page<Count>;
+  category: string;
+};
+async function selection(
+  actor: string,
+  target: string,
+  signal: AbortSignal,
+): Promise<Selection> {
+  const [product, balance, history] = await Promise.all([
+    catalogApi.detail(actor, target, { signal }),
+    inventoryApi.balance(actor, target, { signal }),
+    inventoryApi.counts(actor, target, undefined, { signal }),
+  ]);
+  let category = "Sin categoría";
+  if (product.category_id !== null) {
+    let after: string | undefined;
+    // Traverse bounded, strictly advancing pages; cancellation clears the view.
+    // A missing category is an inconsistent read, never an invented name.
+    do {
+      const page = await catalogApi.categories(actor, after, { signal });
+      const found = page.items.find((row) => row.id === product.category_id);
+      if (found) {
+        category = found.name;
+        break;
+      }
+      if (!page.next_after) throw new Error("Missing category");
+      after = page.next_after;
+    } while (!signal.aborted);
+  }
+  return { product, balance, history, category };
+}
+type Props = {
+  session: SessionContext;
+  initialPending: ScopedPending | null;
+  onPending: (value: ScopedPending | null) => void;
+  onProblem: (message: string) => void;
+  onWriting: (value: boolean) => void;
+  onChanged: () => void;
+};
+type Stage = "closed" | "identity" | "edit" | "review" | "recover";
+const date = new Intl.DateTimeFormat("es-SV", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "America/El_Salvador",
+});
+export default function InventoryManager({
+  session,
+  initialPending,
+  onPending,
+  onProblem,
+  onWriting,
+  onChanged,
+}: Props) {
+  const actor = session.membership_id;
+  const [products, setProducts] = useState<Page<Product> | null>(null);
+  const [selected, setSelected] = useState<Selection | null>(null);
+  const [pending, setPending] = useState<PendingCount | null>(
+    initialPending?.command ?? null,
+  );
+  const [stage, setStage] = useState<Stage>("closed");
+  const [quantity, setQuantity] = useState("");
+  const [reason, setReason] = useState("");
+  const [cost, setCost] = useState("");
+  const [review, setReview] = useState<CountInput | null>(null);
+  const [deadline, setDeadline] = useState<number | null>(null);
+  const [busy, setBusy] = useState(true);
+  const [message, setMessage] = useState("");
+  const [success, setSuccess] = useState(false);
+  const alive = useRef(true);
+  const locked = useRef(true);
+  const controller = useRef<AbortController | null>(null);
+  const notice = useRef<HTMLParagraphElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const reportWriting = useCallback(
+    (value: boolean) => {
+      if (alive.current) onWriting(value);
+    },
+    [onWriting],
+  );
+  const identityWriting = useCallback(
+    (value: boolean) => {
+      if (alive.current) {
+        setBusy(value);
+        reportWriting(value);
+      }
+    },
+    [reportWriting],
+  );
+  const remember = (value: PendingCount | null) => {
+    setPending(value);
+    onPending(value ? { session, command: value } : null);
+  };
+  function clearDraft() {
+    setQuantity("");
+    setReason("");
+    setCost("");
+    setReview(null);
+  }
+  useEffect(() => {
+    alive.current = true;
+    const current = new AbortController();
+    controller.current = current;
+    const timer = setTimeout(() => {
+      if (!current.signal.aborted) {
+        current.abort();
+        onProblem(
+          "La consulta de inventario tardó demasiado. Comprueba el acceso.",
+        );
+      }
+    }, 30_000);
+    void catalogApi
+      .products(actor, undefined, { signal: current.signal })
+      .then(async (page) => {
+        const target =
+          initialPending?.command.data.product_id ?? page.items[0]?.id;
+        const detail = target
+          ? await selection(actor, target, current.signal)
+          : null;
+        if (!current.signal.aborted) {
+          setProducts(page);
+          setSelected(detail);
+          setBusy(false);
+          locked.current = false;
+        }
+      })
+      .catch(() => {
+        if (!current.signal.aborted)
+          onProblem("No pudimos consultar el inventario. Comprueba el acceso.");
+      })
+      .finally(() => clearTimeout(timer));
+    return () => {
+      alive.current = false;
+      current.abort();
+      controller.current?.abort();
+      onWriting(false);
+      clearTimeout(timer);
+    };
+  }, [actor, initialPending, onProblem, onWriting]);
+  useEffect(() => {
+    if (message) notice.current?.focus();
+    else if (stage !== "identity") heading.current?.focus();
+  }, [message, stage]);
+  useEffect(() => {
+    if (deadline === null || stage === "closed" || stage === "identity") return;
+    const timer = setTimeout(
+      () => {
+        if (locked.current) {
+          onProblem(uncertainInventory);
+          return;
+        }
+        setQuantity("");
+        setReason("");
+        setCost("");
+        setReview(null);
+        setDeadline(null);
+        setStage("identity");
+        setMessage("La confirmación venció. Confirma tu identidad de nuevo.");
+      },
+      Math.max(0, deadline - performance.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [deadline, stage, onProblem]);
+  async function read(action: (signal: AbortSignal) => Promise<void>) {
+    if (locked.current) return;
+    locked.current = true;
+    setBusy(true);
+    setMessage("");
+    const current = new AbortController();
+    controller.current = current;
+    const timer = setTimeout(() => {
+      current.abort();
+      if (alive.current)
+        onProblem("La consulta tardó demasiado. Comprueba el acceso.");
+    }, 30_000);
+    try {
+      await action(current.signal);
+    } catch {
+      if (!current.signal.aborted)
+        onProblem("No pudimos actualizar el inventario. Comprueba el acceso.");
+    } finally {
+      clearTimeout(timer);
+      if (!current.signal.aborted && alive.current) {
+        locked.current = false;
+        setBusy(false);
+      }
+    }
+  }
+  async function choose(target: string) {
+    await read(async (signal) => {
+      const detail = await selection(actor, target, signal);
+      if (!signal.aborted) setSelected(detail);
+    });
+  }
+  async function productPage(after?: string) {
+    await read(async (signal) => {
+      const page = await catalogApi.products(actor, after, { signal });
+      const detail = page.items[0]
+        ? await selection(actor, page.items[0].id, signal)
+        : null;
+      if (!signal.aborted) {
+        setProducts(page);
+        setSelected(detail);
+      }
+    });
+  }
+  async function historyPage(after?: Count) {
+    if (!selected) return;
+    await read(async (signal) => {
+      const history = await inventoryApi.counts(
+        actor,
+        selected.product.id,
+        after,
+        { signal },
+      );
+      if (!signal.aborted) setSelected({ ...selected, history });
+    });
+  }
+  let needsCost = false;
+  if (selected) {
+    try {
+      needsCost =
+        BigInt(quantityInput(quantity).replace(".", "")) >
+          BigInt(selected.balance.quantity.replace(".", "")) &&
+        (BigInt(selected.balance.quantity.replace(".", "")) === 0n ||
+          BigInt(selected.balance.value.replace(".", "")) === 0n);
+    } catch {
+      /* A draft may be incomplete. */
+    }
+  }
+  function prepare(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected || busy) return;
+    try {
+      setReview({
+        product_id: selected.product.id,
+        counted_quantity: quantityInput(quantity),
+        reason: reasonInput(reason),
+        declared_unit_cost: needsCost ? costInput(cost) : null,
+      });
+      setMessage("");
+      setStage("review");
+    } catch {
+      setMessage(
+        "Revisa la cantidad (hasta 3 decimales), el motivo y el costo requerido (hasta 6 decimales).",
+      );
+    }
+  }
+  async function save() {
+    if (locked.current || !selected || (!pending && !review)) return;
+    if (deadline === null || performance.now() >= deadline) {
+      clearDraft();
+      setStage("identity");
+      setMessage("Confirma tu identidad de nuevo.");
+      return;
+    }
+    if (
+      !pending &&
+      (typeof crypto === "undefined" || typeof crypto.randomUUID !== "function")
+    ) {
+      onProblem(
+        "Necesitas un navegador actualizado en HTTPS o localhost para registrar el conteo.",
+      );
+      return;
+    }
+    const command =
+      pending ??
+      Object.freeze({
+        key: crypto.randomUUID(),
+        data: Object.freeze({ ...review! }),
+      });
+    remember(command);
+    locked.current = true;
+    reportWriting(true);
+    setBusy(true);
+    setMessage("");
+    const current = new AbortController();
+    controller.current = current;
+    try {
+      await inventoryApi.record(actor, command, { signal: current.signal });
+      if (current.signal.aborted) return;
+      const context = await accessApi.session({ signal: current.signal });
+      if (!sameInventorySession(context, session)) {
+        onProblem(uncertainInventory);
+        return;
+      }
+      const detail = await selection(
+        actor,
+        command.data.product_id,
+        current.signal,
+      );
+      if (current.signal.aborted) return;
+      setSelected(detail);
+      remember(null);
+      clearDraft();
+      setStage("closed");
+      setSuccess(true);
+      setMessage(
+        "Conteo confirmado. El saldo mostrado incluye las operaciones registradas hasta su consulta.",
+      );
+    } catch (error) {
+      if (current.signal.aborted) return;
+      setSuccess(false);
+      if (error instanceof ApiError && error.status === 422) {
+        remember(null);
+        try {
+          const detail = await selection(
+            actor,
+            command.data.product_id,
+            current.signal,
+          );
+          if (current.signal.aborted) return;
+          setSelected(detail);
+          setStage("edit");
+          setMessage(
+            "El conteo fue rechazado y actualizamos el saldo. Revisa costo y cantidad antes de enviarlo de nuevo.",
+          );
+        } catch {
+          if (!current.signal.aborted)
+            onProblem(
+              "El conteo fue rechazado. No pudimos actualizar el saldo; comprueba el acceso.",
+            );
+        }
+      } else if (error instanceof ApiError && error.status === 428) {
+        setStage("identity");
+        setDeadline(null);
+        setMessage("Confirma tu identidad para resolver el mismo conteo.");
+      } else if (
+        error instanceof ApiError &&
+        (error.kind === "network" || error.status === 503)
+      ) {
+        setStage("closed");
+        setMessage(uncertainInventory);
+      } else {
+        onProblem(uncertainInventory);
+      }
+    } finally {
+      if (!current.signal.aborted && alive.current) {
+        locked.current = false;
+        reportWriting(false);
+        setBusy(false);
+      }
+    }
+  }
+  const frozen = busy || stage !== "closed" || pending !== null;
+  const reviewed = stage === "recover" ? pending?.data : review;
+  return (
+    <section
+      className="inventory-manager"
+      aria-label="Inventario de la empresa"
+      aria-busy={busy}
+    >
+      <div className="catalog-toolbar">
+        <Link className="text-action" href="/catalogo">
+          Administrar productos y categorías →
+        </Link>
+        <button
+          className="action"
+          disabled={busy || stage !== "closed"}
+          onClick={() => {
+            if (selected) void choose(selected.product.id);
+            else void productPage();
+          }}
+        >
+          Actualizar consulta
+        </button>
+      </div>
+      {message && (
+        <p
+          ref={notice}
+          tabIndex={-1}
+          role={success ? "status" : "alert"}
+          className="membership-notice"
+        >
+          {message}
+        </p>
+      )}
+      {pending && stage === "closed" && (
+        <section className="membership-notice" aria-label="Conteo pendiente">
+          <h2>Resultado por confirmar</h2>
+          <p>
+            Resolveremos el mismo conteo sin crear otra clave. La operación se
+            conserva solo mientras permanezcas en esta pantalla.
+          </p>
+          <p>
+            Referencia: <code>{pending.key}</code>
+          </p>
+          <button
+            className="action primary"
+            disabled={busy}
+            onClick={() => {
+              setMessage("");
+              setStage("identity");
+            }}
+          >
+            Resolver conteo pendiente
+          </button>
+        </section>
+      )}
+      <div className="inventory-columns">
+        <section
+          aria-label="Productos de inventario"
+          className="inventory-products"
+        >
+          <h2>Productos</h2>
+          {!products ? (
+            <p role="status">Cargando productos…</p>
+          ) : (
+            <>
+              <ul className="inventory-product-list">
+                {products.items.map((product) => (
+                  <li key={product.id}>
+                    <button
+                      className="inventory-product"
+                      aria-pressed={selected?.product.id === product.id}
+                      disabled={frozen}
+                      onClick={() => void choose(product.id)}
+                    >
+                      <strong>{product.name}</strong>
+                      <span>SKU: {product.sku ?? "Sin SKU"}</span>
+                      <span>{product.is_active ? "Activo" : "Inactivo"}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {products.items.length === 0 && (
+                <p>No hay productos. Créalos en el catálogo para comenzar.</p>
+              )}
+              <div className="catalog-pagination">
+                <button
+                  className="action"
+                  disabled={frozen}
+                  onClick={() => void productPage()}
+                >
+                  Inicio de productos
+                </button>
+                <button
+                  className="action"
+                  disabled={frozen || !products.next_after}
+                  onClick={() =>
+                    void productPage(products.next_after ?? undefined)
+                  }
+                >
+                  Más productos
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+        {selected && (
+          <section
+            className="inventory-detail"
+            aria-label="Ficha de inventario"
+          >
+            <div className="inventory-detail-heading">
+              <div
+                className="inventory-image-placeholder"
+                role="img"
+                aria-label="Imagen de producto pendiente de integrar"
+              >
+                <span aria-hidden="true">▧</span>
+                <small>Imagen pendiente</small>
+              </div>
+              <div>
+                <p className="eyebrow">
+                  PRODUCTO ·{" "}
+                  {selected.product.is_active ? "ACTIVO" : "INACTIVO"}
+                </p>
+                <h2 ref={heading} tabIndex={-1}>
+                  {selected.product.name}
+                </h2>
+                <p>SKU: {selected.product.sku ?? "Sin SKU"}</p>
+                <p>Categoría: {selected.category}</p>
+              </div>
+            </div>
+            <dl className="inventory-metrics">
+              <div>
+                <dt>Existencia actual</dt>
+                <dd>{displayDecimal(selected.balance.quantity)}</dd>
+              </div>
+              <div>
+                <dt>Costo promedio / unidad</dt>
+                <dd>
+                  {selected.balance.average_unit_cost === null
+                    ? "Sin costo calculable"
+                    : `${displayDecimal(selected.balance.average_unit_cost, 2)} USD`}
+                </dd>
+              </div>
+              <div>
+                <dt>Precio de venta</dt>
+                <dd>{displayPrice(selected.product.price)}</dd>
+              </div>
+              <div>
+                <dt>Valor de existencias</dt>
+                <dd>{displayDecimal(selected.balance.value, 2)} USD</dd>
+              </div>
+            </dl>
+            <p className="membership-help">
+              El costo proviene de los movimientos. El precio de venta no
+              modifica las existencias ni su valoración.
+            </p>
+            {stage === "closed" && !pending && (
+              <button
+                className="action primary"
+                disabled={busy || !selected.product.is_active}
+                onClick={() => {
+                  clearDraft();
+                  setSuccess(false);
+                  setMessage("");
+                  setStage("identity");
+                }}
+              >
+                Registrar conteo físico
+              </button>
+            )}
+            {stage === "identity" && (
+              <IdentityConfirmation
+                purpose={
+                  pending
+                    ? "resolver el conteo pendiente"
+                    : "registrar un conteo físico"
+                }
+                session={session}
+                onWriting={identityWriting}
+                onChanged={onChanged}
+                onProblem={onProblem}
+                onConfirmed={(remaining) => {
+                  setDeadline(performance.now() + Math.min(270_000, remaining));
+                  setStage(pending ? "recover" : "edit");
+                  setMessage("");
+                }}
+              />
+            )}
+            {stage === "edit" && (
+              <form onSubmit={prepare} className="catalog-form">
+                <h3>Conteo físico</h3>
+                <label>
+                  Cantidad contada
+                  <input
+                    inputMode="decimal"
+                    autoComplete="off"
+                    required
+                    maxLength={19}
+                    value={quantity}
+                    onChange={(event) => setQuantity(event.target.value)}
+                  />
+                </label>
+                <p>
+                  Escribe la cantidad física final, incluyendo cero si no hay
+                  unidades. Hasta tres decimales.
+                </p>
+                <label>
+                  Motivo
+                  <textarea
+                    required
+                    maxLength={500}
+                    value={reason}
+                    onChange={(event) => setReason(event.target.value)}
+                  />
+                </label>
+                {needsCost && (
+                  <label>
+                    Costo unitario declarado (USD)
+                    <input
+                      inputMode="decimal"
+                      autoComplete="off"
+                      required
+                      maxLength={29}
+                      value={cost}
+                      onChange={(event) => setCost(event.target.value)}
+                    />
+                    <small>
+                      Este aumento requiere un costo explícito porque no hay
+                      valoración histórica utilizable. Hasta seis decimales.
+                    </small>
+                  </label>
+                )}
+                <button className="action primary" disabled={busy}>
+                  Revisar conteo
+                </button>
+              </form>
+            )}
+            {(stage === "review" || stage === "recover") && reviewed && (
+              <section
+                className="catalog-review"
+                aria-label="Revisión del conteo"
+              >
+                <h3>
+                  {pending ? "Resolver operación pendiente" : "Revisar conteo"}
+                </h3>
+                <dl>
+                  <dt>Producto</dt>
+                  <dd>{selected.product.name}</dd>
+                  <dt>Cantidad física final</dt>
+                  <dd>{displayDecimal(reviewed.counted_quantity)}</dd>
+                  <dt>Motivo</dt>
+                  <dd>{reviewed.reason}</dd>
+                  <dt>Costo declarado</dt>
+                  <dd>
+                    {reviewed.declared_unit_cost === null
+                      ? "Usar valoración histórica cuando corresponda"
+                      : `${displayDecimal(reviewed.declared_unit_cost, 2)} USD`}
+                  </dd>
+                </dl>
+                <p>
+                  El servidor calculará la diferencia y valoración desde el
+                  saldo vigente. No registra una compra, venta ni pago.
+                </p>
+                <button
+                  className="action primary"
+                  disabled={busy}
+                  onClick={() => void save()}
+                >
+                  {busy
+                    ? "Confirmando…"
+                    : pending
+                      ? "Resolver con la misma clave"
+                      : "Confirmar conteo"}
+                </button>
+                {!pending && (
+                  <button
+                    className="action"
+                    disabled={busy}
+                    onClick={() => setStage("edit")}
+                  >
+                    Editar conteo
+                  </button>
+                )}
+              </section>
+            )}
+            {stage !== "closed" && (
+              <button
+                className="action"
+                disabled={busy}
+                onClick={() => {
+                  clearDraft();
+                  setStage("closed");
+                }}
+              >
+                Cancelar
+              </button>
+            )}
+            <section
+              aria-label="Historial de conteos"
+              className="inventory-history"
+            >
+              <h3>Historial de conteos</h3>
+              <p>
+                Hora de El Salvador. Incluye conteos sin diferencia; otros
+                movimientos llegarán con sus módulos.
+              </p>
+              {selected.history.items.length === 0 ? (
+                <p>Todavía no hay conteos registrados.</p>
+              ) : (
+                <ol>
+                  {selected.history.items.map((item) => (
+                    <li key={item.id}>
+                      <strong>{date.format(new Date(item.created_at))}</strong>
+                      <p>{item.reason}</p>
+                      <dl>
+                        <div>
+                          <dt>Cantidad anterior → final</dt>
+                          <dd>
+                            {displayDecimal(item.before_quantity)} →{" "}
+                            {displayDecimal(item.after_quantity)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Diferencia de cantidad</dt>
+                          <dd>{displayDecimal(item.quantity_delta)}</dd>
+                        </div>
+                        <div>
+                          <dt>Diferencia de valor</dt>
+                          <dd>{displayDecimal(item.value_delta, 2)} USD</dd>
+                        </div>
+                      </dl>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              <div className="catalog-pagination">
+                <button
+                  className="action"
+                  disabled={busy || stage !== "closed"}
+                  onClick={() => void historyPage()}
+                >
+                  Inicio del historial
+                </button>
+                <button
+                  className="action"
+                  disabled={
+                    busy || stage !== "closed" || !selected.history.next_after
+                  }
+                  onClick={() =>
+                    void historyPage(selected.history.items.at(-1))
+                  }
+                >
+                  Conteos anteriores
+                </button>
+              </div>
+            </section>
+          </section>
+        )}
+      </div>
+      <p className="membership-help">
+        Consulta privada. Crear un producto no lo publica en la vitrina. Si
+        cierras esta pantalla durante un conteo incierto, revisa su historial
+        antes de iniciar otro.
+      </p>
+    </section>
+  );
+}
