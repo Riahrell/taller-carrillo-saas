@@ -43,3 +43,10 @@ La autorización real sigue en cada petición del servidor, no en el enlace.
 No hay edición/desactivación, búsqueda, publicación, costo, stock ni movimientos
 en esta pantalla. Crear un producto no registra existencias. Contrato HTTP:
 `catalog-http-contract.md`. No confundir esta entrega con inventario completo.
+
+## Imágenes privadas (3.15)
+
+Cada producto muestra la imagen actual autorizada, compartida con inventario.
+Sin imagen se muestra un marcador; sin acceso se retira la vista. Las miniaturas
+no exponen URLs S3, no pasan por el optimizador público y revocan su blob al salir.
+La gestión de carga y reemplazo está en la ficha del inventario.

@@ -163,10 +163,39 @@ pérdida de conexión DB puede liberar advisory antes de finalizar un PUT extern
 por ello el reconciliador debe volver a visitar tombstones, no asumir atomicidad
 distribuida. Todavía no hay scheduler/worker de reconciliación habilitado.
 
-Antes de carga web: configurar almacenamiento en servidor, ejecutar reconciliador
-durable y probar interrupciones con el adaptador real; añadir HTTP con límites,
-CSRF/contexto, idempotencia y lectura privada, después conectar la UI. Este bloque
-no aplica migraciones a desarrollo/VPS ni declara operativo el recorrido web.
+## Recorrido web 3.15
+
+POST `/catalog/products/{id}/image`: cuerpo binario `application/octet-stream`,
+8 MiB máximo; contexto de membresía, CSRF, Origin y UUID de idempotencia obligatorios.
+GET en la misma ruta: PNG privado sin caché o 204 sin imagen. El proxy añade `/api`.
+El servidor autoriza antes de leer/procesar y vuelve a comprobar antes de asociar.
+409/503 pueden requerir reintentar el mismo archivo y clave; 410 termina la reserva.
+La UI mantiene el comando únicamente en memoria: tras recargar, revisar la imagen
+actual antes de iniciar otra carga. No guarda archivos ni comandos en localStorage.
+
+Inventario permite confirmar identidad, tomar foto o seleccionar de galería,
+revisar y guardar. Catálogo muestra la misma imagen autorizada como miniatura;
+carga al acercarse al área visible, serializa lecturas y revoca URLs blob al salir.
+No se publica el bucket ni se habilita automáticamente un escaparate público.
+`capture="environment"` solicita cámara trasera cuando el navegador lo admite;
+[compatibilidad de capture](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/capture).
+Formatos admitidos: JPEG, PNG y WebP estáticos; HEIC no está habilitado.
+
+Configuración explícita mediante `compose.images.yaml` y `S3_CONFIG_FILE`, archivo
+externo al repositorio con S3_ACCESS_KEY, S3_SECRET_KEY, S3_ENDPOINT, S3_BUCKET,
+S3_REGION y S3_ADDRESSING=path. No se buscan credenciales ambientales o de instancia.
+Fuera de `/run/secrets` se exige propietario actual/root y permisos privados.
+Los secretos Docker pueden ser de lectura compartida dentro del contenedor,
+si el directorio externo es privado y no hay escritura de grupo/otros.
+El operador debe asegurar lectura por UID 10001 y supervisar el worker.
+
+El worker usa reservas durables y barrido acotado con cursor/cota de ciclo en
+memoria; reiniciar repite trabajo idempotente, no pierde el diario. Revisa también
+tombstones para recoger PUT tardíos inciertos. Espera 15 segundos entre lotes y
+900 entre ciclos. La imagen actual queda excluida y se vuelve a comprobar con bloqueo.
+El overlay habilita salida S3, límites de memoria/procesos y worker independiente.
+Es optativo: no se activó en desarrollo ni VPS. El subproceso limita recursos,
+pero conserva permisos de filesystem/red del contenedor: no es un sandbox de SO.
 
 El reprocesado sigue las recomendaciones de
 [Pillow sobre archivos no confiables y metadatos](https://pillow.readthedocs.io/en/stable/handbook/security.html).

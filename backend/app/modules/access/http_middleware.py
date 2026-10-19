@@ -1,6 +1,7 @@
 """Pure ASGI guard for writes; CSRF proves browser intent, not authorization."""
 
 import json
+import re
 
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
@@ -9,6 +10,9 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from app.modules.access.http_security import HttpSecurity, RequestRejected
 
 MAX_JSON_BYTES = 8192
+_IMAGE_UPLOAD = re.compile(
+    r"/catalog/products/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/image"
+)
 
 
 class HttpSecurityMiddleware:
@@ -26,9 +30,12 @@ class HttpSecurityMiddleware:
             await self._reject(scope, receive, send, 403)
             return
         content_types = headers.getlist("content-type")
-        if (
-            len(content_types) != 1
-            or content_types[0].split(";", 1)[0].strip().lower() != "application/json"
+        binary = scope["method"] == "POST" and _IMAGE_UPLOAD.fullmatch(scope["path"])
+        maximum = 8 * 1024 * 1024 if binary else MAX_JSON_BYTES
+        if len(content_types) != 1 or content_types[0].split(";", 1)[
+            0
+        ].strip().lower() != (
+            "application/octet-stream" if binary else "application/json"
         ):
             await self._reject(scope, receive, send, 415)
             return
@@ -38,8 +45,13 @@ class HttpSecurityMiddleware:
         ):
             await self._reject(scope, receive, send, 400)
             return
-        if lengths and (len(lengths[0]) > 10 or int(lengths[0]) > MAX_JSON_BYTES):
+        if lengths and (len(lengths[0]) > 10 or int(lengths[0]) > maximum):
             await self._reject(scope, receive, send, 413)
+            return
+        if binary:
+            # The authenticated image handler bounds stream bytes, concurrency
+            # and total body time before materializing or decoding the file.
+            await self.app(scope, receive, send)
             return
         body = bytearray()
         while True:

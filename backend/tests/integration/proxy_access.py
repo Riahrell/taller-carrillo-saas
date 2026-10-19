@@ -709,6 +709,30 @@ def test_confirmation_rotates_cookies_and_rejects_replay_through_real_proxy(
     assert not list(browser.cookies)
 
 
+def test_image_location_keeps_json_limits_and_bounds_binary(http_identity):
+    target = str(uuid4())
+    for path, size, expected in (
+        (f"/api/catalog/products/{target}/image", 8193, 403),
+        (f"/api/catalog/products/{target}/image", 8388609, 413),
+        ("/api/catalog/products", 8193, 413),
+    ):
+        with socket.create_connection(("proxy", 8080), timeout=10) as connection:
+            payload = b"x" * size if size < 10000 else b""
+            connection.sendall(
+                (
+                    f"POST {path} HTTP/1.1\r\nHost: proxy\r\n"
+                    "Content-Type: application/octet-stream\r\n"
+                    f"Content-Length: {size}\r\nConnection: close\r\n\r\n"
+                ).encode()
+                + payload
+            )
+            with HTTPResponse(connection) as response:
+                response.begin()
+                assert response.status == expected
+                assert response.getheader("Cache-Control") == "no-store"
+                response.read(8192)
+
+
 def test_proxy_rejects_excess_body_uploads_without_reaching_authentication(
     http_identity,
 ):

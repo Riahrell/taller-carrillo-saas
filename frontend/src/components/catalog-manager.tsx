@@ -8,6 +8,7 @@ import {
   type FormEvent,
 } from "react";
 import IdentityConfirmation from "@/components/identity-confirmation";
+import ProductThumbnail from "@/components/product-thumbnail";
 import { accessApi, type SessionContext } from "@/lib/access/api";
 import { ApiError } from "@/lib/api/client";
 import {
@@ -523,9 +524,19 @@ export default function CatalogManager({
           <ul className="catalog-list">
             {currentPage?.items.map((item) => (
               <li key={item.id}>
-                <div>
-                  <h3>{item.name}</h3>
-                  <span>{item.is_active ? "Activo" : "Inactivo"}</span>
+                <div className="catalog-product-heading">
+                  {isProduct(item) && (
+                    <ProductThumbnail
+                      actor={identity}
+                      productId={item.id}
+                      name={item.name}
+                      onProblem={onProblem}
+                    />
+                  )}
+                  <div>
+                    <h3>{item.name}</h3>
+                    <span>{item.is_active ? "Activo" : "Inactivo"}</span>
+                  </div>
                 </div>
                 {isProduct(item) && (
                   <dl>

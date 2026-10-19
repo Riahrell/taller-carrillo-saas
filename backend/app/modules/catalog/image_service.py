@@ -43,6 +43,10 @@ class ProductImagesUnavailable(RuntimeError):
     """Database failure; an uncertain commit requires replay with the same key."""
 
 
+class ProductImageTerminalConflict(ProductImagesConflict):
+    """Reservation cannot attach; caller may review and start a new operation."""
+
+
 class ImageTransport(Protocol):
     def allocate(
         self, tenant_id: UUID, product_id: UUID, image: PreparedProductImage
@@ -88,6 +92,12 @@ class ProductImageAdministrator:
         self._engine = engine
         self._factory = create_session_factory(engine)
         self._storage = storage
+
+    def authorize_upload(
+        self, token: SecretStr, *, expected_actor: UUID, product_id: UUID
+    ) -> None:
+        with self._authorized(token, expected_actor, product_id):
+            pass
 
     @contextmanager
     def _authorized(self, token, expected_actor, product_id, *, recent=True):
@@ -269,7 +279,7 @@ class ProductImageAdministrator:
                     image.state != "reserved"
                     or image.created_at + RESERVATION_LIFETIME <= _database_now(session)
                 ):
-                    raise ProductImagesConflict("Image reservation unavailable")
+                    raise ProductImageTerminalConflict("Image reservation unavailable")
                 reference = _reference(image)
             # An ambiguous PUT leaves the durable reference for explicit replay.
             try:
@@ -306,7 +316,7 @@ class ProductImageAdministrator:
                     session.flush()
                     result = _view(image, head.image_id, expected_actor)
             if conflict:
-                raise ProductImagesConflict(
+                raise ProductImageTerminalConflict(
                     "Product image changed; review before replacing"
                 )
             return result

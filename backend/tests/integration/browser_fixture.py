@@ -22,6 +22,11 @@ from app.modules.access.models import (
     User,
 )
 from app.modules.access.passwords import hash_password
+from app.modules.catalog.image_models import (
+    ProductImage,
+    ProductImageEvent,
+    ProductImageHead,
+)
 from app.modules.catalog.models import Category, Product
 from app.modules.inventory.models import StockBalance, StockCountRecord, StockMovement
 
@@ -109,6 +114,9 @@ def test_hold_browser_identity(new_identity_scope):
         target.unlink(missing_ok=True)
         with state["owner"].begin() as connection:
             for model in (
+                ProductImageEvent,
+                ProductImageHead,
+                ProductImage,
                 StockMovement,
                 StockCountRecord,
                 StockBalance,

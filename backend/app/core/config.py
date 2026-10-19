@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     csrf_signing_key_file: Path | None = None
     trusted_proxy_host: str | None = None
     identity_keys_file: Path | None = None
+    product_images_config_file: Path | None = None
 
     @field_validator("trusted_proxy_host")
     @classmethod

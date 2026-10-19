@@ -34,15 +34,17 @@ atómicos e idempotentes. La [entrega 3.10](docs/deliveries/inventory-3.10.md)
 añade API privada de conteos, saldo e historial por producto.
 La [entrega 3.11](docs/deliveries/inventory-3.11.md) conecta `/inventario` con
 ficha privada, costo/precio separados, historial y conteos revisados.
-Las imágenes de producto se
-integrarán con Object Storage de Contabo según el
-[contrato de imágenes](docs/product-images-contract.md), todavía sin conexión real.
+Las imágenes privadas de producto usan Object Storage de Contabo según el
+[contrato de imágenes](docs/product-images-contract.md), con configuración optativa.
 La [entrega 3.12](docs/deliveries/inventory-3.12.md) añade validación y reprocesado
 local de imágenes, pendiente de worker aislado y conexión privada al bucket.
 La [entrega 3.13](docs/deliveries/inventory-3.13.md) agrega worker con límites y
 transporte S3 probado en Contabo; carga web y asociación autorizada todavía pendientes.
 La [entrega 3.14](docs/deliveries/inventory-3.14.md) incorpora reserva durable,
 asociación autorizada por empresa, auditoría y limpieza reintentable; HTTP/UI pendientes.
+La [entrega 3.15](docs/deliveries/inventory-3.15.md) conecta carga/lectura privada,
+cámara/galería e imagen compartida por inventario y catálogo; añade reconciliador
+supervisable. Recorrido probado con Contabo y base temporal, sin activar VPS.
 Las nuevas rutas requieren la versión y migraciones correspondientes; todavía no
 se aplicaron a desarrollo ni VPS.
 

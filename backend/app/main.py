@@ -31,6 +31,20 @@ from app.modules.access.membership import AccessDenied
 from app.modules.access.reauthentication import RecentAuthenticationRequired
 from app.modules.access.routes import router as access_router
 from app.modules.access.trusted_proxy import TrustedProxy
+from app.modules.catalog.image_configuration import load_image_configuration
+from app.modules.catalog.image_processing import ImageProcessingUnavailable
+from app.modules.catalog.image_routes import router as image_router
+from app.modules.catalog.image_service import (
+    ProductImageAdministrator,
+    ProductImagesConflict,
+    ProductImagesUnavailable,
+    ProductImageTerminalConflict,
+)
+from app.modules.catalog.image_storage import (
+    ImageStorageUnavailable,
+    PrivateImageStorage,
+)
+from app.modules.catalog.images import InvalidProductImage
 from app.modules.catalog.routes import router as catalog_router
 from app.modules.catalog.service import (
     CatalogAdministrator,
@@ -60,6 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         engine = build_engine(configuration)
+        image_storage = None
         try:
             from app.modules.access.password_policy import _common
 
@@ -70,11 +85,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.membership_administrator = MembershipAdministrator(engine)
             app.state.catalog = CatalogAdministrator(engine)
             app.state.inventory = InventoryAdministrator(engine)
+            app.state.product_images = None
+            if configuration.product_images_config_file is not None:
+                storage_config = await run_in_threadpool(
+                    load_image_configuration, configuration.product_images_config_file
+                )
+                image_storage = await run_in_threadpool(
+                    PrivateImageStorage, storage_config
+                )
+                app.state.product_images = ProductImageAdministrator(
+                    engine, image_storage
+                )
             app.state.identity = IdentityAccess(
                 engine, configuration.identity_keys_file
             )
             yield
         finally:
+            if image_storage is not None:
+                await run_in_threadpool(image_storage.close)
             await run_in_threadpool(engine.dispose)
 
     application = FastAPI(
@@ -93,6 +121,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(identity_router)
     application.include_router(administration_router)
     application.include_router(catalog_router)
+    application.include_router(image_router)
     application.include_router(inventory_router)
     application.add_middleware(HttpSecurityMiddleware, policy=http_security)
 
@@ -102,6 +131,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             status_code=status,
             headers={"Cache-Control": "no-store"},
         )
+
+    @application.exception_handler(ProductImagesConflict)
+    async def image_conflict(_request: Request, _error):
+        return domain_error(409, "Image operation conflict")
+
+    @application.exception_handler(ProductImageTerminalConflict)
+    async def image_terminal_conflict(_request: Request, _error):
+        return domain_error(410, "Image operation expired or superseded")
+
+    @application.exception_handler(InvalidProductImage)
+    async def image_invalid(_request: Request, _error):
+        return domain_error(422, "Invalid image")
+
+    @application.exception_handler(ProductImagesUnavailable)
+    @application.exception_handler(ImageStorageUnavailable)
+    @application.exception_handler(ImageProcessingUnavailable)
+    async def image_unavailable(_request: Request, _error):
+        return domain_error(503, "Images unavailable")
 
     @application.exception_handler(CatalogDenied)
     async def catalog_denied(_request: Request, _error: CatalogDenied):

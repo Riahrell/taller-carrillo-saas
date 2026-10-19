@@ -46,3 +46,12 @@ recuperación automática del borrador después de cerrar el navegador.
 
 Fotos Contabo, publicación pública, compras/consumos/ventas y vistas operativas de
 otros perfiles siguen pendientes. La interfaz no sustituye permisos ni transacciones.
+
+## Imagen del producto (3.15)
+
+La ficha muestra la imagen privada actual. Cambiarla exige identidad reciente,
+seleccionar cámara o galería, revisar y guardar explícitamente. Una respuesta
+incierta conserva en memoria el archivo y UUID para reintento manual idéntico.
+Cambio de empresa/sesión bloquea la operación y aborta la lectura. Tras recargar,
+revisar la imagen actual antes de iniciar otra operación. Sin permisos S3 o sin
+configuración, la ficha financiera sigue disponible con imagen no disponible.

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { accessApi, type SessionContext } from "@/lib/access/api";
+import type { ScopedImagePending } from "@/components/product-image";
 import InventoryManager, {
   uncertainInventory,
   sameInventorySession,
@@ -11,13 +12,22 @@ import InventoryManager, {
 
 type View =
   | { kind: "checking" }
-  | { kind: "active"; session: SessionContext; pending: ScopedPending | null }
+  | {
+      kind: "active";
+      session: SessionContext;
+      pending: ScopedPending | null;
+      imagePending: ScopedImagePending | null;
+    }
   | { kind: "blocked"; message: string };
 export default function InventoryWorkspace() {
   const [view, setView] = useState<View>({ kind: "checking" });
   const controller = useRef<AbortController | null>(null);
   const writing = useRef(false);
   const pending = useRef<ScopedPending | null>(null);
+  const imagePending = useRef<ScopedImagePending | null>(null);
+  const rememberImage = useCallback((value: ScopedImagePending | null) => {
+    imagePending.current = value;
+  }, []);
   const remember = useCallback((value: ScopedPending | null) => {
     pending.current = value;
   }, []);
@@ -43,13 +53,22 @@ export default function InventoryWorkspace() {
           setView(
             session.role === "admin" &&
               (!pending.current ||
-                sameInventorySession(session, pending.current.session))
-              ? { kind: "active", session, pending: pending.current }
+                sameInventorySession(session, pending.current.session)) &&
+              (!imagePending.current ||
+                sameInventorySession(session, imagePending.current.session))
+              ? {
+                  kind: "active",
+                  session,
+                  pending: pending.current,
+                  imagePending: imagePending.current,
+                }
               : {
                   kind: "blocked",
                   message: pending.current
                     ? "Hay un conteo pendiente de resolver en la sesión original. Vuelve al inicio para recuperar el acceso de esa empresa."
-                    : "Tu perfil no permite consultar el inventario.",
+                    : imagePending.current
+                      ? "Hay una imagen pendiente en la sesión original. Recupera el acceso de esa empresa."
+                      : "Tu perfil no permite consultar el inventario.",
                 },
           );
       })
@@ -134,6 +153,8 @@ export default function InventoryWorkspace() {
             onChanged={announce}
             initialPending={view.pending}
             onPending={remember}
+            initialImagePending={view.imagePending}
+            onImagePending={rememberImage}
           />
         </>
       )}

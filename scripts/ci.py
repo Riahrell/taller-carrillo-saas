@@ -30,6 +30,8 @@ def isolated_environment() -> dict[str, str]:
         "TRUSTED_PROXY_HOST",
         "RUN_PROXY_INTEGRATION",
         "RUN_BROWSER_INTEGRATION",
+        "PRODUCT_IMAGES_CONFIG_FILE",
+        "S3_CONFIG_FILE",
     }
     return {
         key: value

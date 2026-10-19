@@ -9,6 +9,9 @@ import {
   type FormEvent,
 } from "react";
 import IdentityConfirmation from "@/components/identity-confirmation";
+import ProductImage, {
+  type ScopedImagePending,
+} from "@/components/product-image";
 import { accessApi, type SessionContext } from "@/lib/access/api";
 import { ApiError } from "@/lib/api/client";
 import {
@@ -76,6 +79,8 @@ async function selection(
   return { product, balance, history, category };
 }
 type Props = {
+  initialImagePending: ScopedImagePending | null;
+  onImagePending: (value: ScopedImagePending | null) => void;
   session: SessionContext;
   initialPending: ScopedPending | null;
   onPending: (value: ScopedPending | null) => void;
@@ -90,6 +95,8 @@ const date = new Intl.DateTimeFormat("es-SV", {
   timeZone: "America/El_Salvador",
 });
 export default function InventoryManager({
+  initialImagePending,
+  onImagePending,
   session,
   initialPending,
   onPending,
@@ -98,6 +105,17 @@ export default function InventoryManager({
   onChanged,
 }: Props) {
   const actor = session.membership_id;
+  const [imageEngaged, setImageEngaged] = useState(
+    initialImagePending !== null,
+  );
+  const [imagePending, setImagePending] = useState(initialImagePending);
+  const rememberImage = useCallback(
+    (value: ScopedImagePending | null) => {
+      setImagePending(value);
+      onImagePending(value);
+    },
+    [onImagePending],
+  );
   const [products, setProducts] = useState<Page<Product> | null>(null);
   const [selected, setSelected] = useState<Selection | null>(null);
   const [pending, setPending] = useState<PendingCount | null>(
@@ -158,7 +176,9 @@ export default function InventoryManager({
       .products(actor, undefined, { signal: current.signal })
       .then(async (page) => {
         const target =
-          initialPending?.command.data.product_id ?? page.items[0]?.id;
+          initialPending?.command.data.product_id ??
+          initialImagePending?.command.product_id ??
+          page.items[0]?.id;
         const detail = target
           ? await selection(actor, target, current.signal)
           : null;
@@ -181,7 +201,7 @@ export default function InventoryManager({
       onWriting(false);
       clearTimeout(timer);
     };
-  }, [actor, initialPending, onProblem, onWriting]);
+  }, [actor, initialPending, initialImagePending, onProblem, onWriting]);
   useEffect(() => {
     if (message) notice.current?.focus();
     else if (stage !== "identity") heading.current?.focus();
@@ -387,7 +407,7 @@ export default function InventoryManager({
       }
     }
   }
-  const frozen = busy || stage !== "closed" || pending !== null;
+  const frozen = busy || stage !== "closed" || pending !== null || imageEngaged;
   const reviewed = stage === "recover" ? pending?.data : review;
   return (
     <section
@@ -498,14 +518,28 @@ export default function InventoryManager({
             aria-label="Ficha de inventario"
           >
             <div className="inventory-detail-heading">
-              <div
-                className="inventory-image-placeholder"
-                role="img"
-                aria-label="Imagen de producto pendiente de integrar"
-              >
-                <span aria-hidden="true">▧</span>
-                <small>Imagen pendiente</small>
-              </div>
+              <ProductImage
+                key={selected.product.id}
+                session={session}
+                productId={selected.product.id}
+                productName={selected.product.name}
+                disabled={
+                  busy ||
+                  stage !== "closed" ||
+                  pending !== null ||
+                  !selected.product.is_active
+                }
+                initialPending={
+                  imagePending?.command.product_id === selected.product.id
+                    ? imagePending
+                    : null
+                }
+                onPending={rememberImage}
+                onEngaged={setImageEngaged}
+                onWriting={reportWriting}
+                onChanged={onChanged}
+                onProblem={onProblem}
+              />
               <div>
                 <p className="eyebrow">
                   PRODUCTO ·{" "}
@@ -547,7 +581,7 @@ export default function InventoryManager({
             {stage === "closed" && !pending && (
               <button
                 className="action primary"
-                disabled={busy || !selected.product.is_active}
+                disabled={busy || imageEngaged || !selected.product.is_active}
                 onClick={() => {
                   clearDraft();
                   setSuccess(false);

@@ -1,0 +1,41 @@
+# Explicit opt-in. S3_CONFIG_FILE must point outside the repository to a private
+# file readable by UID 10001 in the container; no credential values in Compose.
+services:
+  backend:
+    environment:
+      PRODUCT_IMAGES_CONFIG_FILE: /run/secrets/product_images
+    secrets: [product_images]
+    networks: [private, api, image_storage]
+    mem_limit: 1g
+    pids_limit: 128
+  image-worker:
+    image: ${BACKEND_IMAGE:-taller-carrillo-backend:dev}
+    build:
+      context: ./backend
+      target: runtime
+    command: [python, -m, app.tools.image_worker, --storage-config, /run/secrets/product_images]
+    environment:
+      APP_ENV: ${APP_ENV:?Generate the local environment first}
+      DATABASE_URL_FILE: /run/secrets/database_url
+      DOCS_ENABLED: "false"
+    secrets: [database_url, product_images]
+    networks: [private, image_storage]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    init: true
+    mem_limit: 256m
+    pids_limit: 64
+    restart: unless-stopped
+    stop_grace_period: 30s
+    depends_on:
+      db:
+        condition: service_healthy
+
+networks:
+  image_storage:
+
+secrets:
+  product_images:
+    file: ${S3_CONFIG_FILE:?Provide a private external storage configuration file}

@@ -26,6 +26,8 @@ def isolate_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path, request) ->
         "csrf_signing_key_file",
         "TRUSTED_PROXY_HOST",
         "trusted_proxy_host",
+        "PRODUCT_IMAGES_CONFIG_FILE",
+        "product_images_config_file",
     ):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv(

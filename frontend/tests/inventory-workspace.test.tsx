@@ -11,11 +11,13 @@ import { accessApi } from "@/lib/access/api";
 import { identityApi } from "@/lib/access/identity";
 import { ApiError } from "@/lib/api/client";
 import { catalogApi } from "@/lib/catalog/api";
+import { productImages } from "@/lib/catalog/images";
 import { inventoryApi } from "@/lib/inventory/api";
 import { actor, context, product, empty, evidence } from "./inventory-data";
 import { confirmIdentity } from "./confirm-identity";
 
 beforeEach(() => {
+  vi.spyOn(productImages, "read").mockResolvedValue(null);
   Object.defineProperty(document, "visibilityState", {
     configurable: true,
     value: "visible",
@@ -74,7 +76,7 @@ it("muestra datos privados solo tras comprobar sesión y separa costo del precio
   expect(screen.getByText("Sin costo calculable")).toBeInTheDocument();
   expect(screen.getByText("12.34 USD")).toBeInTheDocument();
   expect(
-    screen.getByRole("img", { name: /pendiente de integrar/ }),
+    screen.getByRole("img", { name: "Producto sin imagen" }),
   ).toBeInTheDocument();
   expect(accessApi.reauthenticate).not.toHaveBeenCalled();
 });
