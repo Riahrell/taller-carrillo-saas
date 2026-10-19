@@ -17,10 +17,14 @@ existencias al consultar; contrato en `inventory-http-contract.md`.
 3.11 conecta la pantalla privada y conteos revisados sin cambios de esquema;
 contrato en `inventory-ui-contract.md`. Imágenes/publicación siguen pendientes.
 
-Las imágenes de producto se almacenarán en Object Storage de Contabo; la relación
-prevista `product_images` guardará referencias privadas y metadatos con vínculo
-compuesto a empresa/producto. Contrato en `product-images-contract.md`, aún sin
-migración ni cambios de API. Se separa de las galerías de publicación pública.
+Las imágenes de producto se almacenan en Object Storage privado de Contabo.
+3.14 agrega `product_images` (reservas/metadatos), `product_image_heads` (referencia
+actual por producto/empresa) y `product_image_events` (asociación append-only), con
+FK compuestas y permisos por columna. El servicio obtiene autoridad de la sesión,
+reserva antes de S3 y cambia referencia/auditoría en una transacción. No almacena
+binarios ni URLs firmadas. Migración `0034_product_images` probada en DB efímera,
+sin aplicar a desarrollo/VPS ni añadir API. Contrato en `product-images-contract.md`.
+Se separa de las galerías de publicación pública.
 
 3.3 añade `0031_catalog_audit`: eventos tipados de alta de categoría/producto
 en `audit_events`, con FK compuestas, snapshots iniciales y protección de evidencia

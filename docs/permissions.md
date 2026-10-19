@@ -3,6 +3,12 @@
 Permisos comprobados en backend y con tenant autorizado en todas las operaciones.
 Lo no concedido se deniega. Los controles de interfaz solo acompañan esa decisión.
 
+Imágenes 3.14: servicio interno solo admin y contexto esperado. Reemplazo exige
+confirmación reciente y producto activo; lectura se revalida después de S3. Las
+referencias son de la empresa de la sesión, nunca elegida por el cliente. Limpieza
+solo por worker confiable, sin endpoint y sin borrar la referencia vigente.
+Auditoría append-only y metadatos inmutables en runtime; aún sin HTTP/UI de imágenes.
+
 Catálogo 3.3: servicios internos de alta de productos/categorías, exigen
 sesión admin y confirmación reciente dentro de su transacción, con auditoría.
 3.4 conecta alta/consulta/paginación administrativa por HTTP: sesión admin para

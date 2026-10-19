@@ -2,9 +2,9 @@
 
 Requisito explícito del propietario: los productos deben admitir imagen y los
 archivos se almacenarán en Object Storage de Contabo, proveedor ya contratado.
-Este contrato incorpora el requisito; 3.12 añade reprocesado y 3.13 ejecución
-limitada en Linux y transporte S3 privado. No hay carga desde la web, rutas HTTP
-ni migraciones de imágenes.
+Este contrato incorpora el requisito; 3.12 añade reprocesado, 3.13 ejecución
+limitada y transporte S3, y 3.14 persistencia y servicio interno autorizado.
+No hay todavía carga desde la web ni rutas HTTP de imágenes.
 La conexión real se verifica separadamente del despliegue en la VPS, aplazado.
 
 ## Almacenamiento y aislamiento
@@ -111,6 +111,62 @@ Prueba operativa: `python -m app.tools.check_product_storage --secret-file RUTA`
 desde backend con entorno instalado. Solo crea objetos sintéticos de UUID nuevos;
 no lista ni borra objetos existentes. Exige archivo privado del usuario, sin
 interpolación o ejecución de shell. La VPS sigue aplazada.
+
+## Ciclo de vida 3.14
+
+Migración `0034_product_images`, aplicada solo en bases efímeras de validación:
+
+- `product_images`: reserva durable con clave/id servidor, empresa/producto,
+  membresía que inició operación, UUID de operación, hashes de entrada y salida,
+  tamaño/dimensiones del PNG y referencia anterior. Formato fijo PNG; sin URL,
+  secreto o archivo binario en DB. Datos inmutables para el rol runtime excepto
+  estado (`reserved`, `attached`, `garbage`, `deleting`, `deleted`).
+- `product_image_heads`: una referencia actual por empresa/producto. FK compuesta
+  impide enlazar otra empresa o producto. Solo `image_id` modificable en runtime.
+- `product_image_events`: evidencia append-only de asociación, actor y referencia
+  anterior; se confirma en la misma transacción que el puntero visible.
+
+`ProductImageAdministrator` obtiene empresa y actor desde la sesión, exige rol
+admin y contexto esperado; para reemplazar exige confirmación reciente y producto
+activo antes de procesar, al reservar y después del trabajo externo. Lectura admin
+sin confirmación reciente, revalidada tras S3; permite consultar producto inactivo.
+No retorna clave S3, tenant ni hash de entrada en los DTO.
+
+Orden: guardia empresa/actor/sesión → producto → reserva/puntero. Ninguna llamada
+de decoder/S3 se hace con transacción de empresa/stock abierta. Una llave advisory
+de sesión PostgreSQL por imagen coordina subida/limpieza fuera de esas transacciones,
+sin cola y con liberación explícita o invalidación de la conexión.
+
+La reserva se confirma **antes** del PUT. Misma operación/actor/producto/bytes
+recupera una respuesta perdida sin duplicar reserva o evidencia. Contenido diferente
+con la misma operación produce conflicto. Un PUT condicional rechazado requiere
+lectura verificada del objeto antes de asociarlo. Si el commit de asociación falla,
+se mantiene la imagen anterior; si se confirmó pero se perdió la respuesta, el
+replay devuelve evidencia de la asociación, sin volver a publicarla.
+
+La referencia anterior se captura en servidor al reservar. Dos reservas simultáneas
+sobre esa referencia no pueden sobreescribirse silenciosamente: solo una cambia
+el puntero; la otra queda `garbage` y exige nueva revisión/operación. Una imagen
+histórica puede devolver `is_current=false` en replay; eso no reactiva su objeto.
+
+Salvaguardas técnicas iniciales: reservas válidas durante una hora, máximo tres
+pendientes por producto y 1 GiB de bytes reservados/no eliminados por empresa. No
+son planes comerciales ni una garantía de uso físico exacto en el proveedor.
+Deberán dimensionarse/configurarse antes de la habilitación y acompañarse de
+límites HTTP/rate limit global; el procesamiento tiene su propia admisión.
+
+`cleanup_one` solo para worker confiable: nunca borra la imagen actual, espera
+vencimiento de reservas pendientes, marca `deleting` antes de S3 y confirma
+`deleted` después. Fallo o crash permite reintento. Los registros y la auditoría
+permanecen. Repite borrado de tombstones para recoger PUT inciertos tardíos. La
+pérdida de conexión DB puede liberar advisory antes de finalizar un PUT externo;
+por ello el reconciliador debe volver a visitar tombstones, no asumir atomicidad
+distribuida. Todavía no hay scheduler/worker de reconciliación habilitado.
+
+Antes de carga web: configurar almacenamiento en servidor, ejecutar reconciliador
+durable y probar interrupciones con el adaptador real; añadir HTTP con límites,
+CSRF/contexto, idempotencia y lectura privada, después conectar la UI. Este bloque
+no aplica migraciones a desarrollo/VPS ni declara operativo el recorrido web.
 
 El reprocesado sigue las recomendaciones de
 [Pillow sobre archivos no confiables y metadatos](https://pillow.readthedocs.io/en/stable/handbook/security.html).

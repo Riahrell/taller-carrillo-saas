@@ -20,6 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+from app.modules.catalog import image_models  # noqa: F401 -- register image tables
 
 
 class CatalogRecord:

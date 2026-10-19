@@ -41,6 +41,8 @@ La [entrega 3.12](docs/deliveries/inventory-3.12.md) añade validación y reproc
 local de imágenes, pendiente de worker aislado y conexión privada al bucket.
 La [entrega 3.13](docs/deliveries/inventory-3.13.md) agrega worker con límites y
 transporte S3 probado en Contabo; carga web y asociación autorizada todavía pendientes.
+La [entrega 3.14](docs/deliveries/inventory-3.14.md) incorpora reserva durable,
+asociación autorizada por empresa, auditoría y limpieza reintentable; HTTP/UI pendientes.
 Las nuevas rutas requieren la versión y migraciones correspondientes; todavía no
 se aplicaron a desarrollo ni VPS.
 
