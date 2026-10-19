@@ -48,3 +48,37 @@ Pruebas pendientes de ese servicio: aislamiento de empresa/proveedor/producto,
 revocación, confirmación expirada, compra ya recibida, claves repetidas distintas,
 dos recepciones simultáneas, rollback entre líneas, capacidad del saldo actual y
 reconciliación del libro. No se atribuyen esas garantías al cálculo puro de 3.16.
+
+## 3.17: persistencia implementada
+
+Migración `0035_purchases` y modelos `Supplier`, `Purchase`, `PurchaseItem`.
+Proveedor mínimo: nombre, estado activo inicial, empresa, autor y fecha UTC.
+Sin inventar identificadores fiscales, contactos o condiciones de crédito.
+No se impone unicidad del nombre. No hay servicio/HTTP de creación todavía.
+
+Compra conserva proveedor y nombre histórico, actor, fecha, clave de operación
+única por empresa, huella SHA-256, cantidad de líneas y total NUMERIC(20,2).
+El detalle conserva producto y nombre histórico, posición, cantidad NUMERIC(18,3),
+costo/valoración NUMERIC(28,6) e importe NUMERIC(20,2). Las FK compuestas impiden
+relacionar proveedor, actor, compra o producto de otra empresa.
+Posición 1..100 y producto únicos por compra; línea con UUID estable para
+futura evidencia de recepción. Las comprobaciones DB exigen valoración e importe
+iguales a los productos redondeados independientemente a seis y dos decimales.
+
+Los CHECK no comprueban sumas ni cantidad de filas entre tablas. El servicio
+pendiente deberá insertar cabecera y líneas, comprobar suma y cantidad, y capturar
+los nombres autorizados en la misma transacción. SQL directo con el rol runtime
+no está aislado por RLS ni protege contra toda escritura arbitraria. PostgreSQL
+puede redondear escala de entradas SQL: el contrato exacto de aplicación es
+obligatorio antes de persistir. No confundir FK con autorización de lectura.
+
+Runtime solo lee/inserta estas tablas: sin UPDATE, DELETE ni TRUNCATE. Hasta
+incorporar un caso de uso auditado no se habilita modificar el proveedor.
+La compra registrada es inmutable; el estado de recepción se añadirá como
+evidencia separada, no reescribiendo costos/importes. No hay borrado en cascada.
+Downgrade bloquea tablas y se niega si cualquiera tiene datos, incluso un
+proveedor sin compras. La migración vacía sí puede revertirse y reaplicarse.
+
+No se modificó stock_movements, stock_balances, caja o gastos. Registrar una
+compra no equivale a recibirla. La recepción tipada y su origen en el libro
+se implementarán y probarán antes de habilitar cambios de existencias.

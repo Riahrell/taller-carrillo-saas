@@ -48,6 +48,9 @@ supervisable. Recorrido probado con Contabo y base temporal, sin activar VPS.
 La [entrega 3.16](docs/deliveries/inventory-3.16.md) inicia compras con cantidades,
 costos y totales exactos; [contrato](docs/purchases-contract.md). Todavía sin
 persistencia de compras ni pantalla de recepción.
+La [entrega 3.17](docs/deliveries/inventory-3.17.md) añade persistencia de proveedores
+y compras con referencias entre empresas protegidas y registros inmutables.
+Servicios administrativos y recepción todavía pendientes.
 Las nuevas rutas requieren la versión y migraciones correspondientes; todavía no
 se aplicaron a desarrollo ni VPS.
 

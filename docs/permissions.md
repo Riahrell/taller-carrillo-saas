@@ -211,3 +211,12 @@ incluso un no-op. Lecturas mantienen su permiso admin sin exigir contraseña
 reciente. La pantalla confirma identidad antes de montar listado/formulario;
 un 428 retira el borrador y exige nueva revisión sin replay. Ventana del servidor
 de cinco minutos; temporizador local conservador de hasta cuatro minutos y medio.
+
+## Persistencia de compras 3.17
+
+Runtime: SELECT/INSERT en suppliers, purchases y purchase_items; UPDATE/DELETE/
+TRUNCATE denegados. Autor y referencias de empresa protegidos con FK compuestas.
+No hay permisos HTTP nuevos: creación/lectura autorizadas se incorporarán con
+el servicio, y las consultas deberán filtrar por la empresa de sesión.
+Las restricciones SQL no sustituyen autorización ni comprueban agregados entre
+cabecera y detalles. El owner de migraciones conserva permisos administrativos.

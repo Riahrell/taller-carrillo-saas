@@ -11,6 +11,7 @@ from app.core.config import Settings, load_settings
 from app.core.database import Base, build_engine, connect_safely
 from app.modules.access import models  # noqa: F401
 from app.modules.catalog import models as catalog_models  # noqa: F401
+from app.modules.purchases import models as purchase_models  # noqa: F401
 
 
 @pytest.fixture(scope="session")

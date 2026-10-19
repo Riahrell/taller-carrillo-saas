@@ -393,3 +393,13 @@ Downgrade con setup/evento, incluso cerrado, rechazado. Sin backfill o endpoint.
 ## 2.38 — Reset emitido y cuotas
 
 0024 añade password_reset_challenges: id/propietario, verification_id con FK compuesta a verified_mailboxes, token_hash, password_fingerprint, security_revision, created_at/expires_at exactos +15min, cierre/consumo y payload AES-GCM con descarte. Contenido secreto solo cifrado, sin token/correo en claro. password_reset_throttles conserva ámbito ip/address y HMAC, ventana, contador y última solicitud. Fuente verificada permanece independiente del reset; no hay tablas de negocio nuevas.
+
+## Compras 3.17
+
+`suppliers` pertenece a empresa con autor de membresía de esa empresa.
+`purchases` referencia proveedor/autor mediante FK compuestas y conserva nombre
+histórico, fecha, clave de operación/huella, número de líneas y total.
+`purchase_items` conserva producto/nombre, posición, cantidad, costo y valoración
+exactos e importe monetario. Producto y compra deben pertenecer a la misma empresa.
+No se persiste aún recepción ni se añaden orígenes al libro de inventario.
+Reglas y límites en `purchases-contract.md`; migración `0035_purchases`.
