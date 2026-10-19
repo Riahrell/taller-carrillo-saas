@@ -2,9 +2,10 @@
 
 Requisito explícito del propietario: los productos deben admitir imagen y los
 archivos se almacenarán en Object Storage de Contabo, proveedor ya contratado.
-Este contrato incorpora el requisito; 3.12 implementa únicamente el procesador
-local de archivos, todavía sin carga, rutas HTTP ni migraciones.
-La conexión real se hará separada del despliegue en la VPS, actualmente aplazado.
+Este contrato incorpora el requisito; 3.12 añade reprocesado y 3.13 ejecución
+limitada en Linux y transporte S3 privado. No hay carga desde la web, rutas HTTP
+ni migraciones de imágenes.
+La conexión real se verifica separadamente del despliegue en la VPS, aplazado.
 
 ## Almacenamiento y aislamiento
 
@@ -55,8 +56,15 @@ antes de habilitar cargas. Un fallo del almacenamiento no debe eliminar stock.
   máximo 12 MiB, conservando transparencia y eliminando metadatos. Son límites
   técnicos iniciales, no cuotas comerciales. No realiza gestión de color ICC.
   El límite de bytes del cuerpo HTTP debe aplicarse antes de materializarlo.
-  Todavía requiere worker aislado con memoria/tiempo y admisión de concurrencia;
-  **no llamar este procesador desde una ruta pública ni un hilo de FastAPI**.
+  3.13 añade `process_product_image`: un subproceso Linux por ejecución, máximo
+  uno simultáneo por proceso servidor, sin cola. RLIMIT_AS 512 MiB, CPU 5 segundos,
+  archivo 12 MiB, 32 descriptores, core deshabilitado y timeout de pared 10 segundos
+  que mata y espera al hijo. Python aislado, entorno sin credenciales heredadas,
+  IPC en archivos temporales privados y salida acotada. Los límites de CPU/memoria
+  no constituyen sandbox de permisos: conserva UID, filesystem y red del contenedor.
+  Dimensionar el contenedor para servidor más hijo; varios procesos multiplican
+  la concurrencia. El cuerpo HTTP debe limitarse antes de leerlo y el trabajo
+  bloqueante no debe ocupar el event loop. Aún sin ruta pública habilitada.
 - Probar archivo inválido/truncado, exceso de tamaño/píxeles, sustitución
   concurrente, reintento, rollback, timeout de S3 y limpieza sin borrar imágenes
   referenciadas. Pruebas locales con adaptador simulado y prueba real aislada en
@@ -77,10 +85,37 @@ El propietario confirmó endpoint `https://usc1.contabostorage.com`, bucket excl
 Indicó que el bucket es privado y que probó su conexión. Son datos comunicados,
 todavía no comprobados por esta implementación. Se introducirán mediante
 configuración del servidor, sin convertirlos en valores predeterminados del SaaS.
-Las credenciales permanecen fuera del repositorio y no se han leído ni copiado
-en esta fase. No se conectó la cuenta, transfirió un archivo ni verificó la
-política real del bucket durante 3.12.
+Las credenciales permanecen fuera del repositorio. En 3.13 el smoke explícito leyó
+el archivo privado externo sin imprimir valores: cargó un PNG sintético nuevo,
+verificó lectura autenticada/hash, rechazo de segunda escritura condicional y
+rechazo anónimo HTTP 401. Cada objeto sintético fue eliminado con confirmación
+del proveedor. Esto verifica esos objetos y operaciones, no audita todas las
+políticas del bucket ni acredita copia de seguridad o integración de la web.
+
+## Transporte 3.13
+
+`PrivateImageStorage` recibe configuración explícita, sin perfil/credenciales
+ambientales ni endpoint/bucket predeterminados; HTTPS verificado, firma v4,
+path-style, sin proxy ambiental, conexión 3 s, lectura 10 s, un intento SDK.
+El timeout de lectura es de socket, no una fecha límite global de transferencia.
+PNG privado con Content-MD5, hash propio y `If-None-Match: *`; no degrada estas
+garantías si el proveedor no las admite. Lecturas limitadas y verificadas contra
+longitud, tipo y hash de la referencia interna, sin URLs públicas o firmadas.
+
+`allocate` genera la referencia opaca **antes** del PUT para que el futuro servicio
+la registre duraderamente y pueda recuperar un timeout con resultado incierto.
+El transporte no autoriza empresas ni decide borrados: el servicio deberá probar
+permisos, reservas y ausencia de referencias. Sin ese servicio y su journal no
+habilitar cargas. `delete_unreferenced` es una operación interna, nunca un endpoint.
+Prueba operativa: `python -m app.tools.check_product_storage --secret-file RUTA`,
+desde backend con entorno instalado. Solo crea objetos sintéticos de UUID nuevos;
+no lista ni borra objetos existentes. Exige archivo privado del usuario, sin
+interpolación o ejecución de shell. La VPS sigue aplazada.
 
 El reprocesado sigue las recomendaciones de
 [Pillow sobre archivos no confiables y metadatos](https://pillow.readthedocs.io/en/stable/handbook/security.html).
 No equivale a un escaneo antivirus ni garantiza por sí solo aislamiento de recursos.
+Límites de proceso según [Python resource](https://docs.python.org/3.13/library/resource.html);
+transporte según [configuración de botocore](https://docs.aws.amazon.com/botocore/latest/reference/config.html)
+y [PUT condicional S3](https://docs.aws.amazon.com/boto3/latest/reference/services/s3/client/put_object.html),
+cuya compatibilidad se comprobó separadamente con Contabo.
