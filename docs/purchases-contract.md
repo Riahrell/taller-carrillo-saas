@@ -82,3 +82,43 @@ proveedor sin compras. La migración vacía sí puede revertirse y reaplicarse.
 No se modificó stock_movements, stock_balances, caja o gastos. Registrar una
 compra no equivale a recibirla. La recepción tipada y su origen en el libro
 se implementarán y probarán antes de habilitar cambios de existencias.
+
+## 3.18: registro administrativo implementado
+
+`PurchasesAdministrator.create_supplier` exige sesión administrativa vigente,
+membresía esperada y confirmación reciente. Valida nombre y guarda autor/fecha
+como evidencia de creación inmutable. Sin vincular o deduplicar por nombre.
+Esta alta no tiene clave idempotente: una respuesta perdida no autoriza repetir
+automáticamente; el futuro adaptador deberá permitir revisar antes de crear otro.
+
+`record_purchase` recibe compra tipada y UUID de operación. Empresa y actor
+proceden exclusivamente de sesión, nunca del payload. Revalida copias internas,
+bloquea empresa/usuario/sesión y productos en orden UUID; comprueba proveedor y
+productos activos de la empresa. El proveedor no se bloquea con FOR UPDATE:
+es inmutable para runtime y la empresa es el punto común de serialización de
+escrituras autorizadas. No se amplían permisos SQL para poder bloquearlo.
+
+Calcula importes, captura nombres y guarda cabecera/detalles en un commit.
+La compra inmutable con actor/fecha y líneas constituye evidencia tipada de su
+creación; no se introduce un payload libre ni se reescribe audit_events.
+Antes de devolver vuelve a comprobar la autorización y la confirmación reciente.
+No devuelve éxito antes de commit. Falta de capacidad produce PurchaseInvalid;
+fallo SQL/commit produce PurchasesUnavailable sin detalles del driver.
+
+La huella SHA-256 incluye versión, proveedor y líneas en su orden original, con
+decimales canónicos: 2 y 2.000 equivalen, reordenar líneas es contenido distinto.
+Clave igual/contenido igual retorna la evidencia original, incluso si después se
+renombra/desactiva el producto o proveedor; contenido distinto genera conflicto.
+Toda repetición exige autorización reciente. No recalcula costos históricos con
+catálogo actual ni duplica registros. Otro administrador autorizado de la misma
+empresa puede recuperar la evidencia; el actor persistido original se conserva.
+
+`current_purchase` consulta por empresa de sesión y UUID; admite referencias
+inactivas históricas y no exige confirmación reciente para leer. Sigue exigiendo
+rol admin y membresía esperada. Cabecera sin detalle, conteo/total incoherentes,
+posiciones incompletas o importes inválidos fallan cerrados en lectura/repetición.
+DTO excluye empresa y actor interno; decimales se serializan como strings a la
+escala correspondiente. Actor de respuesta interno representa al consultante.
+
+Sin nuevas migraciones, rutas HTTP ni UI. La recepción, stock, pagos y gastos no
+se ejecutan desde este servicio. No hay reintentos automáticos ni llamadas de red.

@@ -6,9 +6,25 @@ from pydantic import ValidationError
 
 from app.modules.inventory.valuation import StockValue
 from app.modules.purchases.calculation import MAX_AMOUNT, calculate_purchase
-from app.modules.purchases.inputs import MAX_PURCHASE_LINES, PurchaseCreation
+from app.modules.purchases.inputs import (
+    MAX_PURCHASE_LINES,
+    PurchaseCreation,
+    SupplierCreation,
+)
 
 D = Decimal
+
+
+@pytest.mark.parametrize("name", ["", "   ", "bad\x00name", "\ud800", "x" * 201, 42])
+def test_supplier_name_rejects_invalid_values(name):
+    with pytest.raises(ValidationError):
+        SupplierCreation(name=name)
+
+
+def test_supplier_name_is_trimmed_and_cannot_supply_company_or_role():
+    assert SupplierCreation(name=" Supplier ").name == "Supplier"
+    with pytest.raises(ValidationError):
+        SupplierCreation(name="Supplier", tenant_id=uuid4(), role="admin")
 
 
 def purchase(*lines):

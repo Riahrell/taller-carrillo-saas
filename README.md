@@ -51,6 +51,9 @@ persistencia de compras ni pantalla de recepción.
 La [entrega 3.17](docs/deliveries/inventory-3.17.md) añade persistencia de proveedores
 y compras con referencias entre empresas protegidas y registros inmutables.
 Servicios administrativos y recepción todavía pendientes.
+La [entrega 3.18](docs/deliveries/inventory-3.18.md) agrega el servicio administrativo
+de registro/consulta de compras con snapshots e idempotencia. Alta de proveedores
+con evidencia de autor/fecha. Todavía sin recepción, API o pantalla de compras.
 Las nuevas rutas requieren la versión y migraciones correspondientes; todavía no
 se aplicaron a desarrollo ni VPS.
 
