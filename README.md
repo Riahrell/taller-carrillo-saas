@@ -45,6 +45,9 @@ asociación autorizada por empresa, auditoría y limpieza reintentable; HTTP/UI 
 La [entrega 3.15](docs/deliveries/inventory-3.15.md) conecta carga/lectura privada,
 cámara/galería e imagen compartida por inventario y catálogo; añade reconciliador
 supervisable. Recorrido probado con Contabo y base temporal, sin activar VPS.
+La [entrega 3.16](docs/deliveries/inventory-3.16.md) inicia compras con cantidades,
+costos y totales exactos; [contrato](docs/purchases-contract.md). Todavía sin
+persistencia de compras ni pantalla de recepción.
 Las nuevas rutas requieren la versión y migraciones correspondientes; todavía no
 se aplicaron a desarrollo ni VPS.
 
