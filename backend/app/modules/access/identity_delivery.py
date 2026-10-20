@@ -2,12 +2,14 @@
 
 import hmac
 from datetime import timedelta
+from typing import Literal
 from uuid import uuid4
 
 from pydantic import SecretStr
 from sqlalchemy import or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.config import ConfigurationError
 from app.core.database import create_session_factory
 from app.modules.access.email_outbox import (
     MailEnvelope,
@@ -95,10 +97,20 @@ def _available(kind, key, now):
 
 
 class IdentityMailDispatcher:
-    def __init__(self, engine, *, identity, transport, origin: str):
+    def __init__(
+        self,
+        engine,
+        *,
+        identity,
+        transport,
+        origin: str,
+        environment: Literal["development", "test", "production"] = "production",
+    ):
         from app.modules.access.http_security import validate_origin
 
-        validate_origin(origin, "production")
+        if environment not in {"development", "test", "production"}:
+            raise ConfigurationError("Invalid identity worker environment")
+        validate_origin(origin, environment)
         self._factory, self.identity, self.transport, self.origin = (
             create_session_factory(engine),
             identity.require(),

@@ -50,7 +50,11 @@ def main():
         identity = IdentityAccess(engine, config.identity_keys_file).require()
         transport = SmtpTransport(Path(os.environ["SMTP_CONFIG_FILE"]))
         dispatcher = IdentityMailDispatcher(
-            engine, identity=identity, transport=transport, origin=config.public_origin
+            engine,
+            identity=identity,
+            transport=transport,
+            origin=config.public_origin,
+            environment=config.app_env,
         )
         enrollment = MailDispatcher(
             engine,
