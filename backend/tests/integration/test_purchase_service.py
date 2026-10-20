@@ -4,6 +4,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+from purchase_state import purchase_state
 from pydantic import ValidationError
 from sqlalchemy import delete, event, func, select, update
 from sqlalchemy.exc import SQLAlchemyError
@@ -22,7 +23,6 @@ from app.modules.purchases.models import Purchase, PurchaseItem, Supplier
 from app.modules.purchases.service import (
     PurchaseConflict,
     PurchaseInvalid,
-    PurchasesAdministrator,
     PurchasesUnavailable,
 )
 
@@ -32,46 +32,8 @@ D = Decimal
 
 @pytest.fixture
 def purchases(http_identity, recent_session):
-    state = dict(http_identity)
-    with Session(state["runtime"]) as session, session.begin():
-        state["token"] = issue_session(
-            session, user_id=state["user"], tenant_id=state["tenant"]
-        ).token
-        product = Product(
-            tenant_id=state["tenant"], name="Counted product", price=D(10)
-        )
-        foreign = Product(tenant_id=state["other"], name="Foreign product", price=D(10))
-        session.add_all([product, foreign])
-        session.flush()
-        state["product"], state["foreign_product"] = product.id, foreign.id
-    recent_session(state["token"])
-    state["service"] = PurchasesAdministrator(state["runtime"])
-    supplier = state["service"].create_supplier(
-        state["token"],
-        expected_actor=state["membership"],
-        data=SupplierCreation(name=" Supplier A "),
-    )
-    state["supplier"] = supplier.id
-    with Session(state["runtime"]) as session, session.begin():
-        other = Supplier(
-            tenant_id=state["other"],
-            actor_membership_id=state["foreign_membership"],
-            name="Foreign",
-        )
-        product = Product(tenant_id=state["tenant"], name="Second product", price=D(7))
-        session.add_all([other, product])
-        session.flush()
-        state["foreign_supplier"], state["second_product"] = other.id, product.id
-    try:
+    with purchase_state(http_identity, recent_session) as state:
         yield state
-    finally:
-        with state["owner"].begin() as connection:
-            for model in (PurchaseItem, Purchase, Supplier, Product):
-                connection.execute(
-                    delete(model).where(
-                        model.tenant_id.in_([state["tenant"], state["other"]])
-                    )
-                )
 
 
 def command(state, *, quantity="2", cost="3", supplier=None, product=None):

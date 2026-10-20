@@ -314,6 +314,6 @@ def test_catalog_audit_downgrade_preserves_committed_evidence(catalog_state):
         command.downgrade(config, "0030_catalog")
     with state["owner"].connect() as connection:
         assert MigrationContext.configure(connection).get_current_revision() == (
-            "0035_purchases"
+            "0036_purchase_receipts"
         )
     assert counts(state) == (1, 1)

@@ -54,6 +54,9 @@ Servicios administrativos y recepción todavía pendientes.
 La [entrega 3.18](docs/deliveries/inventory-3.18.md) agrega el servicio administrativo
 de registro/consulta de compras con snapshots e idempotencia. Alta de proveedores
 con evidencia de autor/fecha. Todavía sin recepción, API o pantalla de compras.
+La [entrega 3.19](docs/deliveries/inventory-3.19.md) conecta recepción completa
+con stock, evidencia y movimientos atómicos e idempotentes. Todavía sin HTTP/UI
+de compras; migración y operaciones verificadas solo en bases de pruebas.
 Las nuevas rutas requieren la versión y migraciones correspondientes; todavía no
 se aplicaron a desarrollo ni VPS.
 

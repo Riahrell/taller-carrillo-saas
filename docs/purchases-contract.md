@@ -122,3 +122,50 @@ escala correspondiente. Actor de respuesta interno representa al consultante.
 
 Sin nuevas migraciones, rutas HTTP ni UI. La recepción, stock, pagos y gastos no
 se ejecutan desde este servicio. No hay reintentos automáticos ni llamadas de red.
+
+## 3.19: recepción completa implementada
+
+`PurchaseReceiver.receive` acepta sesión, membresía esperada, compra y UUID de
+operación; no recibe cantidades, costos o saldo. Obtiene compra y detalle
+inmutables de la empresa de sesión, valida su coherencia y exige administrador
+con confirmación reciente antes de escribir y de confirmar. Bloquea empresa,
+usuario/sesión y productos en orden UUID; el módulo inventario bloquea los saldos.
+La empresa serializa también la creación del primer saldo.
+
+Compra recibida admite exclusivamente repetir su clave original con la misma
+compra; otra clave produce conflicto. Una clave aplicada a otra compra también
+produce conflicto. Repetición exige permiso reciente pero conserva snapshots
+originales, incluso si el producto se desactiva o su saldo cambia después. No
+revive existencias. Una recepción nueva exige productos activos. Un proveedor
+desactivado no invalida una compra ya registrada: no se elige otro proveedor ni
+se crea una compra nueva al recibirla. Esta decisión permite cerrar su entrega
+física y no habilita nuevas compras con el proveedor inactivo.
+
+`inventory/receiving.py` aplica cantidades/costos de cada línea persistida mediante
+StockValue.receive; guarda snapshots anteriores/resultantes, movimiento y saldo.
+No controla commit ni autoriza por sí solo: se ejecuta únicamente dentro de la
+transacción autorizada de recepción. Si cualquier producto excede capacidad o
+falla un INSERT/UPDATE/commit, toda la recepción revierte. Sin pagos ni gastos.
+
+Migración `0036_purchase_receipts`:
+
+- `purchase_receipts`: empresa/compra única, empresa/clave única, actor y fecha UTC.
+- `purchase_receipt_lines`: una por línea de compra, referencias compuestas a su
+  recepción y compra/producto; FK incluye cantidad y valoración exactas de origen.
+  Conserva antes/después y deltas positivos de cantidad y no negativos de valor.
+- `stock_movements`: origen excluyente conteo o línea de recepción. Cada línea
+  puede generar un solo movimiento; FK incluye empresa/producto y ambos deltas.
+  Los conteos anteriores se conservan; no hay backfill ni cambio de existencias.
+- Runtime sin UPDATE/DELETE/TRUNCATE de recepción y detalles. Downgrade rechaza
+  pérdida de cualquier recepción; en esquema sin recepciones restaura el contrato
+  anterior, incluso conservando conteos existentes.
+
+La recepción completa es una garantía del servicio transaccional: no hay CHECK
+que cuente filas de varias tablas. Una repetición con líneas o movimientos
+incompletos falla cerrada, sin generar reemplazos automáticamente. El DTO excluye
+empresa y actor interno y serializa cantidad a tres decimales/valor a seis.
+Las FK y permisos no constituyen aislamiento RLS frente a SQL arbitrario.
+
+Todavía sin HTTP/UI de compras o recepción. La consulta existente de conteos sigue
+mostrando conteos; deberá añadirse lectura del historial con origen de compra al
+conectar esta funcionalidad al panel.

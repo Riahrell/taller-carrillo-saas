@@ -220,3 +220,12 @@ No hay permisos HTTP nuevos: creación/lectura autorizadas se incorporarán con
 el servicio, y las consultas deberán filtrar por la empresa de sesión.
 Las restricciones SQL no sustituyen autorización ni comprueban agregados entre
 cabecera y detalles. El owner de migraciones conserva permisos administrativos.
+
+## Recepción interna 3.19
+
+Solo administrador con sesión/membresía vigentes y confirmación reciente recibe
+compras; repetición también exige autorización actual. Tenant y costos se resuelven
+en servidor. Runtime SELECT/INSERT en purchase_receipts/purchase_receipt_lines,
+sin UPDATE/DELETE/TRUNCATE. Orígenes compuestos en movimientos y unicidades
+protegen empresa/producto/deltas y duplicados, sin sustituir autorización.
+Sin permisos o endpoints HTTP nuevos en esta entrega.

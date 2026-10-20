@@ -17,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+from app.modules.purchases import models as purchase_models  # noqa: F401 -- FK targets
 
 
 class StockBalance(Base):
@@ -145,6 +146,30 @@ class StockMovement(Base):
             name="fk_stock_movements_count_source",
         ),
         UniqueConstraint("count_id"),
+        UniqueConstraint("receipt_line_id"),
+        CheckConstraint(
+            "(count_id IS NOT NULL AND receipt_line_id IS NULL) OR "
+            "(count_id IS NULL AND receipt_line_id IS NOT NULL)",
+            name="one_source",
+        ),
+        ForeignKeyConstraint(
+            [
+                "tenant_id",
+                "product_id",
+                "receipt_line_id",
+                "quantity_delta",
+                "value_delta",
+            ],
+            [
+                "purchase_receipt_lines.tenant_id",
+                "purchase_receipt_lines.product_id",
+                "purchase_receipt_lines.id",
+                "purchase_receipt_lines.quantity_delta",
+                "purchase_receipt_lines.value_delta",
+            ],
+            ondelete="RESTRICT",
+            name="fk_stock_movements_receipt_source",
+        ),
         CheckConstraint(
             "quantity_delta <> 0 AND quantity_delta > '-Infinity'::numeric AND "
             "quantity_delta < 'Infinity'::numeric",
@@ -158,7 +183,8 @@ class StockMovement(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     tenant_id: Mapped[UUID] = mapped_column()
     product_id: Mapped[UUID] = mapped_column()
-    count_id: Mapped[UUID] = mapped_column()
+    count_id: Mapped[UUID | None] = mapped_column()
+    receipt_line_id: Mapped[UUID | None] = mapped_column()
     quantity_delta: Mapped[Decimal] = mapped_column(Numeric(18, 3))
     value_delta: Mapped[Decimal] = mapped_column(Numeric(28, 6))
     created_at: Mapped[datetime] = mapped_column(

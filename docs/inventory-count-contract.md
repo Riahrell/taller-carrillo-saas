@@ -110,3 +110,12 @@ Las pruebas de servicio ejecutan autorización, rollback y transacciones concurr
 en PostgreSQL. 3.10 añade pruebas HTTP de origen, CSRF, cookies, límite de cuerpo,
 contexto y errores seguros. El formulario necesitará validación propia antes de
 habilitar operaciones de inventario desde la interfaz.
+
+## Compatibilidad con recepción 3.19
+
+El libro ahora admite count_id o receipt_line_id de forma excluyente. Se conservan
+el origen y las restricciones de conteos; las recepciones agregan sus propias
+referencias tipadas, nunca fingen un conteo. Ambos servicios comparten el bloqueo
+de empresa/producto/saldo y la valoración StockValue. La reconciliación suma todos
+los movimientos, incluidos ambos orígenes. La API de historial de conteos sigue
+limitada a conteos; historial unificado y recepción HTTP/UI quedan pendientes.

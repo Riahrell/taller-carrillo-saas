@@ -95,6 +95,15 @@ class PurchaseItem(Base):
     __tablename__ = "purchase_items"
     __table_args__ = (
         UniqueConstraint(
+            "tenant_id",
+            "purchase_id",
+            "product_id",
+            "id",
+            "quantity",
+            "stock_value",
+            name="uq_purchase_items_receipt_source",
+        ),
+        UniqueConstraint(
             "tenant_id", "purchase_id", "product_id", name="uq_purchase_items_product"
         ),
         UniqueConstraint(
@@ -147,3 +156,110 @@ class PurchaseItem(Base):
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(28, 6))
     stock_value: Mapped[Decimal] = mapped_column(Numeric(28, 6))
     amount: Mapped[Decimal] = mapped_column(Numeric(20, 2))
+
+
+class PurchaseReceipt(Base):
+    __tablename__ = "purchase_receipts"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "purchase_id", name="uq_purchase_receipts_purchase"
+        ),
+        UniqueConstraint(
+            "tenant_id", "operation_key", name="uq_purchase_receipts_operation"
+        ),
+        UniqueConstraint(
+            "tenant_id", "purchase_id", "id", name="uq_purchase_receipts_source"
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "purchase_id"],
+            ["purchases.tenant_id", "purchases.id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "actor_membership_id"],
+            ["tenant_memberships.tenant_id", "tenant_memberships.id"],
+            ondelete="RESTRICT",
+            name="fk_purchase_receipts_actor",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column()
+    purchase_id: Mapped[UUID] = mapped_column()
+    operation_key: Mapped[UUID] = mapped_column()
+    actor_membership_id: Mapped[UUID] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class PurchaseReceiptLine(Base):
+    __tablename__ = "purchase_receipt_lines"
+    __table_args__ = (
+        UniqueConstraint("purchase_item_id"),
+        UniqueConstraint(
+            "tenant_id",
+            "product_id",
+            "id",
+            "quantity_delta",
+            "value_delta",
+            name="uq_purchase_receipt_lines_movement_source",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "purchase_id", "receipt_id"],
+            [
+                "purchase_receipts.tenant_id",
+                "purchase_receipts.purchase_id",
+                "purchase_receipts.id",
+            ],
+            ondelete="RESTRICT",
+            name="fk_purchase_receipt_lines_receipt",
+        ),
+        ForeignKeyConstraint(
+            [
+                "tenant_id",
+                "purchase_id",
+                "product_id",
+                "purchase_item_id",
+                "quantity_delta",
+                "value_delta",
+            ],
+            [
+                "purchase_items.tenant_id",
+                "purchase_items.purchase_id",
+                "purchase_items.product_id",
+                "purchase_items.id",
+                "purchase_items.quantity",
+                "purchase_items.stock_value",
+            ],
+            ondelete="RESTRICT",
+            name="fk_purchase_receipt_lines_item_source",
+        ),
+        CheckConstraint(
+            "before_quantity >= 0 AND before_quantity < 'Infinity'::numeric "
+            "AND after_quantity > 0 AND after_quantity < 'Infinity'::numeric",
+            name="quantity_bounds",
+        ),
+        CheckConstraint(
+            "before_value >= 0 AND before_value < 'Infinity'::numeric "
+            "AND after_value >= 0 AND after_value < 'Infinity'::numeric",
+            name="value_bounds",
+        ),
+        CheckConstraint("before_quantity <> 0 OR before_value = 0", name="empty_value"),
+        CheckConstraint(
+            "quantity_delta = after_quantity - before_quantity AND quantity_delta > 0 "
+            "AND value_delta = after_value - before_value AND value_delta >= 0",
+            name="delta_matches",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column()
+    purchase_id: Mapped[UUID] = mapped_column()
+    receipt_id: Mapped[UUID] = mapped_column()
+    purchase_item_id: Mapped[UUID] = mapped_column()
+    product_id: Mapped[UUID] = mapped_column()
+    before_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3))
+    after_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3))
+    before_value: Mapped[Decimal] = mapped_column(Numeric(28, 6))
+    after_value: Mapped[Decimal] = mapped_column(Numeric(28, 6))
+    quantity_delta: Mapped[Decimal] = mapped_column(Numeric(18, 3))
+    value_delta: Mapped[Decimal] = mapped_column(Numeric(28, 6))

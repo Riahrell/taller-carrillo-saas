@@ -403,3 +403,13 @@ histórico, fecha, clave de operación/huella, número de líneas y total.
 exactos e importe monetario. Producto y compra deben pertenecer a la misma empresa.
 No se persiste aún recepción ni se añaden orígenes al libro de inventario.
 Reglas y límites en `purchases-contract.md`; migración `0035_purchases`.
+
+## Recepción de compras 3.19
+
+`purchase_receipts` identifica una recepción completa e inmutable por compra y
+clave de operación en empresa. `purchase_receipt_lines` conserva snapshots y
+deltas ligados por FK compuesta a cantidad/valoración de la línea comprada.
+El libro `stock_movements` admite exactamente un origen tipado: count_id o
+receipt_line_id; sus deltas deben coincidir con el origen, sin movimientos dobles.
+Saldos y evidencia se escriben en la misma transacción. Modelo y límites en
+`purchases-contract.md`, migración `0036_purchase_receipts`.
