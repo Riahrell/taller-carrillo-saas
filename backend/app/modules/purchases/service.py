@@ -7,7 +7,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_serializer
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, select, tuple_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -18,8 +18,17 @@ from app.modules.access.membership import AccessDenied
 from app.modules.access.sessions import _database_now
 from app.modules.catalog.models import Product
 from app.modules.purchases.calculation import calculate_purchase
-from app.modules.purchases.inputs import PurchaseCreation, SupplierCreation
-from app.modules.purchases.models import Purchase, PurchaseItem, Supplier
+from app.modules.purchases.inputs import (
+    PurchaseCreation,
+    PurchasePageQuery,
+    SupplierCreation,
+)
+from app.modules.purchases.models import (
+    Purchase,
+    PurchaseItem,
+    PurchaseReceipt,
+    Supplier,
+)
 
 
 class PurchaseConflict(Exception):
@@ -75,6 +84,34 @@ class PurchaseView(BaseModel):
         return format(value, ".2f")
 
 
+class PurchaseSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    id: UUID
+    supplier_id: UUID
+    supplier_name: str
+    total: Decimal
+    created_at: datetime
+    receipt_id: UUID | None
+
+    @field_serializer("total", when_used="json")
+    def money_json(self, value: Decimal) -> str:
+        return format(value, ".2f")
+
+
+class PurchasePage(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    items: tuple[PurchaseSummary, ...]
+    next_after: UUID | None
+    actor_membership_id: UUID = Field(exclude=True, repr=False)
+
+
+class SupplierPage(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    items: tuple[SupplierView, ...]
+    next_after: UUID | None
+    actor_membership_id: UUID = Field(exclude=True, repr=False)
+
+
 def _decimal(value: Decimal) -> str:
     if value == 0:
         return "0"
@@ -109,6 +146,113 @@ class PurchasesAdministrator:
 
     def __init__(self, engine: Engine):
         self._factory = create_session_factory(engine)
+
+    def list_suppliers(
+        self, token: SecretStr, *, query: PurchasePageQuery, expected_actor: UUID
+    ) -> SupplierPage:
+        if type(query) is not PurchasePageQuery:
+            raise AccessDenied("Access denied")
+        query = PurchasePageQuery.model_validate(query.model_dump())
+        try:
+            with self._factory.begin() as session:
+                _limit_transaction(session)
+                actor = authorize_administrator(
+                    session, token, expected_actor, recent=False
+                )
+                statement = select(Supplier).where(
+                    Supplier.tenant_id == actor.tenant_id
+                )
+                if query.after is not None:
+                    if (
+                        session.scalar(statement.where(Supplier.id == query.after))
+                        is None
+                    ):
+                        raise AccessDenied("Access denied")
+                    statement = statement.where(Supplier.id > query.after)
+                rows = tuple(
+                    session.scalars(
+                        statement.order_by(Supplier.id).limit(query.limit + 1)
+                    )
+                )
+                items = tuple(
+                    SupplierView(
+                        id=row.id,
+                        name=row.name,
+                        is_active=row.is_active,
+                        actor_membership_id=actor.membership_id,
+                    )
+                    for row in rows[: query.limit]
+                )
+                authorize_administrator(session, token, expected_actor, recent=False)
+                result = SupplierPage(
+                    items=items,
+                    next_after=items[-1].id if len(rows) > query.limit else None,
+                    actor_membership_id=actor.membership_id,
+                )
+            return result
+        except SQLAlchemyError:
+            raise PurchasesUnavailable("Purchases unavailable") from None
+
+    def list_purchases(
+        self, token: SecretStr, *, query: PurchasePageQuery, expected_actor: UUID
+    ) -> PurchasePage:
+        if type(query) is not PurchasePageQuery:
+            raise AccessDenied("Access denied")
+        query = PurchasePageQuery.model_validate(query.model_dump())
+        try:
+            with self._factory.begin() as session:
+                _limit_transaction(session)
+                actor = authorize_administrator(
+                    session, token, expected_actor, recent=False
+                )
+                statement = select(Purchase).where(
+                    Purchase.tenant_id == actor.tenant_id
+                )
+                if query.after is not None:
+                    cursor = session.scalar(statement.where(Purchase.id == query.after))
+                    if cursor is None:
+                        raise AccessDenied("Access denied")
+                    statement = statement.where(
+                        tuple_(Purchase.created_at, Purchase.id)
+                        < (cursor.created_at, cursor.id)
+                    )
+                rows = tuple(
+                    session.scalars(
+                        statement.order_by(
+                            Purchase.created_at.desc(), Purchase.id.desc()
+                        ).limit(query.limit + 1)
+                    )
+                )
+                receipt_ids = dict(
+                    session.execute(
+                        select(PurchaseReceipt.purchase_id, PurchaseReceipt.id).where(
+                            PurchaseReceipt.tenant_id == actor.tenant_id,
+                            PurchaseReceipt.purchase_id.in_(
+                                [row.id for row in rows[: query.limit]]
+                            ),
+                        )
+                    ).all()
+                )
+                items = tuple(
+                    PurchaseSummary(
+                        id=row.id,
+                        supplier_id=row.supplier_id,
+                        supplier_name=row.supplier_name,
+                        total=row.total,
+                        created_at=row.created_at,
+                        receipt_id=receipt_ids.get(row.id),
+                    )
+                    for row in rows[: query.limit]
+                )
+                authorize_administrator(session, token, expected_actor, recent=False)
+                result = PurchasePage(
+                    items=items,
+                    next_after=items[-1].id if len(rows) > query.limit else None,
+                    actor_membership_id=actor.membership_id,
+                )
+            return result
+        except SQLAlchemyError:
+            raise PurchasesUnavailable("Purchases unavailable") from None
 
     def create_supplier(
         self, token: SecretStr, *, data: SupplierCreation, expected_actor: UUID

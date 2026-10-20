@@ -293,6 +293,95 @@ def test_inventory_count_replay_and_balance_through_real_proxy(http_identity):
                 )
 
 
+def test_purchase_and_receipt_replay_through_real_proxy(http_identity):
+    from sqlalchemy import delete
+
+    from app.modules.purchases.models import (
+        Purchase,
+        PurchaseItem,
+        PurchaseReceipt,
+        PurchaseReceiptLine,
+        Supplier,
+    )
+
+    state = http_identity
+    browser = Browser(state)
+    try:
+        with Session(state["runtime"]) as session, session.begin():
+            product = Product(
+                tenant_id=state["tenant"], name="Proxy purchase product", price="10.00"
+            )
+            session.add(product)
+            session.flush()
+            product_id = str(product.id)
+        assert browser.request("/auth/csrf", headers=READ)[0] == 204
+        assert (
+            browser.request(
+                "/auth/login",
+                body={
+                    "email": state["email"],
+                    "password": state["password"].get_secret_value(),
+                },
+            )[0]
+            == 200
+        )
+        context = {"X-Expected-Membership": str(state["membership"])}
+        status, supplier, _ = browser.request(
+            "/purchases/suppliers", body={"name": "Proxy supplier"}, headers=context
+        )
+        assert status == 201
+        expected = context | {"Idempotency-Key": str(uuid4())}
+        payload = {
+            "supplier_id": supplier["id"],
+            "lines": [{"product_id": product_id, "quantity": "2", "unit_cost": "3"}],
+        }
+        status, purchase, result_headers = browser.request(
+            "/purchases", body=payload, headers=expected
+        )
+        assert status == 200 and purchase["total"] == "6.00"
+        assert result_headers["Cache-Control"] == "no-store"
+        assert (
+            browser.request("/purchases", body=payload, headers=expected)[1] == purchase
+        )
+        url = f"/purchases/{purchase['id']}/receipt"
+        assert browser.request(url, headers=READ | context)[0] == 204
+        expected = context | {"Idempotency-Key": str(uuid4())}
+        status, receipt, result_headers = browser.request(
+            url, body={}, headers=expected
+        )
+        assert status == 200 and receipt["lines"][0]["after_value"] == "6.000000"
+        assert result_headers["X-Access-Membership"] == str(state["membership"])
+        assert browser.request(url, body={}, headers=expected)[1] == receipt
+        assert browser.request(url, headers=READ | context)[1] == receipt
+        assert (
+            browser.request("/purchases", headers=READ | context)[1]["items"][0][
+                "receipt_id"
+            ]
+            == receipt["id"]
+        )
+        assert (
+            browser.request(f"/inventory/products/{product_id}/balance", headers=READ)[
+                1
+            ]["quantity"]
+            == "2.000"
+        )
+    finally:
+        with state["owner"].begin() as connection:
+            for model in (
+                StockMovement,
+                PurchaseReceiptLine,
+                PurchaseReceipt,
+                StockBalance,
+                PurchaseItem,
+                Purchase,
+                Supplier,
+                Product,
+            ):
+                connection.execute(
+                    delete(model).where(model.tenant_id == state["tenant"])
+                )
+
+
 def stale_password_proof(state):
     # Model an entire successful login six minutes ago. Moving only the password
     # timestamp would describe an impossible login beyond its five-minute limit.
@@ -715,6 +804,9 @@ def test_image_location_keeps_json_limits_and_bounds_binary(http_identity):
         (f"/api/catalog/products/{target}/image", 8193, 403),
         (f"/api/catalog/products/{target}/image", 8388609, 413),
         ("/api/catalog/products", 8193, 413),
+        ("/api/purchases", 8193, 403),
+        ("/api/purchases", 32769, 413),
+        ("/api/purchases/suppliers", 8193, 413),
     ):
         with socket.create_connection(("proxy", 8080), timeout=10) as connection:
             payload = b"x" * size if size < 10000 else b""

@@ -57,6 +57,9 @@ con evidencia de autor/fecha. Todavía sin recepción, API o pantalla de compras
 La [entrega 3.19](docs/deliveries/inventory-3.19.md) conecta recepción completa
 con stock, evidencia y movimientos atómicos e idempotentes. Todavía sin HTTP/UI
 de compras; migración y operaciones verificadas solo en bases de pruebas.
+La [entrega 3.20](docs/deliveries/inventory-3.20.md) expone registro, listados y
+recepción mediante [API privada](docs/purchases-http-contract.md), con sesión,
+contexto, CSRF y claves de operación. Formularios de compras aún pendientes.
 Las nuevas rutas requieren la versión y migraciones correspondientes; todavía no
 se aplicaron a desarrollo ni VPS.
 

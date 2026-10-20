@@ -32,6 +32,8 @@ class HttpSecurityMiddleware:
         content_types = headers.getlist("content-type")
         binary = scope["method"] == "POST" and _IMAGE_UPLOAD.fullmatch(scope["path"])
         maximum = 8 * 1024 * 1024 if binary else MAX_JSON_BYTES
+        if scope["method"] == "POST" and scope["path"] == "/purchases":
+            maximum = 32768  # Up to 100 validated lines; other JSON stays at 8 KiB.
         if len(content_types) != 1 or content_types[0].split(";", 1)[
             0
         ].strip().lower() != (
@@ -59,7 +61,7 @@ class HttpSecurityMiddleware:
             if message["type"] == "http.disconnect":
                 return
             body.extend(message.get("body", b""))
-            if len(body) > MAX_JSON_BYTES:
+            if len(body) > maximum:
                 await self._reject(scope, receive, send, 413)
                 return
             if not message.get("more_body", False):

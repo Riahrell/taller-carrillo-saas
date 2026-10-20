@@ -60,6 +60,14 @@ from app.modules.inventory.service import (
     InventoryInvalid,
     InventoryUnavailable,
 )
+from app.modules.purchases.receipts import PurchaseReceiver
+from app.modules.purchases.routes import router as purchases_router
+from app.modules.purchases.service import (
+    PurchaseConflict,
+    PurchaseInvalid,
+    PurchasesAdministrator,
+    PurchasesUnavailable,
+)
 
 
 class LivenessResponse(BaseModel):
@@ -85,6 +93,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.membership_administrator = MembershipAdministrator(engine)
             app.state.catalog = CatalogAdministrator(engine)
             app.state.inventory = InventoryAdministrator(engine)
+            app.state.purchases = PurchasesAdministrator(engine)
+            app.state.purchase_receiver = PurchaseReceiver(engine)
             app.state.product_images = None
             if configuration.product_images_config_file is not None:
                 storage_config = await run_in_threadpool(
@@ -123,6 +133,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(catalog_router)
     application.include_router(image_router)
     application.include_router(inventory_router)
+    application.include_router(purchases_router)
     application.add_middleware(HttpSecurityMiddleware, policy=http_security)
 
     def domain_error(status: int, detail: str) -> JSONResponse:
@@ -131,6 +142,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             status_code=status,
             headers={"Cache-Control": "no-store"},
         )
+
+    @application.exception_handler(PurchaseConflict)
+    async def purchase_conflict(_request: Request, _error):
+        return domain_error(409, "Purchase operation conflict")
+
+    @application.exception_handler(PurchaseInvalid)
+    async def purchase_invalid(_request: Request, _error):
+        return domain_error(422, "Invalid purchase")
+
+    @application.exception_handler(PurchasesUnavailable)
+    async def purchases_unavailable(_request: Request, _error):
+        return domain_error(503, "Purchases unavailable")
 
     @application.exception_handler(ProductImagesConflict)
     async def image_conflict(_request: Request, _error):

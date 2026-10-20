@@ -229,3 +229,11 @@ en servidor. Runtime SELECT/INSERT en purchase_receipts/purchase_receipt_lines,
 sin UPDATE/DELETE/TRUNCATE. Orígenes compuestos en movimientos y unicidades
 protegen empresa/producto/deltas y duplicados, sin sustituir autorización.
 Sin permisos o endpoints HTTP nuevos en esta entrega.
+
+## API de compras 3.20
+
+Rutas privadas `/purchases` y `/purchases/suppliers`: administrador de empresa
+de sesión, membresía esperada obligatoria también en lectura. Lecturas sin
+confirmación reciente; escrituras con confirmación reciente/CSRF/origen.
+Recepción recibe solo compra/clave, no cantidades/costos. Sin cambios de rol SQL.
+Contrato completo en `purchases-http-contract.md`. Sin nuevos permisos públicos.

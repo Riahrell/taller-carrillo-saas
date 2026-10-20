@@ -169,3 +169,11 @@ Las FK y permisos no constituyen aislamiento RLS frente a SQL arbitrario.
 Todavía sin HTTP/UI de compras o recepción. La consulta existente de conteos sigue
 mostrando conteos; deberá añadirse lectura del historial con origen de compra al
 conectar esta funcionalidad al panel.
+
+## 3.20: HTTP y listados
+
+Rutas privadas conectadas según `purchases-http-contract.md`. Listados limitados
+por empresa/cursor; resumen de compra incorpora receipt_id nullable derivado en
+servidor. Lectura de recepción devuelve evidencia original o ausencia (204),
+siempre comprobando primero compra y contexto autorizados. Confirmar recepción
+solo admite objeto vacío y UUID de operación; no modifica el contrato de costos.

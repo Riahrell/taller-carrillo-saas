@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_serializer
 from sqlalchemy import Engine, func, select
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.core.database import create_session_factory
 from app.modules.access.administrator_guard import authorize_administrator
@@ -148,51 +149,105 @@ class PurchaseReceiver:
                             receive_purchase_item(session, receipt, item)
                     except ValueError:
                         raise PurchaseInvalid("Invalid purchase receipt") from None
-                rows = tuple(
-                    session.scalars(
-                        select(PurchaseReceiptLine)
-                        .where(
-                            PurchaseReceiptLine.tenant_id == actor.tenant_id,
-                            PurchaseReceiptLine.receipt_id == receipt.id,
-                        )
-                        .order_by(PurchaseReceiptLine.product_id)
-                        .limit(101)
-                    )
-                )
-                movement_count = session.scalar(
-                    select(func.count())
-                    .select_from(StockMovement)
-                    .where(
-                        StockMovement.tenant_id == actor.tenant_id,
-                        StockMovement.receipt_line_id.in_([row.id for row in rows]),
-                    )
-                )
-                if (
-                    len(rows) != len(items)
-                    or movement_count != len(items)
-                    or any(
-                        row.purchase_item_id != item.id
-                        for row, item in zip(rows, items, strict=True)
-                    )
-                ):
-                    raise PurchasesUnavailable("Purchases unavailable")
+                result = self._view(session, receipt, actor.membership_id, items)
                 authorize_administrator(session, token, expected_actor)
-                result = ReceiptView(
-                    id=receipt.id,
-                    purchase_id=receipt.purchase_id,
-                    operation_key=receipt.operation_key,
-                    created_at=receipt.created_at,
-                    actor_membership_id=actor.membership_id,
-                    lines=tuple(
-                        ReceiptLineView(
-                            **{
-                                field: getattr(row, field)
-                                for field in ReceiptLineView.model_fields
-                            }
-                        )
-                        for row in rows
-                    ),
+            return result
+        except SQLAlchemyError:
+            raise PurchasesUnavailable("Purchases unavailable") from None
+
+    @staticmethod
+    def _view(
+        session: Session,
+        receipt: PurchaseReceipt,
+        actor_id: UUID,
+        items: tuple[PurchaseItem, ...],
+    ) -> ReceiptView:
+        rows = tuple(
+            session.scalars(
+                select(PurchaseReceiptLine)
+                .where(
+                    PurchaseReceiptLine.tenant_id == receipt.tenant_id,
+                    PurchaseReceiptLine.receipt_id == receipt.id,
                 )
+                .order_by(PurchaseReceiptLine.product_id)
+                .limit(101)
+            )
+        )
+        movement_count = session.scalar(
+            select(func.count())
+            .select_from(StockMovement)
+            .where(
+                StockMovement.tenant_id == receipt.tenant_id,
+                StockMovement.receipt_line_id.in_([row.id for row in rows]),
+            )
+        )
+        if (
+            len(rows) != len(items)
+            or movement_count != len(items)
+            or any(
+                row.purchase_item_id != item.id
+                for row, item in zip(rows, items, strict=True)
+            )
+        ):
+            raise PurchasesUnavailable("Purchases unavailable")
+        result = ReceiptView(
+            id=receipt.id,
+            purchase_id=receipt.purchase_id,
+            operation_key=receipt.operation_key,
+            created_at=receipt.created_at,
+            actor_membership_id=actor_id,
+            lines=tuple(
+                ReceiptLineView(
+                    **{
+                        field: getattr(row, field)
+                        for field in ReceiptLineView.model_fields
+                    }
+                )
+                for row in rows
+            ),
+        )
+        return result
+
+    def current_receipt(
+        self, token: SecretStr, *, purchase_id: UUID, expected_actor: UUID
+    ) -> ReceiptView | None:
+        if not isinstance(purchase_id, UUID):
+            raise AccessDenied("Access denied")
+        try:
+            with self._factory.begin() as session:
+                _limit_transaction(session)
+                actor = authorize_administrator(
+                    session, token, expected_actor, recent=False
+                )
+                purchase = session.scalar(
+                    select(Purchase).where(
+                        Purchase.tenant_id == actor.tenant_id,
+                        Purchase.id == purchase_id,
+                    )
+                )
+                if purchase is None:
+                    raise AccessDenied("Access denied")
+                PurchasesAdministrator._view(session, purchase, actor.membership_id)
+                receipt = session.scalar(
+                    select(PurchaseReceipt).where(
+                        PurchaseReceipt.tenant_id == actor.tenant_id,
+                        PurchaseReceipt.purchase_id == purchase.id,
+                    )
+                )
+                result = None
+                if receipt is not None:
+                    items = tuple(
+                        session.scalars(
+                            select(PurchaseItem)
+                            .where(
+                                PurchaseItem.tenant_id == actor.tenant_id,
+                                PurchaseItem.purchase_id == purchase.id,
+                            )
+                            .order_by(PurchaseItem.product_id)
+                        )
+                    )
+                    result = self._view(session, receipt, actor.membership_id, items)
+                authorize_administrator(session, token, expected_actor, recent=False)
             return result
         except SQLAlchemyError:
             raise PurchasesUnavailable("Purchases unavailable") from None

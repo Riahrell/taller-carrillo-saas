@@ -1,5 +1,6 @@
 """Desired purchase data, without client-owned totals, stock or authority."""
 
+import re
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -46,3 +47,22 @@ class PurchaseCreation(BaseModel):
         if len({line.product_id for line in self.lines}) != len(self.lines):
             raise ValueError("A product must appear only once per purchase")
         return self
+
+
+class PurchasePageQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    limit: int = Field(default=25, ge=1, le=100, strict=True)
+    after: UUID | None = None
+
+    @field_validator("limit", mode="before")
+    @classmethod
+    def canonical_limit(cls, value: object) -> object:
+        if isinstance(value, str):
+            if re.fullmatch(r"[1-9][0-9]{0,2}", value, flags=re.ASCII) is None:
+                raise ValueError("Invalid page limit")
+            return int(value)
+        return value
+
+
+class ReceiptConfirmation(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
