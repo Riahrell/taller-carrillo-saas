@@ -35,5 +35,10 @@ mostrará claramente el estado pendiente y las acciones autorizadas.
 5. La revocación se aplica sin esperar un nuevo inicio de sesión.
 6. La cuenta no enumera empresas ni se concede permisos a sí misma.
 
-Estado: decisión documentada; el registro autónomo todavía no está implementado.
-La reparación de la CI en curso precede esta entrega.
+Estado: el registro autónomo todavía no está implementado; la preparación
+privada de invitaciones ya está disponible en backend, según el alcance inferior.
+
+Entrega 3.40: preparación/listado/revocación privados de invitaciones por correo,
+con vigencia, código guardado solo como hash y evidencia transaccional. Contrato:
+`employee-invitations-contract.md`. No hay todavía consumo público, pantalla de
+registro o aprobación de solicitudes ni concesiones de inventario para empleados.

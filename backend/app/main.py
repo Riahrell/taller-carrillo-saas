@@ -22,11 +22,13 @@ from app.modules.access.administration import (
 )
 from app.modules.access.administration_routes import router as administration_router
 from app.modules.access.authentication import AuthenticationUnavailable
+from app.modules.access.employee_invitations import EmployeeInvitations
 from app.modules.access.http_middleware import HttpSecurityMiddleware
 from app.modules.access.http_security import HttpSecurity, RequestRejected
 from app.modules.access.http_service import HttpAccess
 from app.modules.access.identity_http import IdentityAccess
 from app.modules.access.identity_routes import router as identity_router
+from app.modules.access.invitation_routes import router as invitation_router
 from app.modules.access.membership import AccessDenied
 from app.modules.access.reauthentication import RecentAuthenticationRequired
 from app.modules.access.routes import router as access_router
@@ -94,6 +96,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.session_factory = create_session_factory(engine)
             app.state.access = await run_in_threadpool(HttpAccess, engine)
             app.state.membership_administrator = MembershipAdministrator(engine)
+            app.state.employee_invitations = EmployeeInvitations(engine)
             app.state.catalog = CatalogAdministrator(engine)
             app.state.inventory = InventoryAdministrator(engine)
             app.state.purchases = PurchasesAdministrator(engine)
@@ -133,6 +136,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(access_router)
     application.include_router(identity_router)
     application.include_router(administration_router)
+    application.include_router(invitation_router)
     application.include_router(catalog_router)
     application.include_router(image_router)
     application.include_router(inventory_router)

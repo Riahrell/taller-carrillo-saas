@@ -243,3 +243,11 @@ Inventario 3.39: deshacer el último movimiento manual/ajuste es exclusivo del
 administrador vigente y exige confirmación de identidad e idempotencia. No amplía
 los permisos de cajeros, mecánicos o solo lectura. Original y compensación son
 append-only; no se autoriza borrar movimientos, saldos históricos o documentos.
+
+## Invitaciones privadas 3.40
+
+Solo admin de la empresa autenticada crea/lista/revoca invitaciones por correo.
+Crear y revocar exigen además identidad confirmada y contexto esperado. El código
+no es sesión ni autorización comercial. Esta entrega no permite al empleado
+registrarse todavía ni concede consultas o escrituras de inventario.
+Contrato: `employee-invitations-contract.md`.

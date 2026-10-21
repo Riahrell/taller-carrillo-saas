@@ -21,7 +21,7 @@ referencia de requisitos; no autorizan accesos externos ni despliegues por sí s
 | Salida por venta u orden | No integrada | Necesita origen real y su módulo; no basta un campo de texto que diga venta |
 | Historial | Historial unificado de ajustes, entradas/salidas manuales y recepciones, con origen, responsable y paginación | Validación manual del propietario; ventas/órdenes dependen de sus módulos |
 | Stock bajo | Mínimo configurable, aviso en ficha y lista global privada de productos por reponer | Validación manual; consulta a demanda |
-| Acceso | Email de seis caracteres, navegador 15 días y sesión opaca; regresión de CI cerrada en 3.28 | Registro de empleados y aprobación/permisos pendientes |
+| Acceso | Email de seis caracteres, navegador 15 días y sesión opaca; regresión de CI cerrada en 3.28 | Invitaciones privadas en backend; registro de empleados y aprobación/permisos pendientes |
 | Operación | Compose local, configuración externa de S3/correo | Preparar entorno de pruebas separado, HTTPS, backup/restauración y despliegue revisable |
 
 No se declara el conjunto listo para producción. La revisión estática y una
@@ -122,3 +122,8 @@ ajuste con diferencia, sin operaciones posteriores y con saldo intacto. Invierte
 cantidad y valoración originales, conserva historial y rechaza repeticiones.
 No cancela recepciones de compra, ventas u órdenes. Continúan pendientes registro
 y permisos de empleados, revisión manual y cierre operativo del despliegue.
+
+Entrega 3.40 incorpora únicamente la preparación/listado/revocación de invitaciones
+privadas de empleados en backend. No crea cuentas, membresías o permisos y aún
+no tiene pantalla ni consumo público. El registro y su aprobación continúan como
+siguiente bloque, sin cambiar la autorización administrativa del inventario.

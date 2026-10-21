@@ -1193,3 +1193,6 @@ class MfaThrottle(Base):
 
 # Register independent browser-verification tables for session foreign keys.
 from app.modules.access import email_login_models as _email_login_models  # noqa: E402, F401
+
+# Register invitation tables with the same metadata used by migrations.
+from app.modules.access import employee_invitation_models as employee_invitation_models  # noqa: E402, F401
