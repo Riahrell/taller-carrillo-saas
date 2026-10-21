@@ -159,13 +159,16 @@ class HttpSecurity:
             or issued.expires_at <= _now()
         ):
             raise RequestRejected("Request rejected")
-        self._set(
-            response,
+        # Browser-session cookie: server idle/absolute deadlines still apply.
+        response.set_cookie(
             self.session_cookie,
-            issued.token,
-            issued.expires_at,
-            http_only=True,
+            issued.token.get_secret_value(),
+            secure=self.secure,
+            httponly=True,
+            samesite="lax",
+            path="/",
         )
+        response.headers["Cache-Control"] = "no-store"
         response.delete_cookie(
             self.preauth_cookie,
             path="/",

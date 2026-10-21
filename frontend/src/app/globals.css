@@ -271,7 +271,7 @@ select {
 .field-help {
   display: block;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.6;
   margin-top: 9px;
 }
@@ -588,7 +588,8 @@ h1 span {
   color: var(--muted);
 }
 .membership-fields > label {
-  font-size: 14px;
+  font-size: 16px;
+  font-weight: 600;
 }
 .membership-fields select {
   width: 100%;
@@ -599,7 +600,7 @@ h1 span {
   color: var(--ink);
   font-size: 16px;
 }
-.membership-creation .membership-fields input {
+.membership-fields input:not([type="checkbox"]):not([type="radio"]) {
   width: 100%;
   box-sizing: border-box;
   padding: 13px;
@@ -932,4 +933,45 @@ h1 span {
   display: block;
   max-width: 100%;
   margin-block: 0.6rem;
+}
+
+/* Comfortable controls shared by catalogue, inventory and identity forms. */
+.membership-fields {
+  min-width: 0;
+}
+.membership-fields input:not([type="checkbox"]):not([type="radio"]),
+.membership-fields select,
+.membership-fields button {
+  min-height: 48px;
+}
+.membership-fields .password-field input {
+  min-height: 56px;
+  padding-right: 100px;
+}
+.membership-fields .password-toggle {
+  min-height: 44px;
+  min-width: 80px;
+  font-size: 14px;
+  color: #263322;
+}
+.identity-confirmation {
+  width: 100%;
+  box-sizing: border-box;
+}
+.identity-confirmation .field-help {
+  font-size: 16px;
+  color: #465043;
+  margin-bottom: 24px;
+}
+.membership-fields input:focus-visible,
+.membership-fields select:focus-visible,
+.membership-fields button:focus-visible {
+  outline: 3px solid #566d2d;
+  outline-offset: 3px;
+}
+@media (max-width: 480px) {
+  .membership-review,
+  .membership-notice {
+    padding: 20px 16px;
+  }
 }

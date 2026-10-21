@@ -24,7 +24,9 @@ la batería automatizada del contrato nuevo haya pasado.
   contraseña, revocación global o cambio de revisión de seguridad.
 - Cierre ordinario de sesión retira la sesión pero conserva la verificación
   del navegador hasta su vencimiento. Las operaciones sensibles mantienen su
-  confirmación reciente; el permiso de 15 días no satisface esa confirmación.
+  autorización de administrador dentro de cada transacción. En el acceso por
+  correo, la contraseña del inicio confirma la identidad para toda esa sesión;
+  el permiso de 15 días no sustituye la contraseña del siguiente inicio.
 - Correo enviado mediante la cola existente; nunca se registra el código ni
   se devuelve en la API. Solo se entrega a la dirección de la cuenta.
 
@@ -69,3 +71,12 @@ Pruebas funcionales manuales a cargo del propietario conforme a su preferencia.
 No se ha ejecutado la batería funcional automatizada ni el acceso manual por
 parte del agente. Véase deliveries/email-login-alphanumeric-3.23.md para resultados de
 compilación y guía de prueba.
+
+## Ajuste de sesión y accesibilidad
+
+La cookie de sesión no incluye Expires ni Max-Age. El cierre normal del navegador
+puede retirarla; no se puede garantizar ese comportamiento cuando el navegador
+restaura sesiones/cookies o mantiene procesos abiertos. No se cierra por ocultar
+la pestaña ni por cambiar de módulo. El cierre explícito sigue revocando la sesión
+en el servidor. El permiso del navegador para correo permanece separado.
+Véase deliveries/session-confirmation-ui-3.25.md.

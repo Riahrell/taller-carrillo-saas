@@ -261,7 +261,7 @@ export default function ProductImage(props: Props) {
           onChanged={onChanged}
           onProblem={onProblem}
           onConfirmed={(remaining) => {
-            setDeadline(performance.now() + Math.min(270_000, remaining));
+            setDeadline(performance.now() + remaining);
             setStage(pending ? "review" : "pick");
           }}
         />

@@ -350,7 +350,27 @@ def security(request: Request):
                 0,
                 min(300, int((oldest - _database_now(session)).total_seconds()) + 300),
             )
+        from app.modules.access.models import Tenant
+
+        confirmation_seconds = (
+            max(0, int((record.expires_at - _database_now(session)).total_seconds()))
+            if record.email_login_id is not None
+            else 0
+        )
+        confirmation_context = (
+            {
+                "user_id": str(actor.user_id),
+                "tenant_id": str(actor.tenant_id),
+                "membership_id": str(actor.membership_id),
+                "role": actor.role.value,
+                "tenant_name": session.get(Tenant, actor.tenant_id).name,
+            }
+            if confirmation_seconds > 0
+            else None
+        )
         result = {
+            "confirmation_context": confirmation_context,
+            "confirmation_seconds": confirmation_seconds,
             "mfa_enabled": factor is not None and record.email_login_id is None,
             "mailbox_verified": verified is not None,
             "recent_seconds": recent,

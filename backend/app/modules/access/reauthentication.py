@@ -60,6 +60,11 @@ def require_recent_administrator(
     )
     user = session.get(User, actor.user_id, populate_existing=True)
     now = _database_now(session)
+    if record.email_login_id is not None:
+        # Email sessions already carry a consumed, password-bound login proof.
+        # resolve_session checks that proof, revision, expiry and current role
+        # inside this same business transaction. No client confirmation flag.
+        return actor
     if record.mfa_pending_id is not None:
         # resolve_session has validated ownership, revision, factor and fingerprint.
         proof = session.get(MfaPending, record.mfa_pending_id, populate_existing=True)

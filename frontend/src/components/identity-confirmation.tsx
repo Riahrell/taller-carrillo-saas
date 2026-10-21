@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { accessApi, type SessionContext } from "@/lib/access/api";
+import { sameContext } from "@/lib/access/same-context";
 import { identityApi } from "@/lib/access/identity";
 import { ApiError } from "@/lib/api/client";
 
@@ -24,18 +25,39 @@ export default function IdentityConfirmation({
 }: Props) {
   const [busy, setBusy] = useState(false);
   const [mfa, setMfa] = useState(false);
+  const [checking, setChecking] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
   useEffect(() => {
     let active = true;
+    const started = performance.now();
     void identityApi
       .status()
       .then((value) => {
-        if (active) setMfa(value.mfa_enabled);
+        if (!active) return;
+        if (value.confirmation_context) {
+          if (!sameContext(session, value.confirmation_context))
+            throw new Error("Changed session");
+          const remaining =
+            (value.confirmation_seconds ?? 0) * 1000 -
+            (performance.now() - started) -
+            1000;
+          if (remaining <= 0) throw new Error("Expired session");
+          onConfirmed(remaining);
+          return;
+        }
+        setMfa(value.mfa_enabled);
+        setChecking(false);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (active)
+          onProblem(
+            "No pudimos comprobar tu sesión. Vuelve a iniciar sesión para continuar.",
+          );
+      });
     return () => {
       active = false;
     };
-  }, []);
+  }, [session, onConfirmed, onProblem]);
   const [message, setMessage] = useState("");
   const operation = useRef(false);
   const controller = useRef<AbortController | null>(null);
@@ -45,9 +67,10 @@ export default function IdentityConfirmation({
   useEffect(() => {
     const hide = () => {
       if (document.visibilityState !== "hidden") return;
+      setShowPassword(false);
       form.current
         ?.querySelectorAll<HTMLInputElement>(
-          'input[type="password"], input[autocomplete="one-time-code"]',
+          'input[name="password"], input[autocomplete="one-time-code"]',
         )
         .forEach((field) => {
           field.value = "";
@@ -59,13 +82,13 @@ export default function IdentityConfirmation({
 
   useEffect(() => {
     const current = form.current;
-    input.current?.focus();
+    if (!checking) input.current?.focus();
     return () => {
       controller.current?.abort();
       current?.reset();
       onWriting(false);
     };
-  }, [onWriting]);
+  }, [onWriting, checking]);
   useEffect(() => {
     if (message) notice.current?.focus();
   }, [message]);
@@ -126,9 +149,18 @@ export default function IdentityConfirmation({
       if (!current.signal.aborted) setBusy(false);
     }
   }
+  if (checking)
+    return (
+      <section
+        className="membership-notice"
+        aria-label="Comprobación de sesión"
+      >
+        <p role="status">Comprobando tu sesión…</p>
+      </section>
+    );
   return (
     <section
-      className="membership-review"
+      className="membership-review identity-confirmation"
       aria-label="Confirmación de identidad"
       aria-busy={busy}
     >
@@ -153,15 +185,29 @@ export default function IdentityConfirmation({
         <fieldset disabled={busy} className="membership-fields">
           <legend>Identidad del administrador</legend>
           <label htmlFor="identity-password">Tu contraseña actual</label>
-          <input
-            ref={input}
-            id="identity-password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-            aria-describedby="identity-help"
-          />
+          <div className="password-field">
+            <input
+              ref={input}
+              id="identity-password"
+              name="password"
+              type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
+              required
+              aria-describedby="identity-help"
+            />
+            <button
+              type="button"
+              className="password-toggle"
+              aria-controls="identity-password"
+              aria-pressed={showPassword}
+              aria-label={
+                showPassword ? "Ocultar contraseña" : "Mostrar contraseña"
+              }
+              onClick={() => setShowPassword((value) => !value)}
+            >
+              {showPassword ? "Ocultar" : "Mostrar"}
+            </button>
+          </div>
           {mfa && (
             <>
               <label htmlFor="identity-code">Código del autenticador</label>

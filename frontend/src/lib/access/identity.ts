@@ -3,6 +3,8 @@ import {
   accessApi,
   readCsrfCookie,
   decodeLogin,
+  decodeSession,
+  type SessionContext,
   type LoginResult,
 } from "@/lib/access/api";
 
@@ -12,6 +14,8 @@ export type SecurityState = {
   mfa_enabled: boolean;
   mailbox_verified: boolean;
   recent_seconds: number;
+  confirmation_context?: SessionContext | null;
+  confirmation_seconds?: number;
 };
 function empty(_value: unknown, status: number) {
   if (status !== 204) throw new Error("Invalid response");
@@ -104,6 +108,18 @@ export const identityApi = {
         data.recent_seconds > 300
       )
         throw new Error("Invalid response");
+      if (data.confirmation_context != null) {
+        data.confirmation_context = decodeSession(
+          data.confirmation_context,
+          200,
+        );
+        if (
+          !Number.isInteger(data.confirmation_seconds) ||
+          data.confirmation_seconds! < 1 ||
+          data.confirmation_seconds! > 28800
+        )
+          throw new Error("Invalid session confirmation");
+      }
       return data;
     }),
 };
