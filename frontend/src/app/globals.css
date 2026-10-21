@@ -910,8 +910,22 @@ h1 span {
   object-fit: contain;
 }
 .catalog-thumbnail span {
-  font-size: 2rem;
-  color: #58604e;
+  font-size: 13px;
+  text-align: center;
+  color: #465043;
+}
+.thumbnail-retry {
+  width: 100%;
+  min-height: 48px;
+  padding: 8px;
+  border: 1px solid #7a846f;
+  border-radius: 8px;
+  background: #f0f1eb;
+  color: #263322;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
 }
 .product-image {
   max-width: 26rem;

@@ -162,6 +162,12 @@ export default function ProductImage(props: Props) {
       setFile(null);
       setStage("closed");
       setRevision((value) => value + 1);
+      window.dispatchEvent(
+        new CustomEvent("carrillo_product_photo_changed", {
+          detail: { actor: session.membership_id, productId },
+        }),
+      );
+      onChanged();
       setMessage("Foto guardada. Solo está disponible dentro de tu empresa.");
     } catch (error) {
       if (abort.signal.aborted || !alive.current) return;
