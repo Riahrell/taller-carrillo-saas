@@ -130,6 +130,108 @@ class StockCountRecord(Base):
     )
 
 
+class ManualStockRecord(Base):
+    __tablename__ = "manual_stock_records"
+    __table_args__ = (
+        Index(
+            "ix_manual_stock_records_history",
+            "tenant_id",
+            "product_id",
+            "created_at",
+            "id",
+        ),
+        UniqueConstraint("tenant_id", "operation_key"),
+        UniqueConstraint(
+            "tenant_id",
+            "product_id",
+            "id",
+            "quantity_delta",
+            "value_delta",
+            name="uq_manual_stock_records_movement_source",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "product_id"],
+            ["products.tenant_id", "products.id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "actor_membership_id"],
+            ["tenant_memberships.tenant_id", "tenant_memberships.id"],
+            ondelete="RESTRICT",
+            name="fk_manual_stock_records_actor",
+        ),
+        CheckConstraint(
+            "reason = trim(reason) AND length(reason) > 0", name="reason_present"
+        ),
+        CheckConstraint(
+            "request_fingerprint ~ '^[0-9a-f]{64}$'", name="fingerprint_shape"
+        ),
+        CheckConstraint(
+            "before_quantity >= 0 AND before_quantity < 'Infinity'::numeric "
+            "AND after_quantity >= 0 AND after_quantity < 'Infinity'::numeric",
+            name="quantity_bounds",
+        ),
+        CheckConstraint(
+            "before_value >= 0 AND before_value < 'Infinity'::numeric AND "
+            "after_value >= 0 AND after_value < 'Infinity'::numeric",
+            name="value_bounds",
+        ),
+        CheckConstraint(
+            "(before_quantity <> 0 OR before_value = 0) AND (after_quantity <> "
+            "0 OR after_value = 0)",
+            name="empty_value",
+        ),
+        CheckConstraint(
+            "quantity_delta = after_quantity - before_quantity AND value_delta "
+            "= after_value - before_value",
+            name="delta_matches",
+        ),
+        CheckConstraint(
+            "(quantity_delta = 0 AND value_delta = 0) OR (quantity_delta > 0 "
+            "AND value_delta >= 0) OR (quantity_delta < 0 AND value_delta <= "
+            "0)",
+            name="direction_matches",
+        ),
+        CheckConstraint(
+            "declared_unit_cost IS NULL OR (declared_unit_cost >= 0 AND "
+            "declared_unit_cost < 'Infinity'::numeric)",
+            name="declared_cost_bounds",
+        ),
+        CheckConstraint(
+            "(direction = 'IN' AND quantity_delta > 0 AND value_delta >= 0 "
+            "AND declared_unit_cost IS NOT NULL) OR (direction = 'OUT' AND "
+            "quantity_delta < 0 AND value_delta <= 0 AND declared_unit_cost IS NULL)",
+            name="direction_cost",
+        ),
+        CheckConstraint(
+            "(direction = 'IN' AND value_delta = "
+            "round(quantity_delta * declared_unit_cost, 6)) OR "
+            "(direction = 'OUT' AND value_delta = CASE WHEN after_quantity = 0 "
+            "THEN -before_value ELSE -round(before_value * (-quantity_delta) "
+            "/ nullif(before_quantity, 0), 6) END)",
+            name="valuation_matches",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column()
+    product_id: Mapped[UUID] = mapped_column()
+    actor_membership_id: Mapped[UUID] = mapped_column()
+    operation_key: Mapped[UUID] = mapped_column()
+    request_fingerprint: Mapped[str] = mapped_column(String(64))
+    direction: Mapped[str] = mapped_column(String(3))
+    reason: Mapped[str] = mapped_column(String(500))
+    before_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3))
+    after_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3))
+    before_value: Mapped[Decimal] = mapped_column(Numeric(28, 6))
+    after_value: Mapped[Decimal] = mapped_column(Numeric(28, 6))
+    quantity_delta: Mapped[Decimal] = mapped_column(Numeric(18, 3))
+    value_delta: Mapped[Decimal] = mapped_column(Numeric(28, 6))
+    declared_unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(28, 6))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class StockMovement(Base):
     __tablename__ = "stock_movements"
     __table_args__ = (
@@ -147,10 +249,28 @@ class StockMovement(Base):
         ),
         UniqueConstraint("count_id"),
         UniqueConstraint("receipt_line_id"),
+        UniqueConstraint("manual_record_id"),
         CheckConstraint(
-            "(count_id IS NOT NULL AND receipt_line_id IS NULL) OR "
-            "(count_id IS NULL AND receipt_line_id IS NOT NULL)",
+            "num_nonnulls(count_id, receipt_line_id, manual_record_id) = 1",
             name="one_source",
+        ),
+        ForeignKeyConstraint(
+            [
+                "tenant_id",
+                "product_id",
+                "manual_record_id",
+                "quantity_delta",
+                "value_delta",
+            ],
+            [
+                "manual_stock_records.tenant_id",
+                "manual_stock_records.product_id",
+                "manual_stock_records.id",
+                "manual_stock_records.quantity_delta",
+                "manual_stock_records.value_delta",
+            ],
+            ondelete="RESTRICT",
+            name="fk_stock_movements_manual_source",
         ),
         ForeignKeyConstraint(
             [
@@ -185,6 +305,7 @@ class StockMovement(Base):
     product_id: Mapped[UUID] = mapped_column()
     count_id: Mapped[UUID | None] = mapped_column()
     receipt_line_id: Mapped[UUID | None] = mapped_column()
+    manual_record_id: Mapped[UUID | None] = mapped_column()
     quantity_delta: Mapped[Decimal] = mapped_column(Numeric(18, 3))
     value_delta: Mapped[Decimal] = mapped_column(Numeric(28, 6))
     created_at: Mapped[datetime] = mapped_column(

@@ -154,7 +154,7 @@ def test_downgrade_refuses_to_erase_catalog(databases):
             command.downgrade(config, "0029_mfa_rotation")
         with owner.connect() as connection:
             assert MigrationContext.configure(connection).get_current_revision() == (
-                "0038_mailbox_constraint_name"
+                "0039_manual_stock_movements"
             )
             assert (
                 connection.execute(

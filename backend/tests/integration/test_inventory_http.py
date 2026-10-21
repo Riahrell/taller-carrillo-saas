@@ -14,7 +14,12 @@ from app.main import create_app
 from app.modules.access.models import TenantMembership
 from app.modules.access.sessions import revoke_user_sessions
 from app.modules.catalog.models import Product
-from app.modules.inventory.models import StockBalance, StockCountRecord, StockMovement
+from app.modules.inventory.models import (
+    ManualStockRecord,
+    StockBalance,
+    StockCountRecord,
+    StockMovement,
+)
 from app.modules.inventory.service import InventoryUnavailable
 
 pytestmark = pytest.mark.integration
@@ -48,7 +53,13 @@ def inventory_web(http_identity, monkeypatch):
             yield client, state, policy
     finally:
         with state["owner"].begin() as connection:
-            for model in (StockMovement, StockCountRecord, StockBalance, Product):
+            for model in (
+                StockMovement,
+                ManualStockRecord,
+                StockCountRecord,
+                StockBalance,
+                Product,
+            ):
                 connection.execute(
                     delete(model).where(
                         model.tenant_id.in_([state["tenant"], state["other"]])
@@ -419,3 +430,89 @@ def test_storage_failure_is_sanitized(inventory_web, monkeypatch):
         }
         assert response.headers["cache-control"] == "no-store"
         assert "x-access-membership" not in response.headers
+
+
+def test_manual_entry_exit_replay_and_private_history(inventory_web):
+    client, state, policy = inventory_web
+    key = str(uuid4())
+    headers = {
+        "Origin": policy.origin,
+        "X-CSRF-Token": client.cookies[policy.csrf_cookie],
+        "X-Expected-Membership": str(state["membership"]),
+        "Idempotency-Key": key,
+    }
+    data = {
+        "product_id": str(state["product"]),
+        "direction": "IN",
+        "quantity": "3",
+        "unit_cost": "4",
+        "reason": "Ingreso de bodega",
+    }
+    result = client.post("/inventory/movements", json=data, headers=headers)
+    assert result.status_code == 200
+    body = result.json()
+    assert body["direction"] == "IN" and body["quantity_delta"] == "3.000"
+    assert body["value_delta"] == "12.000000"
+    assert "tenant_id" not in body and "request_fingerprint" not in body
+    assert (
+        client.post("/inventory/movements", json=data, headers=headers).json() == body
+    )
+    headers["Idempotency-Key"] = str(uuid4())
+    data.update(direction="OUT", quantity="1", unit_cost=None)
+    out = client.post("/inventory/movements", json=data, headers=headers)
+    assert out.status_code == 200 and out.json()["value_delta"] == "-4.000000"
+    history = client.get(path(state, "manual-movements"), headers=READ)
+    assert history.status_code == 200
+    assert len(history.json()["items"]) == 2
+    assert history.headers["Cache-Control"] == "no-store"
+    assert (
+        client.get(
+            f"/inventory/products/{state['foreign_product']}/manual-movements",
+            headers=READ,
+        ).status_code
+        == 403
+    )
+    assert client.get(path(state, "manual-movements")).status_code == 403
+    headers["Idempotency-Key"] = str(uuid4())
+    data["quantity"] = "3"
+    assert (
+        client.post("/inventory/movements", json=data, headers=headers).status_code
+        == 422
+    )
+    assert client.get(path(state), headers=READ).json()["quantity"] == "2.000"
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"tenant_id": str(uuid4())},
+        {"role": "admin"},
+        {"quantity": "0"},
+        {"quantity": "-1"},
+        {"quantity": 1.5},
+        {"direction": "SALE"},
+        {"unit_cost": None},
+        {"reason": " "},
+    ],
+)
+def test_manual_write_rejects_client_authority_and_invalid_deltas(inventory_web, extra):
+    client, state, policy = inventory_web
+    data = {
+        "product_id": str(state["product"]),
+        "direction": "IN",
+        "quantity": "3",
+        "unit_cost": "4",
+        "reason": "Ingreso de bodega",
+    } | extra
+    headers = {
+        "Origin": policy.origin,
+        "X-CSRF-Token": client.cookies[policy.csrf_cookie],
+        "X-Expected-Membership": str(state["membership"]),
+        "Idempotency-Key": str(uuid4()),
+    }
+    assert (
+        client.post("/inventory/movements", json=data, headers=headers).status_code
+        == 422
+    )
+    assert client.get(path(state), headers=READ).json()["quantity"] == "0.000"
+    assert client.post("/inventory/movements", json=data).status_code == 403

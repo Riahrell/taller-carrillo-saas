@@ -82,7 +82,7 @@ export default function InventoryWorkspace() {
                   : {
                       kind: "blocked",
                       message: pending.current
-                        ? "Hay un conteo pendiente de resolver en la sesión original. Vuelve al inicio para recuperar el acceso de esa empresa."
+                        ? "Hay un movimiento pendiente de resolver en la sesión original. Vuelve al inicio para recuperar el acceso de esa empresa."
                         : imagePending.current
                           ? "Hay una imagen pendiente en la sesión original. Recupera el acceso de esa empresa."
                           : "Tu perfil no permite consultar el inventario.",

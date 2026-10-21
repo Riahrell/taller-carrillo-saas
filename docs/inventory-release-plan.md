@@ -15,12 +15,12 @@ referencia de requisitos; no autorizan accesos externos ni despliegues por sí s
 | --- | --- | --- |
 | Productos | Crear, listar, detalle, categorías, SKU y precio | Edición/activación todavía sin flujo HTTP/UI completo |
 | Fotos | Carga privada S3, cámara/galería y lectura | Validar miniatura al volver al catálogo y cámara en móvil físico |
-| Existencias | Saldo, costo promedio, ajustes por cantidad real | Entrada/salida manual positiva, no solo reemplazo del saldo |
+| Existencias | Saldo, costo promedio, conteos y entradas/salidas manuales con cantidad positiva | Validación manual del propietario; reversas aún pendientes |
 | Recepción de compra | API y transacción de recepción | Pantalla de proveedores/compra/recepción |
 | Salida por venta u orden | No integrada | Necesita origen real y su módulo; no basta un campo de texto que diga venta |
-| Historial | Ajustes de conteo | Historial unificado con entradas/salidas/recepciones y origen |
+| Historial | Conteos y entradas/salidas manuales en secciones separadas | Historial unificado con recepciones, origen y responsable visible |
 | Stock bajo | No configurado | Definir y configurar umbral por producto, sin inventar valores |
-| Acceso | Email de seis caracteres, navegador 15 días y sesión opaca | Adaptar y validar regresión del contrato cambiado; revisar recuperación/revocación |
+| Acceso | Email de seis caracteres, navegador 15 días y sesión opaca; regresión de CI cerrada en 3.28 | Registro de empleados y aprobación/permisos pendientes |
 | Operación | Compose local, configuración externa de S3/correo | Preparar entorno de pruebas separado, HTTPS, backup/restauración y despliegue revisable |
 
 No se declara el conjunto listo para producción. La revisión estática y una
@@ -69,3 +69,19 @@ compilación correcta no validan concurrencia, aislamiento ni una restauración.
 El propietario conserva las pruebas manuales. No se ejecutaron baterías
 funcionales en esta revisión. Las pruebas de transacciones y seguridad siguen
 siendo una condición pendiente del cierre para producción.
+
+
+## Primer despliegue acotado a inventario
+
+El propietario solicita terminar inventario e inicio de sesión para probar esa
+parte en Contabo. El primer despliegue se preparará con esas funciones activas;
+ventas, órdenes y cobros no se presentan como disponibles. Sus salidas vinculadas
+siguen en el itinerario y se integrarán cuando existan esos documentos reales.
+Los movimientos manuales no registran ventas, pagos ni compras financieras.
+
+Entrega 3.29 incorpora servicio/API y UI de movimientos manuales, costo explícito
+en entradas, costo del servidor en salidas, rechazo de insuficiencia e historial
+manual paginado. Continúan pendientes el historial unificado, las reversas, la
+edición/estado y stock bajo, el registro/permisos, la comprobación móvil y el
+respaldo/restauración y HTTPS del entorno de pruebas. Esta entrega por sí sola
+no declara el inventario completo ni autoriza cambios destructivos en la VPS.

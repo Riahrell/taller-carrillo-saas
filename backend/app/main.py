@@ -52,6 +52,7 @@ from app.modules.catalog.service import (
     CatalogDenied,
     CatalogUnavailable,
 )
+from app.modules.inventory.manual import ManualMovementInvalid
 from app.modules.inventory.routes import router as inventory_router
 from app.modules.inventory.service import (
     InventoryAdministrator,
@@ -184,6 +185,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @application.exception_handler(InventoryConflict)
     async def inventory_conflict(_request: Request, _error: InventoryConflict):
         return domain_error(409, "Operation key conflict")
+
+    @application.exception_handler(ManualMovementInvalid)
+    async def manual_movement_invalid(_request: Request, _error):
+        return domain_error(422, "Invalid stock movement")
 
     @application.exception_handler(InventoryInvalid)
     async def inventory_invalid(_request: Request, _error: InventoryInvalid):

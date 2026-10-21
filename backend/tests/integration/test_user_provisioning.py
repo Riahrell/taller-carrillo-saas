@@ -524,7 +524,7 @@ def test_downgrade_refuses_to_discard_creation_evidence(provisioning):
     with state["owner"].connect() as connection:
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0038_mailbox_constraint_name"
+            == "0039_manual_stock_movements"
         )
     assert counts(state) == before
 

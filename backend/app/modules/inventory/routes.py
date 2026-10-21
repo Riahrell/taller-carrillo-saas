@@ -10,7 +10,7 @@ from pydantic import BaseModel, SecretStr
 from app.modules.access.http_context import expected_membership
 from app.modules.access.http_security import RequestRejected
 from app.modules.access.membership import AccessDenied
-from app.modules.inventory.inputs import CountPageQuery, PhysicalCount
+from app.modules.inventory.inputs import CountPageQuery, ManualStockInput, PhysicalCount
 
 router = APIRouter(prefix="/inventory", tags=["inventory administration"])
 NO_STORE = {"Cache-Control": "no-store"}
@@ -85,6 +85,37 @@ def list_counts(
     request.app.state.http_security.verify_browser_read(request.headers)
     return _response(
         request.app.state.inventory.list_counts(
+            _token(request, pagination=True),
+            product_id=product_id,
+            query=query,
+            expected_actor=expected_membership(request),
+        )
+    )
+
+
+@router.post("/movements")
+def record_manual(payload: ManualStockInput, request: Request):
+    token = _token(request)
+    expected = expected_membership(request)
+    if expected is None:
+        raise HTTPException(428, "Precondition required", headers=NO_STORE)
+    return _response(
+        request.app.state.inventory.record_manual(
+            token,
+            data=payload,
+            operation_key=_operation_key(request),
+            expected_actor=expected,
+        )
+    )
+
+
+@router.get("/products/{product_id}/manual-movements")
+def manual_history(
+    product_id: UUID, request: Request, query: Annotated[CountPageQuery, Query()]
+):
+    request.app.state.http_security.verify_browser_read(request.headers)
+    return _response(
+        request.app.state.inventory.list_manual(
             _token(request, pagination=True),
             product_id=product_id,
             query=query,

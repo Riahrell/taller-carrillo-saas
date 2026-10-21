@@ -1,12 +1,13 @@
 """Desired physical count; prior stock, tenant and valuation remain server-owned."""
 
 import re
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.inventory.costs import UnitCost
-from app.modules.inventory.quantities import StockCount
+from app.modules.inventory.quantities import MovementQuantity, StockCount
 
 
 class PhysicalCount(BaseModel):
@@ -43,3 +44,23 @@ class CountPageQuery(BaseModel):
                 raise ValueError("Invalid page limit")
             return int(value)
         return value
+
+
+class ManualStockInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    product_id: UUID
+    direction: Literal["IN", "OUT"]
+    quantity: MovementQuantity
+    reason: str = Field(min_length=1, max_length=500, strict=True)
+    unit_cost: UnitCost | None = None
+
+    @field_validator("reason")
+    @classmethod
+    def meaningful_reason(cls, value: str) -> str:
+        return PhysicalCount.meaningful_reason(value)
+
+    @model_validator(mode="after")
+    def directional_cost(self):
+        if (self.direction == "IN") != (self.unit_cost is not None):
+            raise ValueError("Entries require cost; withdrawals use server valuation")
+        return self

@@ -40,6 +40,10 @@ beforeEach(() => {
     next_after: null,
   });
   vi.spyOn(inventoryApi, "balance").mockResolvedValue(empty);
+  vi.spyOn(inventoryApi, "manuals").mockResolvedValue({
+    items: [],
+    next_after: null,
+  });
   vi.spyOn(inventoryApi, "counts").mockResolvedValue({
     items: [],
     next_after: null,
@@ -275,5 +279,70 @@ it("mantiene cantidad y motivo sin enviar al cambiar de pestaña", async () => {
   expect(
     screen.getByLabelText("¿Por qué cambian las existencias?"),
   ).toHaveValue("Borrador pendiente");
+  expect(inventoryApi.record).not.toHaveBeenCalled();
+});
+it.each(["IN", "OUT"] as const)(
+  "envía %s como unidades de movimiento, sin calcular saldo final",
+  async (direction) => {
+    await open();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: direction === "IN" ? "Registrar entrada" : "Registrar salida",
+      }),
+    );
+    await confirmIdentity();
+    const field =
+      direction === "IN" ? "Unidades que entran" : "Unidades que salen";
+    fireEvent.change(await screen.findByLabelText(field), {
+      target: { value: "2" },
+    });
+    fireEvent.change(
+      screen.getByLabelText("¿Por qué cambian las existencias?"),
+      { target: { value: "Movimiento manual" } },
+    );
+    if (direction === "IN")
+      fireEvent.change(screen.getByLabelText(/Costo por unidad/), {
+        target: { value: "3" },
+      });
+    else
+      expect(
+        screen.queryByLabelText(/Costo por unidad/),
+      ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Revisar movimiento" }));
+    expect(inventoryApi.record).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: direction === "IN" ? "Confirmar entrada" : "Confirmar salida",
+      }),
+    );
+    await waitFor(() => expect(inventoryApi.record).toHaveBeenCalledOnce());
+    const pending = vi.mocked(inventoryApi.record).mock.calls[0][1];
+    expect(pending.data).toEqual({
+      product_id: product.id,
+      direction,
+      quantity: "2.000",
+      reason: "Movimiento manual",
+      unit_cost: direction === "IN" ? "3.000000" : null,
+    });
+    expect(pending.data).not.toHaveProperty("counted_quantity");
+  },
+);
+it("una entrada de cero unidades no llega a confirmación", async () => {
+  await open();
+  fireEvent.click(screen.getByRole("button", { name: "Registrar entrada" }));
+  await confirmIdentity();
+  fireEvent.change(await screen.findByLabelText("Unidades que entran"), {
+    target: { value: "0" },
+  });
+  fireEvent.change(screen.getByLabelText("¿Por qué cambian las existencias?"), {
+    target: { value: "Motivo" },
+  });
+  fireEvent.change(screen.getByLabelText(/Costo por unidad/), {
+    target: { value: "3" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Revisar movimiento" }));
+  expect(
+    screen.queryByRole("button", { name: "Confirmar entrada" }),
+  ).not.toBeInTheDocument();
   expect(inventoryApi.record).not.toHaveBeenCalled();
 });

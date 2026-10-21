@@ -30,6 +30,8 @@ import {
   type Count,
   type CountInput,
   type PendingCount,
+  type ManualInput,
+  type ManualMovement,
 } from "@/lib/inventory/api";
 
 export type ScopedPending = { session: SessionContext; command: PendingCount };
@@ -48,6 +50,7 @@ type Selection = {
   product: Product;
   balance: Balance;
   history: Page<Count>;
+  manuals: Page<ManualMovement>;
   category: string;
 };
 async function selection(
@@ -55,10 +58,11 @@ async function selection(
   target: string,
   signal: AbortSignal,
 ): Promise<Selection> {
-  const [product, balance, history] = await Promise.all([
+  const [product, balance, history, manuals] = await Promise.all([
     catalogApi.detail(actor, target, { signal }),
     inventoryApi.balance(actor, target, { signal }),
     inventoryApi.counts(actor, target, undefined, { signal }),
+    inventoryApi.manuals(actor, target, undefined, { signal }),
   ]);
   let category = "Sin categoría";
   if (product.category_id !== null) {
@@ -76,7 +80,7 @@ async function selection(
       after = page.next_after;
     } while (!signal.aborted);
   }
-  return { product, balance, history, category };
+  return { product, balance, history, manuals, category };
 }
 type Props = {
   initialImagePending: ScopedImagePending | null;
@@ -125,7 +129,18 @@ export default function InventoryManager({
   const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState("");
   const [cost, setCost] = useState("");
-  const [review, setReview] = useState<CountInput | null>(null);
+  const [mode, setMode] = useState<"COUNT" | "IN" | "OUT">(
+    initialPending && "direction" in initialPending.command.data
+      ? initialPending.command.data.direction
+      : "COUNT",
+  );
+  const actionLabel =
+    mode === "IN"
+      ? "Registrar entrada"
+      : mode === "OUT"
+        ? "Registrar salida"
+        : "Actualizar existencias";
+  const [review, setReview] = useState<CountInput | ManualInput | null>(null);
   const [deadline, setDeadline] = useState<number | null>(null);
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("");
@@ -294,8 +309,20 @@ export default function InventoryManager({
       if (!signal.aborted) setSelected({ ...selected, history });
     });
   }
-  let needsCost = false;
-  if (selected) {
+  async function manualHistoryPage(after?: Count) {
+    if (!selected) return;
+    await read(async (signal) => {
+      const manuals = await inventoryApi.manuals(
+        actor,
+        selected.product.id,
+        after,
+        { signal },
+      );
+      if (!signal.aborted) setSelected({ ...selected, manuals });
+    });
+  }
+  let needsCost = mode === "IN";
+  if (selected && mode === "COUNT") {
     try {
       needsCost =
         BigInt(quantityInput(quantity).replace(".", "")) >
@@ -310,12 +337,25 @@ export default function InventoryManager({
     event.preventDefault();
     if (!selected || busy) return;
     try {
-      setReview({
-        product_id: selected.product.id,
-        counted_quantity: quantityInput(quantity),
-        reason: reasonInput(reason),
-        declared_unit_cost: needsCost ? costInput(cost) : null,
-      });
+      const amount = quantityInput(quantity);
+      if (mode !== "COUNT" && BigInt(amount.replace(".", "")) <= 0n)
+        throw new Error("Positive quantity required");
+      setReview(
+        mode === "COUNT"
+          ? {
+              product_id: selected.product.id,
+              counted_quantity: amount,
+              reason: reasonInput(reason),
+              declared_unit_cost: needsCost ? costInput(cost) : null,
+            }
+          : {
+              product_id: selected.product.id,
+              direction: mode,
+              quantity: amount,
+              reason: reasonInput(reason),
+              unit_cost: mode === "IN" ? costInput(cost) : null,
+            },
+      );
       setMessage("");
       setStage("review");
     } catch {
@@ -597,25 +637,39 @@ export default function InventoryManager({
               modifica las existencias ni su valoración.
             </p>
             {stage === "closed" && !pending && (
-              <button
-                className="action primary"
-                disabled={busy || imageEngaged || !selected.product.is_active}
-                onClick={() => {
-                  clearDraft();
-                  setSuccess(false);
-                  setMessage("");
-                  setStage("identity");
-                }}
-              >
-                Actualizar existencias
-              </button>
+              <div className="catalog-tabs">
+                {(
+                  [
+                    ["IN", "Registrar entrada"],
+                    ["OUT", "Registrar salida"],
+                    ["COUNT", "Actualizar existencias"],
+                  ] as const
+                ).map(([kind, label]) => (
+                  <button
+                    key={kind}
+                    className="action primary"
+                    disabled={
+                      busy || imageEngaged || !selected.product.is_active
+                    }
+                    onClick={() => {
+                      clearDraft();
+                      setMode(kind);
+                      setSuccess(false);
+                      setMessage("");
+                      setStage("identity");
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             )}
             {stage === "identity" && (
               <IdentityConfirmation
                 purpose={
                   pending
                     ? "comprobar la actualización pendiente"
-                    : "actualizar las existencias"
+                    : actionLabel.toLowerCase()
                 }
                 session={session}
                 onWriting={identityWriting}
@@ -630,9 +684,13 @@ export default function InventoryManager({
             )}
             {stage === "edit" && (
               <form onSubmit={prepare} className="catalog-form">
-                <h3>Actualizar existencias</h3>
+                <h3>{actionLabel}</h3>
                 <label>
-                  Existencias reales en bodega
+                  {mode === "COUNT"
+                    ? "Existencias reales en bodega"
+                    : mode === "IN"
+                      ? "Unidades que entran"
+                      : "Unidades que salen"}
                   <input
                     inputMode="decimal"
                     autoComplete="off"
@@ -643,7 +701,9 @@ export default function InventoryManager({
                   />
                 </label>
                 <p>
-                  Escribe cuántas unidades hay ahora. Escribe 0 si no hay.
+                  {mode === "COUNT"
+                    ? "Escribe cuántas unidades hay ahora. Escribe 0 si no hay."
+                    : "Escribe cuántas unidades se agregan o retiran, no las existencias finales. La cantidad debe ser mayor que cero."}
                   Puedes usar hasta tres decimales.
                 </p>
                 <label>
@@ -667,8 +727,9 @@ export default function InventoryManager({
                       onChange={(event) => setCost(event.target.value)}
                     />
                     <small>
-                      Indica cuánto costó cada unidad. Hace falta este dato
-                      porque el inventario aún no tiene un costo calculable.
+                      {mode === "IN"
+                        ? "Indica cuánto costó cada unidad que entra. No es el precio de venta."
+                        : "Indica cuánto costó cada unidad. Hace falta este dato porque el inventario aún no tiene un costo calculable."}
                       Puedes usar hasta seis decimales.
                     </small>
                   </label>
@@ -677,7 +738,9 @@ export default function InventoryManager({
                   En el siguiente paso revisarás los datos antes de guardar.
                 </p>
                 <button className="action primary" disabled={busy}>
-                  Actualizar inventario
+                  {mode === "COUNT"
+                    ? "Actualizar inventario"
+                    : "Revisar movimiento"}
                 </button>
               </form>
             )}
@@ -689,26 +752,43 @@ export default function InventoryManager({
                 <h3>
                   {pending
                     ? "Comprobar actualización pendiente"
-                    : "Actualizar inventario"}
+                    : mode === "COUNT"
+                      ? "Actualizar inventario"
+                      : actionLabel}
                 </h3>
                 <dl>
                   <dt>Producto</dt>
                   <dd>{selected.product.name}</dd>
-                  <dt>Existencias reales en bodega</dt>
-                  <dd>{displayDecimal(reviewed.counted_quantity)}</dd>
+                  <dt>
+                    {"direction" in reviewed
+                      ? reviewed.direction === "IN"
+                        ? "Unidades que entran"
+                        : "Unidades que salen"
+                      : "Existencias reales en bodega"}
+                  </dt>
+                  <dd>
+                    {displayDecimal(
+                      "direction" in reviewed
+                        ? reviewed.quantity
+                        : reviewed.counted_quantity,
+                    )}
+                  </dd>
                   <dt>¿Por qué cambian las existencias?</dt>
                   <dd>{reviewed.reason}</dd>
                   <dt>Costo por unidad</dt>
                   <dd>
-                    {reviewed.declared_unit_cost === null
+                    {("direction" in reviewed
+                      ? reviewed.unit_cost
+                      : reviewed.declared_unit_cost) === null
                       ? "Usar el costo del inventario actual, si corresponde"
-                      : `${displayDecimal(reviewed.declared_unit_cost, 2)} USD`}
+                      : `${displayDecimal(("direction" in reviewed ? reviewed.unit_cost : reviewed.declared_unit_cost)!, 2)} USD`}
                   </dd>
                 </dl>
                 <p>
-                  Al confirmar, se ajustarán las existencias a la cantidad que
-                  indicaste y se calculará el cambio de valor. Esta acción no
-                  registra una compra, una venta ni un pago.
+                  {"direction" in reviewed
+                    ? "Al confirmar, se sumarán o restarán las unidades al saldo actual del servidor. Si no hay suficientes unidades, la salida se rechazará sin cambiar el inventario."
+                    : "Al confirmar, se ajustarán las existencias a la cantidad que indicaste y se calculará el cambio de valor."}
+                  Esta acción no registra una compra, una venta ni un pago.
                 </p>
                 <button
                   className="action primary"
@@ -719,7 +799,11 @@ export default function InventoryManager({
                     ? "Confirmando…"
                     : pending
                       ? "Comprobar actualización pendiente"
-                      : "Confirmar actualización"}
+                      : mode === "COUNT"
+                        ? "Confirmar actualización"
+                        : mode === "IN"
+                          ? "Confirmar entrada"
+                          : "Confirmar salida"}
                 </button>
                 {!pending && (
                   <button
@@ -744,6 +828,54 @@ export default function InventoryManager({
                 {pending ? "Volver al producto" : "Cancelar, no cambiar nada"}
               </button>
             )}
+            <section
+              className="inventory-history"
+              aria-label="Entradas y salidas manuales"
+            >
+              <h3>Entradas y salidas manuales</h3>
+              {selected.manuals.items.length === 0 ? (
+                <p>Todavía no hay entradas o salidas manuales.</p>
+              ) : (
+                <ol>
+                  {selected.manuals.items.map((item) => (
+                    <li key={item.id}>
+                      <strong>
+                        {item.direction === "IN" ? "Entrada" : "Salida"} ·{" "}
+                        {date.format(new Date(item.created_at))}
+                      </strong>
+                      <p>{item.reason}</p>
+                      <p>
+                        Existencias: {displayDecimal(item.before_quantity)} →{" "}
+                        {displayDecimal(item.after_quantity)}
+                      </p>
+                      <p>
+                        Cambio de unidades:{" "}
+                        {displayDecimal(item.quantity_delta)} · Cambio de valor:{" "}
+                        {displayDecimal(item.value_delta, 2)} USD
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              <div className="catalog-pagination">
+                <button
+                  className="action"
+                  disabled={frozen}
+                  onClick={() => void manualHistoryPage()}
+                >
+                  Entradas y salidas recientes
+                </button>
+                <button
+                  className="action"
+                  disabled={frozen || !selected.manuals.next_after}
+                  onClick={() =>
+                    void manualHistoryPage(selected.manuals.items.at(-1))
+                  }
+                >
+                  Movimientos anteriores
+                </button>
+              </div>
+            </section>
             <section
               aria-label="Historial de actualizaciones"
               className="inventory-history"

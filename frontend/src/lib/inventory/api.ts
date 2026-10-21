@@ -28,7 +28,15 @@ export type Count = {
   declared_unit_cost: string | null;
   created_at: string;
 };
-export type PendingCount = { key: string; data: CountInput };
+export type ManualInput = {
+  product_id: string;
+  direction: "IN" | "OUT";
+  quantity: string;
+  reason: string;
+  unit_cost: string | null;
+};
+export type ManualMovement = Count & { direction: "IN" | "OUT" };
+export type PendingCount = { key: string; data: CountInput | ManualInput };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function id(value: unknown): string {
@@ -141,7 +149,11 @@ function timeKey(value: string): string {
     throw new Error("Invalid time");
   return `${match[1]}.${(match[2] ?? "").padEnd(6, "0")}`;
 }
-export function decodeCount(value: unknown, product: string): Count {
+export function decodeCount(
+  value: unknown,
+  product: string,
+  manualDirection?: "IN" | "OUT",
+): Count {
   const data = object(value, [
     "id",
     "product_id",
@@ -179,8 +191,15 @@ export function decodeCount(value: unknown, product: string): Count {
     data.declared_unit_cost === null
       ? null
       : decimal(data.declared_unit_cost, 6, 22);
-  const needsCost =
-    dq > 0n && (scaled(before_quantity) === 0n || scaled(before_value) === 0n);
+  const needsCost = manualDirection
+    ? manualDirection === "IN"
+    : dq > 0n &&
+      (scaled(before_quantity) === 0n || scaled(before_value) === 0n);
+  if (
+    (manualDirection === "IN" && dq <= 0n) ||
+    (manualDirection === "OUT" && dq >= 0n)
+  )
+    throw new Error("Invalid direction");
   if (needsCost !== (declared_unit_cost !== null))
     throw new Error("Invalid declared cost");
   if (typeof data.created_at !== "string") throw new Error("Invalid time");
@@ -205,15 +224,26 @@ export function decodeCount(value: unknown, product: string): Count {
     created_at: data.created_at,
   };
 }
+export function decodeManual(value: unknown, product: string): ManualMovement {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Invalid movement");
+  const { direction, ...rest } = value as Record<string, unknown>;
+  if (direction !== "IN" && direction !== "OUT")
+    throw new Error("Invalid direction");
+  return { ...decodeCount(rest, product, direction), direction };
+}
 function decodePage(
   value: unknown,
   product: string,
   after?: Count,
+  manual = false,
 ): Page<Count> {
   const data = object(value, ["items", "next_after"]);
   if (!Array.isArray(data.items) || data.items.length > 25)
     throw new Error("Invalid page");
-  const items = data.items.map((row) => decodeCount(row, product));
+  const items = data.items.map((row) =>
+    manual ? decodeManual(row, product) : decodeCount(row, product),
+  );
   let previous = after ? `${timeKey(after.created_at)}|${after.id}` : null;
   for (const item of items) {
     const current = `${timeKey(item.created_at)}|${item.id}`;
@@ -250,21 +280,51 @@ export const inventoryApi = {
       },
       options,
     ),
+  manuals: (
+    actor: string,
+    product: string,
+    after?: Count,
+    options: RequestOptions = {},
+  ) =>
+    getJson(
+      `/inventory/products/${id(product)}/manual-movements?limit=25${after ? `&after=${id(after.id)}` : ""}`,
+      (value, status, headers) => {
+        bound(status, headers, actor);
+        return decodePage(value, product, after, true) as Page<ManualMovement>;
+      },
+      options,
+    ),
   record: async (
     actor: string,
     pending: PendingCount,
     options: RequestOptions = {},
   ): Promise<Count> => {
     const key = id(pending.key);
-    const data = {
-      product_id: id(pending.data.product_id),
-      counted_quantity: quantityInput(pending.data.counted_quantity),
-      reason: reasonInput(pending.data.reason),
-      declared_unit_cost:
-        pending.data.declared_unit_cost === null
-          ? null
-          : costInput(pending.data.declared_unit_cost),
-    };
+    const raw = pending.data;
+    const data: CountInput | ManualInput =
+      "direction" in raw
+        ? {
+            product_id: id(raw.product_id),
+            direction: raw.direction,
+            quantity: quantityInput(raw.quantity),
+            reason: reasonInput(raw.reason),
+            unit_cost: raw.unit_cost === null ? null : costInput(raw.unit_cost),
+          }
+        : {
+            product_id: id(raw.product_id),
+            counted_quantity: quantityInput(raw.counted_quantity),
+            reason: reasonInput(raw.reason),
+            declared_unit_cost:
+              raw.declared_unit_cost === null
+                ? null
+                : costInput(raw.declared_unit_cost),
+          };
+    if (
+      "direction" in data &&
+      (scaled(data.quantity) <= 0n ||
+        (data.direction === "IN") !== (data.unit_cost !== null))
+    )
+      throw new Error("Invalid movement input");
     id(actor);
     await accessApi.prepare(options);
     const csrf = readCsrfCookie(
@@ -272,18 +332,31 @@ export const inventoryApi = {
       window.location.protocol === "https:",
     );
     return operationJson(
-      "/inventory/counts",
+      "direction" in data ? "/inventory/movements" : "/inventory/counts",
       data,
       csrf,
       actor,
       key,
       (value, status, headers) => {
         bound(status, headers, actor);
-        const result = decodeCount(value, data.product_id);
-        if (
-          result.operation_key !== key ||
+        const result =
+          "direction" in data
+            ? decodeManual(value, data.product_id)
+            : decodeCount(value, data.product_id);
+        if (result.operation_key !== key || result.reason !== data.reason)
+          throw new Error("Changed operation");
+        if ("direction" in data) {
+          const movement = result as ManualMovement;
+          const expected =
+            scaled(data.quantity) * (data.direction === "IN" ? 1n : -1n);
+          if (
+            movement.direction !== data.direction ||
+            scaled(movement.quantity_delta) !== expected ||
+            movement.declared_unit_cost !== data.unit_cost
+          )
+            throw new Error("Changed operation");
+        } else if (
           result.after_quantity !== data.counted_quantity ||
-          result.reason !== data.reason ||
           result.declared_unit_cost !== data.declared_unit_cost
         )
           throw new Error("Changed operation");

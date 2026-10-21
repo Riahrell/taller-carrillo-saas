@@ -263,6 +263,28 @@ class InventoryAdministrator:
         except SQLAlchemyError:
             raise InventoryUnavailable("Inventory unavailable") from None
 
+    def record_manual(self, token, *, data, operation_key, expected_actor):
+        from app.modules.inventory.manual import record_manual
+
+        return record_manual(
+            self,
+            token,
+            data=data,
+            operation_key=operation_key,
+            expected_actor=expected_actor,
+        )
+
+    def list_manual(self, token, *, product_id, query, expected_actor=None):
+        from app.modules.inventory.manual import list_manual
+
+        return list_manual(
+            self,
+            token,
+            product_id=product_id,
+            query=query,
+            expected_actor=expected_actor,
+        )
+
     @staticmethod
     def _require_product(session: Session, tenant_id: UUID, product_id: UUID):
         if not isinstance(product_id, UUID):

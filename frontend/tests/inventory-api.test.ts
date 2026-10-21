@@ -93,7 +93,7 @@ it("envía solo el conteo y conserva clave y autoridad separadas del JSON", asyn
   await inventoryApi.record(actor, {
     ...command,
     data: { ...command.data, tenant_id: target, price: "0.01" },
-  } as typeof command);
+  } as unknown as typeof command);
   const [path, init] = fetch.mock.calls[1];
   expect(path).toBe("/api/inventory/counts");
   expect(init.headers).toMatchObject({
@@ -185,5 +185,42 @@ it("ordena el historial por microsegundos sin convertirlos a milisegundos", asyn
   );
   await expect(inventoryApi.counts(actor, target)).rejects.toMatchObject({
     kind: "invalid-response",
+  });
+});
+it("registra entrada con costo explícito aunque ya haya existencias", async () => {
+  document.cookie = `carrillo_csrf=${proof}; Path=/`;
+  const key = command.key;
+  const result = {
+    ...evidence,
+    direction: "IN",
+    before_quantity: "2.000",
+    before_value: "6.000000",
+    after_quantity: "4.000",
+    after_value: "16.000000",
+    value_delta: "10.000000",
+    declared_unit_cost: "5.000000",
+  };
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    .mockResolvedValueOnce(Response.json(result, { headers: headers() }));
+  vi.stubGlobal("fetch", fetch);
+  await inventoryApi.record(actor, {
+    key,
+    data: {
+      product_id: target,
+      direction: "IN",
+      quantity: "2",
+      reason: evidence.reason,
+      unit_cost: "5",
+    },
+  });
+  expect(fetch.mock.calls[1][0]).toBe("/api/inventory/movements");
+  expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
+    product_id: target,
+    direction: "IN",
+    quantity: "2.000",
+    reason: evidence.reason,
+    unit_cost: "5.000000",
   });
 });
