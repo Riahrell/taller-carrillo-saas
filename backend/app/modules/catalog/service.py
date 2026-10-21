@@ -47,6 +47,12 @@ class CategoryView(BaseModel):
 
 
 class ProductView(CategoryView):
+    revision: int = Field(default=0, exclude=True, repr=False)
+
+    @property
+    def etag(self) -> str:
+        return f'"product-v1-{self.id}-{self.revision}"'
+
     category_id: UUID | None
     sku: str | None
     price: Decimal
@@ -193,6 +199,18 @@ class CatalogAdministrator:
         except SQLAlchemyError:
             raise CatalogUnavailable("Catalog unavailable") from None
 
+    def update_product(self, token, *, product_id, data, expected_etag, expected_actor):
+        from app.modules.catalog.editing import update_product
+
+        return update_product(
+            self,
+            token,
+            product_id=product_id,
+            data=data,
+            expected_etag=expected_etag,
+            expected_actor=expected_actor,
+        )
+
     def list_products(
         self,
         token: SecretStr,
@@ -311,6 +329,7 @@ class CatalogAdministrator:
     def _product_view(product: Product) -> ProductView:
         return ProductView(
             id=product.id,
+            revision=product.revision,
             name=product.name,
             is_active=product.is_active,
             category_id=product.category_id,

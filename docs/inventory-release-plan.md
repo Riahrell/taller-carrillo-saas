@@ -13,7 +13,7 @@ referencia de requisitos; no autorizan accesos externos ni despliegues por sí s
 
 | Parte | Implementación actual | Brecha antes de considerarla lista |
 | --- | --- | --- |
-| Productos | Crear, listar, detalle, categorías, SKU y precio | Edición/activación todavía sin flujo HTTP/UI completo |
+| Productos | Crear, listar, detalle y editar nombre, categoría, SKU, precio y estado con control de versión y auditoría | Validación manual del propietario |
 | Buscador | Nombre o SKU parcial y categoría combinables; filtro de empresa y paginación en servidor | Validación manual del propietario |
 | Fotos | Carga privada S3, cámara/galería y lectura | Validar miniatura al volver al catálogo y cámara en móvil físico |
 | Existencias | Saldo, costo promedio, conteos y entradas/salidas manuales con cantidad positiva | Validación manual del propietario; reversas aún pendientes |
@@ -100,3 +100,8 @@ También conserva la lista del catálogo durante consultas y formularios para
 reducir saltos de desplazamiento. La siguiente tarea es edición y estado del
 producto; continúan pendientes stock bajo, reversas, registro/permisos y cierre
 operativo del despliegue. La pantalla de compras/recepciones sigue pendiente.
+
+Entrega 3.36 agrega edición y activación/desactivación de productos desde Catálogo,
+con revisión previa, control de versión y evidencia antes/después. Conserva stock,
+costo, fotos e historial y no expone escrituras de inventario en este formulario.
+La siguiente tarea es configurar stock bajo por producto, sin umbrales inventados.

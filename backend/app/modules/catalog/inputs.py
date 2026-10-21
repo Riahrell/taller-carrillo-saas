@@ -91,3 +91,7 @@ class ProductSearchQuery(CatalogPageQuery):
         except UnicodeError:
             raise ValueError("Invalid product search") from None
         return value or None
+
+
+class ProductChange(ProductCreation):
+    is_active: bool = Field(strict=True)

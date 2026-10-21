@@ -307,7 +307,7 @@ def test_migration_refuses_downgrade_with_mfa_state_even_revoked(state):
     with state["owner"].connect() as connection:
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0039_manual_stock_movements"
+            == "0040_product_changes"
         )
     assert saved(state) == before
 
@@ -589,7 +589,7 @@ def test_audit_downgrade_refuses_factors_with_or_without_events(state, consume_f
     with state["owner"].connect() as connection:
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0039_manual_stock_movements"
+            == "0040_product_changes"
         )
     assert security_events(state) == before
     assert saved(state) == consumption

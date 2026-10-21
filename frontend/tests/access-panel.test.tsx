@@ -99,9 +99,11 @@ describe("formulario de acceso", () => {
     await act(async () => finish({ status: "authenticated" }));
     expect(await screen.findByText("Empresa A")).toBeVisible();
     expect(screen.getByText("Administrador")).toBeVisible();
-    expect(
-      screen.getByRole("heading", { name: "Sesión activa" }),
-    ).toHaveFocus();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Sesión activa" }),
+      ).toHaveFocus(),
+    );
   });
 
   it("permite mostrar y ocultar contraseña sin alterar su contenido", async () => {
@@ -132,9 +134,10 @@ describe("formulario de acceso", () => {
       role: "mechanic",
     });
     submit();
-    expect(
-      await screen.findByRole("heading", { name: "Selecciona una empresa" }),
-    ).toHaveFocus();
+    const choiceTitle = await screen.findByRole("heading", {
+      name: "Selecciona una empresa",
+    });
+    await waitFor(() => expect(choiceTitle).toHaveFocus());
     expect(screen.getByRole("button", { name: /Continuar/ })).toBeDisabled();
     expect(
       screen
@@ -157,7 +160,7 @@ describe("formulario de acceso", () => {
     submit();
     const notice = await screen.findByRole("alert");
     expect(notice).toHaveTextContent("Revisa tus datos o inténtalo más tarde");
-    expect(notice).toHaveFocus();
+    await waitFor(() => expect(notice).toHaveFocus());
     expect(document.body).not.toHaveTextContent("internal-canary");
     expect(screen.getByLabelText("Contraseña")).toHaveValue("");
   });

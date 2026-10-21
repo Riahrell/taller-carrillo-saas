@@ -393,3 +393,32 @@ it("conserva la lista durante la consulta y al abrir el formulario", async () =>
     screen.getByText("Filtro existente").closest("[inert]"),
   ).not.toBeNull();
 });
+
+it("edita un producto existente y refresca su estado sin crear otro", async () => {
+  vi.spyOn(catalogApi, "editable").mockResolvedValue({
+    product,
+    etag: `"product-v1-${target}-0"`,
+  });
+  vi.spyOn(catalogApi, "updateProduct").mockResolvedValue({
+    product: { ...product, is_active: false },
+    etag: `"product-v1-${target}-1"`,
+  });
+  await open();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Editar producto de Filtro existente" }),
+  );
+  await confirmIdentity();
+  await screen.findByLabelText("Nombre del producto");
+  fireEvent.change(screen.getByLabelText("Estado del producto"), {
+    target: { value: "inactive" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Revisar cambios" }));
+  vi.mocked(catalogApi.products).mockResolvedValue({
+    items: [{ ...product, is_active: false }],
+    next_after: null,
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+  await screen.findByText("Cambios del producto guardados.");
+  expect(screen.getByText("Inactivo")).toBeInTheDocument();
+  expect(catalogApi.createProduct).not.toHaveBeenCalled();
+});

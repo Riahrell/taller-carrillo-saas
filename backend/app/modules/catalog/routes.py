@@ -1,5 +1,6 @@
 """Private administrative catalog; CSRF is browser intent, never authority."""
 
+import re
 from typing import Annotated
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from app.modules.access.membership import AccessDenied
 from app.modules.catalog.inputs import (
     CatalogPageQuery,
     CategoryCreation,
+    ProductChange,
     ProductCreation,
     ProductSearchQuery,
 )
@@ -94,10 +96,34 @@ def list_products(request: Request, query: Annotated[ProductSearchQuery, Query()
 @router.get("/products/{product_id}")
 def current_product(product_id: UUID, request: Request):
     request.app.state.http_security.verify_browser_read(request.headers)
-    return _response(
-        request.app.state.catalog.current_product(
-            _token(request),
-            product_id=product_id,
-            expected_actor=expected_membership(request),
-        )
+    result = request.app.state.catalog.current_product(
+        _token(request),
+        product_id=product_id,
+        expected_actor=expected_membership(request),
     )
+    response = _response(result)
+    response.headers["ETag"] = result.etag
+    return response
+
+
+@router.patch("/products/{product_id}")
+def update_product(product_id: UUID, payload: ProductChange, request: Request):
+    values = request.headers.getlist("if-match")
+    if not values:
+        raise HTTPException(428, "Precondition required", headers=NO_STORE)
+    if (
+        len(values) != 1
+        or re.fullmatch(r'"product-v1-[0-9a-f-]{36}-(0|[1-9][0-9]{0,18})"', values[0])
+        is None
+    ):
+        raise HTTPException(400, "Invalid precondition", headers=NO_STORE)
+    result = request.app.state.catalog.update_product(
+        _token(request),
+        product_id=product_id,
+        data=payload,
+        expected_etag=values[0],
+        expected_actor=_expected_write(request),
+    )
+    response = _response(result)
+    response.headers["ETag"] = result.etag
+    return response

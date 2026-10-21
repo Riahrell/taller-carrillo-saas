@@ -42,7 +42,7 @@ async function open() {
   const input = (await screen.findByLabelText(
     "Tu contraseña actual",
   )) as HTMLInputElement;
-  expect(input).toHaveFocus();
+  await waitFor(() => expect(input).toHaveFocus());
   fireEvent.change(input, {
     target: { value: " synthetic current password " },
   });

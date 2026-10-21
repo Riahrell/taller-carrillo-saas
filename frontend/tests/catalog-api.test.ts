@@ -185,3 +185,52 @@ it("rechaza resultados que no pertenecen a la categoría consultada", async () =
     catalogApi.products(actor, undefined, {}, "", target),
   ).rejects.toThrow();
 });
+
+it("edita con versión y contexto, enviando solo datos permitidos", async () => {
+  const csrf = `v1.1999999999.${"a".repeat(43)}.${"b".repeat(64)}`;
+  document.cookie = `carrillo_csrf=${csrf}; Path=/`;
+  const etag = `"product-v1-${target}-0"`,
+    next = `"product-v1-${target}-1"`;
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    .mockResolvedValueOnce(
+      Response.json(
+        { ...product, is_active: false },
+        { headers: new Headers({ "X-Access-Membership": actor, ETag: next }) },
+      ),
+    );
+  vi.stubGlobal("fetch", fetch);
+  const raw = {
+    ...product,
+    is_active: false,
+    tenant_id: actor,
+    quantity: "900",
+  };
+  await expect(
+    catalogApi.updateProduct(actor, target, etag, raw),
+  ).resolves.toMatchObject({ etag: next });
+  expect(fetch.mock.calls[1][1].method).toBe("PATCH");
+  expect(fetch.mock.calls[1][1].headers["If-Match"]).toBe(etag);
+  expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
+    name: product.name,
+    price: product.price,
+    sku: null,
+    category_id: null,
+    is_active: false,
+  });
+});
+it("exige una versión ligada al producto para editar", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(Response.json(product, { headers: headers() })),
+  );
+  await expect(catalogApi.editable(actor, target)).rejects.toMatchObject({
+    kind: "invalid-response",
+  });
+  await expect(
+    catalogApi.updateProduct(actor, target, `"product-v1-${actor}-0"`, {
+      ...product,
+    }),
+  ).rejects.toThrow();
+});

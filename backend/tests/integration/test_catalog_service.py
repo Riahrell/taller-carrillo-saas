@@ -19,7 +19,7 @@ from app.modules.access.models import AuditEvent, SessionRecord, TenantMembershi
 from app.modules.access.reauthentication import RecentAuthenticationRequired
 from app.modules.access.sessions import issue_session, revoke_session
 from app.modules.catalog.inputs import CategoryCreation, ProductCreation
-from app.modules.catalog.models import Category, Product
+from app.modules.catalog.models import Category, Product, ProductChangeRecord
 from app.modules.catalog.service import (
     CatalogAdministrator,
     CatalogConflict,
@@ -42,7 +42,7 @@ def catalog_state(http_identity, recent_session):
         yield state
     finally:
         with state["owner"].begin() as connection:
-            for model in (AuditEvent, Product, Category):
+            for model in (ProductChangeRecord, AuditEvent, Product, Category):
                 connection.execute(
                     delete(model).where(
                         model.tenant_id.in_([state["tenant"], state["other"]])
@@ -314,6 +314,6 @@ def test_catalog_audit_downgrade_preserves_committed_evidence(catalog_state):
         command.downgrade(config, "0030_catalog")
     with state["owner"].connect() as connection:
         assert MigrationContext.configure(connection).get_current_revision() == (
-            "0039_manual_stock_movements"
+            "0040_product_changes"
         )
     assert counts(state) == (1, 1)

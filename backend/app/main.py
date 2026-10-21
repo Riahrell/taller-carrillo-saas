@@ -31,6 +31,7 @@ from app.modules.access.membership import AccessDenied
 from app.modules.access.reauthentication import RecentAuthenticationRequired
 from app.modules.access.routes import router as access_router
 from app.modules.access.trusted_proxy import TrustedProxy
+from app.modules.catalog.editing import CatalogStale
 from app.modules.catalog.image_configuration import load_image_configuration
 from app.modules.catalog.image_processing import ImageProcessingUnavailable
 from app.modules.catalog.image_routes import router as image_router
@@ -197,6 +198,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @application.exception_handler(InventoryUnavailable)
     async def inventory_unavailable(_request: Request, _error: InventoryUnavailable):
         return domain_error(503, "Inventory unavailable")
+
+    @application.exception_handler(CatalogStale)
+    async def catalog_stale(_request: Request, _error: CatalogStale):
+        return domain_error(412, "Product changed")
 
     @application.exception_handler(CatalogConflict)
     async def catalog_conflict(_request: Request, _error: CatalogConflict):

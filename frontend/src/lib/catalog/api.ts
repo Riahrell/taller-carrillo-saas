@@ -1,5 +1,10 @@
 import { accessApi, readCsrfCookie } from "@/lib/access/api";
-import { createJson, getJson, type RequestOptions } from "@/lib/api/client";
+import {
+  createJson,
+  getJson,
+  patchJson,
+  type RequestOptions,
+} from "@/lib/api/client";
 
 export type Category = { id: string; name: string; is_active: boolean };
 export type Product = Category & {
@@ -14,6 +19,18 @@ export type NewProduct = {
   category_id: string | null;
   sku: string | null;
 };
+export type VersionedProduct = { product: Product; etag: string };
+export type ProductChange = NewProduct & { is_active: boolean };
+function productEtag(value: string | null, productId: string): string {
+  if (
+    value === null ||
+    !new RegExp(`^"product-v1-${id(productId)}-(0|[1-9][0-9]{0,18})"$`).test(
+      value,
+    )
+  )
+    throw new Error("Invalid product version");
+  return value;
+}
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const PRICE = /^(0|[1-9][0-9]{0,17})(?:\.([0-9]{1,2}))?$/;
 function id(value: unknown): string {
@@ -150,6 +167,67 @@ function searchQuery(value: string): string {
   return text ? `&q=${encodeURIComponent(text)}` : "";
 }
 export const catalogApi = {
+  editable: (
+    actor: string,
+    target: string,
+    options: RequestOptions = {},
+  ): Promise<VersionedProduct> =>
+    getJson(
+      `/catalog/products/${id(target)}`,
+      (value, status, headers) => {
+        bound(headers, actor, status);
+        const product = decodeProduct(value);
+        if (product.id !== target) throw new Error("Unmatched product");
+        return { product, etag: productEtag(headers.get("ETag"), target) };
+      },
+      options,
+    ),
+  updateProduct: async (
+    actor: string,
+    target: string,
+    version: string,
+    raw: ProductChange,
+    options: RequestOptions = {},
+  ): Promise<VersionedProduct> => {
+    id(actor);
+    id(target);
+    const etag = productEtag(version, target);
+    if (typeof raw.is_active !== "boolean") throw new Error("Invalid state");
+    const data = {
+      name: name(raw.name.trim()),
+      price: priceInput(raw.price),
+      sku: raw.sku === null ? null : name(raw.sku.trim(), 100),
+      category_id: raw.category_id === null ? null : id(raw.category_id),
+      is_active: raw.is_active,
+    };
+    await accessApi.prepare(options);
+    const csrf = readCsrfCookie(
+      document.cookie,
+      window.location.protocol === "https:",
+    );
+    return patchJson(
+      `/catalog/products/${target}`,
+      data,
+      csrf,
+      etag,
+      actor,
+      (value, status, headers) => {
+        bound(headers, actor, status);
+        const product = decodeProduct(value);
+        if (
+          product.id !== target ||
+          product.name !== data.name ||
+          product.price !== data.price ||
+          product.sku !== data.sku ||
+          product.category_id !== data.category_id ||
+          product.is_active !== data.is_active
+        )
+          throw new Error("Changed product");
+        return { product, etag: productEtag(headers.get("ETag"), target) };
+      },
+      options,
+    );
+  },
   products: (
     actor: string,
     after?: string,

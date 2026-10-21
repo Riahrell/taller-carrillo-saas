@@ -9,6 +9,7 @@ import {
   type FormEvent,
 } from "react";
 import IdentityConfirmation from "@/components/identity-confirmation";
+import ProductEditor from "@/components/product-editor";
 import ProductSearch from "@/components/product-search";
 import ProductThumbnail from "@/components/product-thumbnail";
 import { accessApi, type SessionContext } from "@/lib/access/api";
@@ -40,6 +41,7 @@ export default function CatalogManager({
   onWriting,
   onChanged,
 }: Props) {
+  const [editingTarget, setEditingTarget] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [kind, setKind] = useState<Kind>("products");
@@ -316,7 +318,7 @@ export default function CatalogManager({
           <button
             className="action"
             aria-pressed={kind === "products"}
-            disabled={busy || stage !== "closed"}
+            disabled={busy || stage !== "closed" || editingTarget !== null}
             onClick={() => {
               setKind("products");
               setMessage("");
@@ -327,7 +329,7 @@ export default function CatalogManager({
           <button
             className="action"
             aria-pressed={kind === "categories"}
-            disabled={busy || stage !== "closed"}
+            disabled={busy || stage !== "closed" || editingTarget !== null}
             onClick={() => {
               setKind("categories");
               setMessage("");
@@ -338,7 +340,7 @@ export default function CatalogManager({
         </div>
         <button
           className="action primary"
-          disabled={busy || stage !== "closed"}
+          disabled={busy || stage !== "closed" || editingTarget !== null}
           onClick={() => {
             reset();
             setMessage("");
@@ -360,7 +362,7 @@ export default function CatalogManager({
           actor={identity}
           category={categoryFilter}
           value={search}
-          disabled={busy || stage !== "closed"}
+          disabled={busy || stage !== "closed" || editingTarget !== null}
           onSearch={(term, category) =>
             void page("products", undefined, term, category)
           }
@@ -569,7 +571,32 @@ export default function CatalogManager({
           </button>
         </section>
       )}
-      <div inert={busy || stage !== "closed"} aria-busy={busy}>
+      {editingTarget && (
+        <ProductEditor
+          key={editingTarget}
+          target={editingTarget}
+          session={session}
+          onWriting={onWriting}
+          onChanged={onChanged}
+          onProblem={onProblem}
+          onClose={() => setEditingTarget(null)}
+          onSaved={() => {
+            setEditingTarget(null);
+            setSuccess(false);
+            setCreatedProduct(null);
+            void page(kind).then(() => {
+              if (alive.current) {
+                setSuccess(true);
+                setMessage("Cambios del producto guardados.");
+              }
+            });
+          }}
+        />
+      )}
+      <div
+        inert={busy || stage !== "closed" || editingTarget !== null}
+        aria-busy={busy}
+      >
         <h2>
           {kind === "products"
             ? "Productos de esta empresa"
@@ -614,13 +641,28 @@ export default function CatalogManager({
                 </dl>
               )}
               {isProduct(item) && (
-                <Link
-                  className="action secondary"
-                  href={`/inventario?producto=${item.id}`}
-                >
-                  Ver inventario e imagen
-                  <span className="sr-only"> de {item.name}</span>
-                </Link>
+                <div className="form-actions catalog-item-actions">
+                  <button
+                    className="action"
+                    aria-label={`Editar producto de ${item.name}`}
+                    disabled={busy || editingTarget !== null}
+                    onClick={() => {
+                      setMessage("");
+                      setSuccess(false);
+                      setCreatedProduct(null);
+                      setEditingTarget(item.id);
+                    }}
+                  >
+                    Editar producto
+                  </button>
+                  <Link
+                    className="action secondary"
+                    href={`/inventario?producto=${item.id}`}
+                  >
+                    Ver inventario e imagen
+                    <span className="sr-only"> de {item.name}</span>
+                  </Link>
+                </div>
               )}
             </li>
           ))}

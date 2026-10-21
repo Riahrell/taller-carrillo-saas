@@ -1055,6 +1055,7 @@ h1 span {
   line-height: 1.5;
 }
 .catalog-form input,
+.catalog-form select,
 .inventory-manager .catalog-form textarea {
   width: 100%;
   min-width: 0;
@@ -1194,4 +1195,10 @@ h1 span {
 .catalog-manager,
 .inventory-manager {
   overflow-anchor: none;
+}
+
+.catalog-item-actions {
+  flex: 0 1 23rem;
+  max-width: 100%;
+  margin-top: 0;
 }

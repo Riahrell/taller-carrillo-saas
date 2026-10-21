@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.main import create_app
 from app.modules.access.models import AuditEvent, TenantMembership
 from app.modules.access.sessions import revoke_user_sessions
-from app.modules.catalog.models import Category, Product
+from app.modules.catalog.models import Category, Product, ProductChangeRecord
 
 pytestmark = pytest.mark.integration
 READ = {"X-Requested-With": "XMLHttpRequest", "Sec-Fetch-Site": "same-origin"}
@@ -40,7 +40,7 @@ def catalog_web(http_identity, monkeypatch):
             yield client, state, policy
     finally:
         with state["owner"].begin() as connection:
-            for model in (AuditEvent, Product, Category):
+            for model in (ProductChangeRecord, AuditEvent, Product, Category):
                 connection.execute(
                     delete(model).where(
                         model.tenant_id.in_([state["tenant"], state["other"]])
@@ -411,3 +411,63 @@ def test_category_filter_combines_with_search_and_stays_tenant_scoped(catalog_we
         ).status_code
         == 422
     )
+
+
+def test_product_edit_etag_state_and_strict_input(catalog_web):
+    client, state, policy = catalog_web
+    original = write(client, state, policy).json()
+    url = f"/catalog/products/{original['id']}"
+    current = client.get(url, headers=READ)
+    etag = current.headers["ETag"]
+    assert current.headers["Cache-Control"] == "no-store"
+    body = {key: value for key, value in original.items() if key != "id"}
+    body.update(name="Updated", is_active=False)
+    headers = {
+        "Origin": policy.origin,
+        "X-CSRF-Token": client.cookies[policy.csrf_cookie],
+        "X-Expected-Membership": str(state["membership"]),
+        "If-Match": etag,
+    }
+    assert (
+        client.patch(
+            url,
+            json=body,
+            headers={key: value for key, value in headers.items() if key != "If-Match"},
+        ).status_code
+        == 428
+    )
+    assert (
+        client.patch(url, json=body, headers=headers | {"If-Match": "*"}).status_code
+        == 400
+    )
+    for extra in (
+        {"tenant_id": str(state["other"])},
+        {"quantity": "5"},
+        {"revision": 9},
+        {"is_active": "false"},
+        {"price": 1.2},
+    ):
+        assert client.patch(url, json=body | extra, headers=headers).status_code == 422
+    assert client.patch(url, json=body).status_code == 403
+    assert (
+        client.patch(
+            url,
+            json=body,
+            headers=headers
+            | {"X-Expected-Membership": str(state["foreign_membership"])},
+        ).status_code
+        == 403
+    )
+    updated = client.patch(url, json=body, headers=headers)
+    assert updated.status_code == 200
+    assert updated.json() == {"id": original["id"], **body}
+    assert updated.headers["ETag"] != etag
+    assert updated.headers["X-Access-Membership"] == str(state["membership"])
+    assert client.patch(url, json=body, headers=headers).status_code == 412
+    assert client.get(url, headers=READ).json()["is_active"] is False
+    active = client.patch(
+        url,
+        json=body | {"is_active": True},
+        headers=headers | {"If-Match": updated.headers["ETag"]},
+    )
+    assert active.status_code == 200 and active.json()["is_active"] is True
