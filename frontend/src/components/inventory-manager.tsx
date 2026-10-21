@@ -175,9 +175,22 @@ export default function InventoryManager({
     void catalogApi
       .products(actor, undefined, { signal: current.signal })
       .then(async (page) => {
+        const requested = new URL(window.location.href).searchParams.getAll(
+          "producto",
+        );
+        const requestedId =
+          requested.length === 1 &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+            requested[0],
+          )
+            ? requested[0]
+            : undefined;
+        if (requested.length > 0 && requestedId === undefined)
+          throw new Error("Invalid product selection");
         const target =
           initialPending?.command.data.product_id ??
           initialImagePending?.command.product_id ??
+          requestedId ??
           page.items[0]?.id;
         const detail = target
           ? await selection(actor, target, current.signal)

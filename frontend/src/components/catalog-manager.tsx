@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -51,6 +52,10 @@ export default function CatalogManager({
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("");
   const [success, setSuccess] = useState(false);
+  const [createdProduct, setCreatedProduct] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [deadline, setDeadline] = useState<number | null>(null);
   const operation = useRef(true);
   const saving = useRef(false);
@@ -242,6 +247,9 @@ export default function CatalogManager({
         setCategories(c);
         reset();
         setSuccess(true);
+        setCreatedProduct(
+          kind === "products" ? { id: created.id, name: created.name } : null,
+        );
         setMessage(
           `${kind === "products" ? "Producto creado" : "Categoría creada"}: ${created.name}.`,
         );
@@ -316,6 +324,7 @@ export default function CatalogManager({
             reset();
             setMessage("");
             setSuccess(false);
+            setCreatedProduct(null);
             if (deadline !== null && performance.now() < deadline)
               setStage("edit");
             else {
@@ -336,6 +345,21 @@ export default function CatalogManager({
         >
           {message}
         </p>
+      )}
+      {success && createdProduct && stage === "closed" && (
+        <section className="membership-notice" aria-label="Completar producto">
+          <h3>Agrega la imagen de {createdProduct.name}</h3>
+          <p>
+            El producto ya está guardado. Abre su ficha para tomar una foto o
+            elegirla desde la galería.
+          </p>
+          <Link
+            className="action"
+            href={`/inventario?producto=${createdProduct.id}`}
+          >
+            Agregar imagen al producto creado
+          </Link>
+        </section>
       )}
       {busy && (
         <p role="status">
@@ -451,7 +475,9 @@ export default function CatalogManager({
                       )}
                     </div>
                     <p className="field-help">
-                      Crear el producto no registra existencias.
+                      Crear el producto no registra existencias. Después de
+                      guardarlo podrás agregar su imagen desde la ficha del
+                      producto.
                     </p>
                   </>
                 )}
@@ -549,6 +575,15 @@ export default function CatalogManager({
                       <dd>{displayPrice(item.price)}</dd>
                     </div>
                   </dl>
+                )}
+                {isProduct(item) && (
+                  <Link
+                    className="action secondary"
+                    href={`/inventario?producto=${item.id}`}
+                  >
+                    Ver inventario e imagen
+                    <span className="sr-only"> de {item.name}</span>
+                  </Link>
                 )}
               </li>
             ))}

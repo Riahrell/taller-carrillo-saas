@@ -220,6 +220,19 @@ export default function ProductImage(props: Props) {
         </div>
       )}
       {message && <p role="status">{message}</p>}
+      {!available && stage === "closed" && (
+        <button
+          type="button"
+          className="text-action"
+          disabled={disabled || busy}
+          onClick={() => {
+            setMessage("Consultando imagen…");
+            setRevision((value) => value + 1);
+          }}
+        >
+          Volver a consultar imagen
+        </button>
+      )}
       {stage === "closed" && (
         <button
           className="action"
