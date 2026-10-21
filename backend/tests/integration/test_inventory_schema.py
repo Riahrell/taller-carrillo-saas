@@ -261,7 +261,7 @@ def test_empty_schema_downgrade_and_upgrade(databases):
         command.upgrade(config, "head")
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0040_product_changes"
+            == "0041_stock_minimum"
         )
 
 
@@ -298,7 +298,7 @@ def test_downgrade_refuses_stock_data(databases):
         with owner.connect() as connection:
             assert (
                 MigrationContext.configure(connection).get_current_revision()
-                == "0040_product_changes"
+                == "0041_stock_minimum"
             )
     finally:
         with owner.begin() as connection:

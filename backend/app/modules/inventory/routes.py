@@ -1,5 +1,6 @@
 """Private stock HTTP; tenant, prior stock and deltas are never browser authority."""
 
+import re
 from typing import Annotated
 from uuid import UUID
 
@@ -15,6 +16,7 @@ from app.modules.inventory.inputs import (
     HistoryPageQuery,
     ManualStockInput,
     PhysicalCount,
+    StockMinimumChange,
 )
 
 router = APIRouter(prefix="/inventory", tags=["inventory administration"])
@@ -142,3 +144,44 @@ def product_history(
             expected_actor=expected_membership(request),
         )
     )
+
+
+@router.get("/products/{product_id}/minimum")
+def get_minimum(product_id: UUID, request: Request):
+    request.app.state.http_security.verify_browser_read(request.headers)
+    result = request.app.state.inventory.minimum(
+        _token(request),
+        product_id=product_id,
+        expected_actor=expected_membership(request),
+    )
+    response = _response(result)
+    response.headers["ETag"] = result.etag
+    return response
+
+
+@router.patch("/products/{product_id}/minimum")
+def change_minimum(product_id: UUID, payload: StockMinimumChange, request: Request):
+    values = request.headers.getlist("if-match")
+    if not values:
+        raise HTTPException(428, "Precondition required", headers=NO_STORE)
+    if (
+        len(values) != 1
+        or re.fullmatch(
+            r'"stock-minimum-v1-[0-9a-f-]{36}-(0|[1-9][0-9]{0,18})"', values[0]
+        )
+        is None
+    ):
+        raise HTTPException(400, "Invalid precondition", headers=NO_STORE)
+    expected = expected_membership(request)
+    if expected is None:
+        raise HTTPException(428, "Precondition required", headers=NO_STORE)
+    result = request.app.state.inventory.minimum(
+        _token(request),
+        product_id=product_id,
+        expected_actor=expected,
+        data=payload,
+        expected_etag=values[0],
+    )
+    response = _response(result)
+    response.headers["ETag"] = result.etag
+    return response

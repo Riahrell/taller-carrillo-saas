@@ -18,6 +18,7 @@ from app.modules.inventory.models import (
     ManualStockRecord,
     StockBalance,
     StockCountRecord,
+    StockMinimumRecord,
     StockMovement,
 )
 from app.modules.inventory.service import InventoryUnavailable
@@ -58,6 +59,7 @@ def inventory_web(http_identity, monkeypatch):
                 ManualStockRecord,
                 StockCountRecord,
                 StockBalance,
+                StockMinimumRecord,
                 Product,
             ):
                 connection.execute(
@@ -573,3 +575,35 @@ def test_unified_history_http_contract(inventory_web):
         ).status_code
         == 403
     )
+
+
+def test_minimum_http_version_boundaries_and_strict_input(inventory_web):
+    client, state, policy = inventory_web
+    url = path(state, "minimum")
+    initial = client.get(url, headers=READ)
+    assert initial.status_code == 200
+    assert initial.json() == {
+        "product_id": str(state["product"]),
+        "quantity": "0.000",
+        "minimum": None,
+        "is_active": True,
+        "is_low": False,
+    }
+    headers = {
+        "Origin": policy.origin,
+        "X-CSRF-Token": client.cookies[policy.csrf_cookie],
+        "X-Expected-Membership": str(state["membership"]),
+        "If-Match": initial.headers["ETag"],
+    }
+    configured = client.patch(url, json={"minimum": "0"}, headers=headers)
+    assert configured.status_code == 200 and configured.json()["is_low"]
+    assert client.patch(url, json={"minimum": "2"}, headers=headers).status_code == 412
+    for invalid in (
+        {"minimum": "-1"},
+        {"minimum": 1.5},
+        {"minimum": "2", "quantity": "9"},
+        {"minimum": None, "tenant_id": str(state["other"])},
+    ):
+        assert client.patch(url, json=invalid, headers=headers).status_code == 422
+    assert client.patch(url, json={"minimum": None}).status_code == 403
+    assert client.get(url).status_code == 403

@@ -20,7 +20,7 @@ referencia de requisitos; no autorizan accesos externos ni despliegues por sí s
 | Recepción de compra | API y transacción de recepción | Pantalla de proveedores/compra/recepción |
 | Salida por venta u orden | No integrada | Necesita origen real y su módulo; no basta un campo de texto que diga venta |
 | Historial | Historial unificado de ajustes, entradas/salidas manuales y recepciones, con origen, responsable y paginación | Validación manual del propietario; ventas/órdenes y reversas dependen de sus módulos |
-| Stock bajo | No configurado | Definir y configurar umbral por producto, sin inventar valores |
+| Stock bajo | Mínimo configurable por producto y aviso en su ficha; vacío desactiva, cero avisa al agotarse | Vista global de productos por reponer y validación manual |
 | Acceso | Email de seis caracteres, navegador 15 días y sesión opaca; regresión de CI cerrada en 3.28 | Registro de empleados y aprobación/permisos pendientes |
 | Operación | Compose local, configuración externa de S3/correo | Preparar entorno de pruebas separado, HTTPS, backup/restauración y despliegue revisable |
 
@@ -105,3 +105,8 @@ Entrega 3.36 agrega edición y activación/desactivación de productos desde Cat
 con revisión previa, control de versión y evidencia antes/después. Conserva stock,
 costo, fotos e historial y no expone escrituras de inventario en este formulario.
 La siguiente tarea es configurar stock bajo por producto, sin umbrales inventados.
+
+Entrega 3.37 configura mínimos explícitos y aviso en la ficha del producto, con
+versión y evidencia append-only. No cambia cantidades ni costos. Los productos
+existentes siguen sin mínimo hasta una acción explícita. El listado global por
+reponer queda para la siguiente tarea, antes de reversas y cierre de permisos.

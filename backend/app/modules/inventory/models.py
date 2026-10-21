@@ -5,6 +5,7 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKeyConstraint,
@@ -308,6 +309,43 @@ class StockMovement(Base):
     manual_record_id: Mapped[UUID | None] = mapped_column()
     quantity_delta: Mapped[Decimal] = mapped_column(Numeric(18, 3))
     value_delta: Mapped[Decimal] = mapped_column(Numeric(28, 6))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class StockMinimumRecord(Base):
+    __tablename__ = "stock_minimum_records"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "product_id"],
+            ["products.tenant_id", "products.id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "actor_membership_id"],
+            ["tenant_memberships.tenant_id", "tenant_memberships.id"],
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint("tenant_id", "product_id", "revision"),
+        CheckConstraint("revision > 0", name="positive_revision"),
+        CheckConstraint(
+            "before_minimum IS DISTINCT FROM minimum", name="actual_change"
+        ),
+        CheckConstraint(
+            "(before_minimum IS NULL OR (before_minimum >= 0 AND "
+            "before_minimum < 'Infinity'::numeric)) AND (minimum IS NULL OR "
+            "(minimum >= 0 AND minimum < 'Infinity'::numeric))",
+            name="minimum_bounds",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column()
+    product_id: Mapped[UUID] = mapped_column()
+    actor_membership_id: Mapped[UUID] = mapped_column()
+    revision: Mapped[int] = mapped_column(BigInteger)
+    before_minimum: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
+    minimum: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

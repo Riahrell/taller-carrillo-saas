@@ -60,6 +60,7 @@ from app.modules.inventory.service import (
     InventoryConflict,
     InventoryDenied,
     InventoryInvalid,
+    InventoryStale,
     InventoryUnavailable,
 )
 from app.modules.purchases.receipts import PurchaseReceiver
@@ -190,6 +191,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @application.exception_handler(ManualMovementInvalid)
     async def manual_movement_invalid(_request: Request, _error):
         return domain_error(422, "Invalid stock movement")
+
+    @application.exception_handler(InventoryStale)
+    async def inventory_stale(_request: Request, _error: InventoryStale):
+        return domain_error(412, "Inventory settings changed")
 
     @application.exception_handler(InventoryInvalid)
     async def inventory_invalid(_request: Request, _error: InventoryInvalid):

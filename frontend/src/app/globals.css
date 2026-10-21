@@ -1202,3 +1202,12 @@ h1 span {
   max-width: 100%;
   margin-top: 0;
 }
+
+.stock-low-notice {
+  padding: 16px;
+  border: 2px solid #8a4b08;
+  border-radius: 10px;
+  color: #653500;
+  background: #fff3df;
+  line-height: 1.6;
+}

@@ -77,3 +77,8 @@ class HistoryPageQuery(CountPageQuery):
             if match is None or str(UUID(match[2])) != match[2]:
                 raise ValueError("Invalid history cursor")
         return value
+
+
+class StockMinimumChange(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    minimum: StockCount | None

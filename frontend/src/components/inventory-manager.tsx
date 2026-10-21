@@ -10,6 +10,7 @@ import {
   type FormEvent,
 } from "react";
 import IdentityConfirmation from "@/components/identity-confirmation";
+import StockMinimumControl from "@/components/stock-minimum";
 import ProductSearch from "@/components/product-search";
 import ProductImage, {
   type ScopedImagePending,
@@ -109,6 +110,7 @@ export default function InventoryManager({
 }: Props) {
   const actor = session.membership_id;
   const movementFormId = useId();
+  const [minimumEngaged, setMinimumEngaged] = useState(false);
   const [imageEngaged, setImageEngaged] = useState(
     initialImagePending !== null,
   );
@@ -465,7 +467,12 @@ export default function InventoryManager({
       }
     }
   }
-  const frozen = busy || stage !== "closed" || pending !== null || imageEngaged;
+  const frozen =
+    busy ||
+    stage !== "closed" ||
+    pending !== null ||
+    imageEngaged ||
+    minimumEngaged;
   const reviewed = stage === "recover" ? pending?.data : review;
   return (
     <section
@@ -601,6 +608,7 @@ export default function InventoryManager({
                   busy ||
                   stage !== "closed" ||
                   pending !== null ||
+                  minimumEngaged ||
                   !selected.product.is_active
                 }
                 initialPending={
@@ -648,6 +656,18 @@ export default function InventoryManager({
                 <dd>{displayDecimal(selected.balance.value, 2)} USD</dd>
               </div>
             </dl>
+            <StockMinimumControl
+              key={`${selected.product.id}:${selected.balance.quantity}`}
+              session={session}
+              productId={selected.product.id}
+              disabled={
+                busy || imageEngaged || stage !== "closed" || pending !== null
+              }
+              onWriting={reportWriting}
+              onEngaged={setMinimumEngaged}
+              onChanged={onChanged}
+              onProblem={onProblem}
+            />
             <p className="membership-help">
               El costo proviene de los movimientos. El precio de venta no
               modifica las existencias ni su valoración.
@@ -665,7 +685,10 @@ export default function InventoryManager({
                     key={kind}
                     className="action primary"
                     disabled={
-                      busy || imageEngaged || !selected.product.is_active
+                      busy ||
+                      imageEngaged ||
+                      minimumEngaged ||
+                      !selected.product.is_active
                     }
                     onClick={() => {
                       clearDraft();

@@ -37,6 +37,10 @@ class InventoryUnavailable(RuntimeError):
     """Safe persistence failure; repeat only with the same operation key."""
 
 
+class InventoryStale(Exception):
+    """A reviewed inventory configuration has changed."""
+
+
 class InventoryInvalid(Exception):
     """Requested count cannot be valued under the current stock rules."""
 
@@ -283,6 +287,20 @@ class InventoryAdministrator:
             product_id=product_id,
             query=query,
             expected_actor=expected_actor,
+        )
+
+    def minimum(
+        self, token, *, product_id, expected_actor=None, data=None, expected_etag=None
+    ):
+        from app.modules.inventory.minimum import minimum
+
+        return minimum(
+            self,
+            token,
+            product_id=product_id,
+            expected_actor=expected_actor,
+            data=data,
+            expected_etag=expected_etag,
         )
 
     def list_history(self, token, *, product_id, query, expected_actor=None):

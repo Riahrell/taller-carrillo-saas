@@ -154,7 +154,7 @@ def test_downgrade_refuses_to_erase_catalog(databases):
             command.downgrade(config, "0029_mfa_rotation")
         with owner.connect() as connection:
             assert MigrationContext.configure(connection).get_current_revision() == (
-                "0040_product_changes"
+                "0041_stock_minimum"
             )
             assert (
                 connection.execute(

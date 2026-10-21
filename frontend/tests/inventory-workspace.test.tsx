@@ -12,6 +12,7 @@ import { identityApi } from "@/lib/access/identity";
 import { ApiError } from "@/lib/api/client";
 import { catalogApi } from "@/lib/catalog/api";
 import { productImages } from "@/lib/catalog/images";
+import { stockMinimumApi } from "@/lib/inventory/minimum";
 import { inventoryApi } from "@/lib/inventory/api";
 import {
   actor,
@@ -45,6 +46,14 @@ beforeEach(() => {
   vi.spyOn(catalogApi, "categories").mockResolvedValue({
     items: [],
     next_after: null,
+  });
+  vi.spyOn(stockMinimumApi, "read").mockResolvedValue({
+    product_id: product.id,
+    minimum: null,
+    quantity: "0.000",
+    is_active: true,
+    is_low: false,
+    etag: `"stock-minimum-v1-${product.id}-0"`,
   });
   vi.spyOn(inventoryApi, "balance").mockResolvedValue(empty);
   vi.spyOn(inventoryApi, "history").mockResolvedValue({
@@ -492,4 +501,25 @@ it("muestra un solo historial con responsable, origen y paginación", async () =
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     ),
   );
+});
+
+it("bloquea movimientos mientras se configura el mínimo y los recupera al cancelar", async () => {
+  await open();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Configurar mínimo" }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Registrar entrada" }),
+    ).toBeDisabled(),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Cancelar, no cambiar nada" }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Registrar entrada" }),
+    ).toBeEnabled(),
+  );
+  expect(inventoryApi.record).not.toHaveBeenCalled();
 });
