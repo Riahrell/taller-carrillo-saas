@@ -43,6 +43,21 @@ export default function IdentityConfirmation({
   const input = useRef<HTMLInputElement>(null);
   const notice = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
+    const hide = () => {
+      if (document.visibilityState !== "hidden") return;
+      form.current
+        ?.querySelectorAll<HTMLInputElement>(
+          'input[type="password"], input[autocomplete="one-time-code"]',
+        )
+        .forEach((field) => {
+          field.value = "";
+        });
+    };
+    document.addEventListener("visibilitychange", hide);
+    return () => document.removeEventListener("visibilitychange", hide);
+  }, []);
+
+  useEffect(() => {
     const current = form.current;
     input.current?.focus();
     return () => {

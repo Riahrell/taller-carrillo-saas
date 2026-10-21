@@ -365,14 +365,9 @@ describe("administración de membresías", () => {
   it("retira datos tras inactividad sin polling ni Storage", async () => {
     const read = vi.spyOn(Storage.prototype, "getItem"),
       write = vi.spyOn(Storage.prototype, "setItem");
-    await open();
+    render(<MembershipWorkspace />);
+    await screen.findByLabelText("Tu contraseña actual");
     vi.useFakeTimers();
-    // Re-enter to arm the timer under the controlled clock.
-    fireEvent.focus(window);
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
     fireEvent.change(screen.getByLabelText("Tu contraseña actual"), {
       target: { value: "synthetic current password" },
     });
@@ -383,10 +378,17 @@ describe("administración de membresías", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    await act(async () => vi.advanceTimersByTime(270_000));
+    await act(async () => vi.advanceTimersByTime(200_000));
+    fireEvent.focus(window);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText(member.email)).toBeVisible();
+    await act(async () => vi.advanceTimersByTime(70_000));
     expect(screen.queryByText(member.email)).not.toBeInTheDocument();
     expect(read).not.toHaveBeenCalled();
     expect(write).not.toHaveBeenCalled();
-    expect(accessApi.session).toHaveBeenCalledTimes(4);
+    expect(accessApi.session).toHaveBeenCalledTimes(3);
   });
 });

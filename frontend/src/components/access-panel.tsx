@@ -69,11 +69,17 @@ export default function AccessPanel() {
   const [busy, setBusy] = useState(false);
   const [visible, setVisible] = useState(false);
   const [selected, setSelected] = useState("");
+  const [suspended, setSuspended] = useState(false);
+  const currentView = useRef<View>(view);
+  const loginForm = useRef<HTMLFormElement>(null);
   const operation = useRef(false);
   const controller = useRef<AbortController | null>(null);
   const title = useRef<HTMLHeadingElement>(null);
   const notice = useRef<HTMLParagraphElement>(null);
   const channel = useRef<BroadcastChannel | null>(null);
+  useEffect(() => {
+    currentView.current = view;
+  }, [view]);
 
   const restore = useCallback(async (signal: AbortSignal) => {
     const next = await loadView(signal);
@@ -97,15 +103,19 @@ export default function AccessPanel() {
     });
     const onFocus = () => {
       // Reconcile cookies across tabs and history restoration without polling.
-      if (document.visibilityState === "visible") check();
+      if (
+        document.visibilityState === "visible" &&
+        !["login", "mfa", "choose"].includes(currentView.current.kind)
+      )
+        check();
     };
     const onVisibility = () => {
-      if (operation.current) return;
+      setSuspended(document.visibilityState === "hidden");
       if (document.visibilityState === "hidden") {
-        controller.current?.abort();
-        setView({ kind: "checking" });
-        setSelected("");
-      } else check();
+        const password = loginForm.current?.elements.namedItem("password");
+        if (password instanceof HTMLInputElement) password.value = "";
+        setVisible(false);
+      } else onFocus();
     };
     window.addEventListener("focus", onFocus);
     window.addEventListener("pageshow", onFocus);
@@ -274,214 +284,216 @@ export default function AccessPanel() {
       <h2 id="access-title" ref={title} tabIndex={-1}>
         {heading}
       </h2>
-      {message && (
-        <p
-          className="access-message"
-          role={
-            view.kind === "login" && message === "Sesión cerrada."
-              ? "status"
-              : "alert"
-          }
-          ref={notice}
-          tabIndex={-1}
-        >
-          {message}
-        </p>
-      )}
-      {view.kind === "mfa" && (
-        <MfaFlow
-          initial={view.stage}
-          onCancel={() => void act("logout")}
-          onLogin={(result) => {
-            if (result.status === "select_membership") {
-              setView({ kind: "choose", choices: result.choices });
-            } else if (result.status === "authenticated") {
-              check();
+      <div hidden={suspended} inert={suspended}>
+        {message && (
+          <p
+            className="access-message"
+            role={
+              view.kind === "login" && message === "Sesión cerrada."
+                ? "status"
+                : "alert"
             }
-          }}
-        />
-      )}
-      {view.kind === "login" && (
-        <Link href="/recuperar">Olvidé mi contraseña</Link>
-      )}
-      {view.kind === "checking" && (
-        <p role="status" className="panel-description">
-          {busy ? "Confirmando el cambio…" : "Comprobando acceso…"}
-        </p>
-      )}
-      {view.kind === "login" && (
-        <form onSubmit={submit} method="post" action="/">
-          <p className="panel-description">
-            Ingresa con tu cuenta de Taller Carrillo.
+            ref={notice}
+            tabIndex={-1}
+          >
+            {message}
           </p>
-          <fieldset disabled={busy} className="login-fields">
-            <legend className="sr-only">Datos de acceso</legend>
-            <label htmlFor="email">Correo electrónico</label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="username"
-              inputMode="email"
-              spellCheck={false}
-              required
-              maxLength={254}
-            />
-            <label htmlFor="password">Contraseña</label>
-            <div className="password-field">
+        )}
+        {view.kind === "mfa" && (
+          <MfaFlow
+            initial={view.stage}
+            onCancel={() => void act("logout")}
+            onLogin={(result) => {
+              if (result.status === "select_membership") {
+                setView({ kind: "choose", choices: result.choices });
+              } else if (result.status === "authenticated") {
+                check();
+              }
+            }}
+          />
+        )}
+        {view.kind === "login" && (
+          <Link href="/recuperar">Olvidé mi contraseña</Link>
+        )}
+        {view.kind === "checking" && (
+          <p role="status" className="panel-description">
+            {busy ? "Confirmando el cambio…" : "Comprobando acceso…"}
+          </p>
+        )}
+        {view.kind === "login" && (
+          <form ref={loginForm} onSubmit={submit} method="post" action="/">
+            <p className="panel-description">
+              Ingresa con tu cuenta de Taller Carrillo.
+            </p>
+            <fieldset disabled={busy} className="login-fields">
+              <legend className="sr-only">Datos de acceso</legend>
+              <label htmlFor="email">Correo electrónico</label>
               <input
-                id="password"
-                name="password"
-                type={visible ? "text" : "password"}
-                autoComplete="current-password"
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="username"
+                inputMode="email"
+                spellCheck={false}
                 required
-                aria-describedby="password-help"
+                maxLength={254}
               />
-              <button
-                type="button"
-                className="password-toggle"
-                aria-pressed={visible}
-                aria-label={
-                  visible ? "Ocultar contraseña" : "Mostrar contraseña"
-                }
-                onClick={() => setVisible(!visible)}
-              >
-                {visible ? "Ocultar" : "Mostrar"}
-              </button>
-            </div>
-            <span id="password-help" className="field-help">
-              Tu contraseña distingue mayúsculas y minúsculas.
-            </span>
-            <button type="submit" className="action primary">
-              {busy ? "Ingresando…" : "Iniciar sesión"}
-              <span aria-hidden="true">↗</span>
-            </button>
-          </fieldset>
-        </form>
-      )}
-      {view.kind === "choose" && (
-        <form
-          method="post"
-          action="/"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (
-              selected &&
-              view.choices.some((choice) => choice.membership_id === selected)
-            )
-              void act("select");
-          }}
-        >
-          <p className="panel-description">
-            Elige la empresa en la que vas a trabajar.
-          </p>
-          <fieldset disabled={busy} className="company-choices">
-            <legend className="sr-only">Empresas disponibles</legend>
-            {view.choices.map((choice) => (
-              <label className="company-choice" key={choice.membership_id}>
+              <label htmlFor="password">Contraseña</label>
+              <div className="password-field">
                 <input
-                  type="radio"
-                  name="membership_id"
-                  value={choice.membership_id}
-                  checked={selected === choice.membership_id}
-                  onChange={() => setSelected(choice.membership_id)}
+                  id="password"
+                  name="password"
+                  type={visible ? "text" : "password"}
+                  autoComplete="current-password"
                   required
+                  aria-describedby="password-help"
                 />
-                <span>{choice.tenant_name}</span>
-              </label>
-            ))}
-            <button
-              type="submit"
-              className="action primary"
-              disabled={!selected}
-            >
-              {busy ? "Confirmando…" : "Continuar"}
-              <span aria-hidden="true">↗</span>
-            </button>
-          </fieldset>
-          <button
-            type="button"
-            className="text-action"
-            disabled={busy}
-            onClick={() => void act("logout")}
+                <button
+                  type="button"
+                  className="password-toggle"
+                  aria-pressed={visible}
+                  aria-label={
+                    visible ? "Ocultar contraseña" : "Mostrar contraseña"
+                  }
+                  onClick={() => setVisible(!visible)}
+                >
+                  {visible ? "Ocultar" : "Mostrar"}
+                </button>
+              </div>
+              <span id="password-help" className="field-help">
+                Tu contraseña distingue mayúsculas y minúsculas.
+              </span>
+              <button type="submit" className="action primary">
+                {busy ? "Ingresando…" : "Iniciar sesión"}
+                <span aria-hidden="true">↗</span>
+              </button>
+            </fieldset>
+          </form>
+        )}
+        {view.kind === "choose" && (
+          <form
+            method="post"
+            action="/"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (
+                selected &&
+                view.choices.some((choice) => choice.membership_id === selected)
+              )
+                void act("select");
+            }}
           >
-            Cancelar acceso
-          </button>
-        </form>
-      )}
-      {view.kind === "active" && (
-        <Link href="/seguridad">Seguridad de mi cuenta</Link>
-      )}
-      {view.kind === "active" && (
-        <>
-          <p className="panel-description">
-            Tu sesión está activa en esta empresa.
-          </p>
-          <dl className="session-details">
-            <div>
-              <dt>Empresa</dt>
-              <dd>{view.session.tenant_name}</dd>
-            </div>
-            <div>
-              <dt>Perfil</dt>
-              <dd>{roles[view.session.role]}</dd>
-            </div>
-          </dl>
-          {view.session.role === "admin" && (
-            <Link className="action membership-link" href="/inventario">
-              Consultar inventario
-            </Link>
-          )}
-          {view.session.role === "admin" && (
-            <Link className="action membership-link" href="/catalogo">
-              Administrar catálogo
-            </Link>
-          )}
-          {view.session.role === "admin" && (
-            <Link className="action membership-link" href="/membresias">
-              Administrar membresías
-            </Link>
-          )}
-          <button
-            type="button"
-            className="action primary"
-            disabled={busy}
-            onClick={() => void act("logout")}
-          >
-            Cerrar sesión<span aria-hidden="true">↗</span>
-          </button>
-          <p className="field-help session-help">
-            Para acceder con otra cuenta o empresa, cierra la sesión.
-          </p>
-        </>
-      )}
-      {view.kind === "uncertain" && (
-        <div className="recovery-actions">
-          <button
-            type="button"
-            className="action primary"
-            disabled={busy}
-            onClick={check}
-          >
-            Comprobar acceso
-          </button>
-          {view.closing && (
+            <p className="panel-description">
+              Elige la empresa en la que vas a trabajar.
+            </p>
+            <fieldset disabled={busy} className="company-choices">
+              <legend className="sr-only">Empresas disponibles</legend>
+              {view.choices.map((choice) => (
+                <label className="company-choice" key={choice.membership_id}>
+                  <input
+                    type="radio"
+                    name="membership_id"
+                    value={choice.membership_id}
+                    checked={selected === choice.membership_id}
+                    onChange={() => setSelected(choice.membership_id)}
+                    required
+                  />
+                  <span>{choice.tenant_name}</span>
+                </label>
+              ))}
+              <button
+                type="submit"
+                className="action primary"
+                disabled={!selected}
+              >
+                {busy ? "Confirmando…" : "Continuar"}
+                <span aria-hidden="true">↗</span>
+              </button>
+            </fieldset>
             <button
               type="button"
               className="text-action"
               disabled={busy}
               onClick={() => void act("logout")}
             >
-              Reintentar cierre
+              Cancelar acceso
             </button>
-          )}
-        </div>
-      )}
-      <p className="access-footnote">
-        <span className="status-dot" aria-hidden="true" />
-        Acceso reservado al personal autorizado
-      </p>
-      <noscript>Activa JavaScript para usar el inicio de sesión.</noscript>
+          </form>
+        )}
+        {view.kind === "active" && (
+          <Link href="/seguridad">Seguridad de mi cuenta</Link>
+        )}
+        {view.kind === "active" && (
+          <>
+            <p className="panel-description">
+              Tu sesión está activa en esta empresa.
+            </p>
+            <dl className="session-details">
+              <div>
+                <dt>Empresa</dt>
+                <dd>{view.session.tenant_name}</dd>
+              </div>
+              <div>
+                <dt>Perfil</dt>
+                <dd>{roles[view.session.role]}</dd>
+              </div>
+            </dl>
+            {view.session.role === "admin" && (
+              <Link className="action membership-link" href="/inventario">
+                Consultar inventario
+              </Link>
+            )}
+            {view.session.role === "admin" && (
+              <Link className="action membership-link" href="/catalogo">
+                Administrar catálogo
+              </Link>
+            )}
+            {view.session.role === "admin" && (
+              <Link className="action membership-link" href="/membresias">
+                Administrar membresías
+              </Link>
+            )}
+            <button
+              type="button"
+              className="action primary"
+              disabled={busy}
+              onClick={() => void act("logout")}
+            >
+              Cerrar sesión<span aria-hidden="true">↗</span>
+            </button>
+            <p className="field-help session-help">
+              Para acceder con otra cuenta o empresa, cierra la sesión.
+            </p>
+          </>
+        )}
+        {view.kind === "uncertain" && (
+          <div className="recovery-actions">
+            <button
+              type="button"
+              className="action primary"
+              disabled={busy}
+              onClick={check}
+            >
+              Comprobar acceso
+            </button>
+            {view.closing && (
+              <button
+                type="button"
+                className="text-action"
+                disabled={busy}
+                onClick={() => void act("logout")}
+              >
+                Reintentar cierre
+              </button>
+            )}
+          </div>
+        )}
+        <p className="access-footnote">
+          <span className="status-dot" aria-hidden="true" />
+          Acceso reservado al personal autorizado
+        </p>
+        <noscript>Activa JavaScript para usar el inicio de sesión.</noscript>
+      </div>
     </section>
   );
 }

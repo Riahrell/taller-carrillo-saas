@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { sameContext } from "@/lib/access/same-context";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { accessApi, type SessionContext } from "@/lib/access/api";
 import type { ScopedImagePending } from "@/components/product-image";
@@ -21,6 +22,7 @@ type View =
   | { kind: "blocked"; message: string };
 export default function InventoryWorkspace() {
   const [view, setView] = useState<View>({ kind: "checking" });
+  const [paused, setPaused] = useState(true);
   const controller = useRef<AbortController | null>(null);
   const writing = useRef(false);
   const pending = useRef<ScopedPending | null>(null);
@@ -45,31 +47,46 @@ export default function InventoryWorkspace() {
     }
     const current = new AbortController();
     controller.current = current;
-    setView({ kind: "checking" });
+    setPaused(true);
+    setView((previous) =>
+      previous.kind === "active" ? previous : { kind: "checking" },
+    );
     void accessApi
       .session({ signal: current.signal })
       .then((session) => {
         if (!current.signal.aborted)
-          setView(
-            session.role === "admin" &&
-              (!pending.current ||
-                sameInventorySession(session, pending.current.session)) &&
-              (!imagePending.current ||
-                sameInventorySession(session, imagePending.current.session))
+          setView((previous) =>
+            previous.kind === "active" &&
+            !sameContext(previous.session, session)
               ? {
-                  kind: "active",
-                  session,
-                  pending: pending.current,
-                  imagePending: imagePending.current,
-                }
-              : {
                   kind: "blocked",
-                  message: pending.current
-                    ? "Hay un conteo pendiente de resolver en la sesión original. Vuelve al inicio para recuperar el acceso de esa empresa."
-                    : imagePending.current
-                      ? "Hay una imagen pendiente en la sesión original. Recupera el acceso de esa empresa."
-                      : "Tu perfil no permite consultar el inventario.",
-                },
+                  message:
+                    "La sesión cambió. Recupera la sesión original antes de continuar.",
+                }
+              : previous.kind === "active" && session.role === "admin"
+                ? previous
+                : session.role === "admin" &&
+                    (!pending.current ||
+                      sameInventorySession(session, pending.current.session)) &&
+                    (!imagePending.current ||
+                      sameInventorySession(
+                        session,
+                        imagePending.current.session,
+                      ))
+                  ? {
+                      kind: "active",
+                      session,
+                      pending: pending.current,
+                      imagePending: imagePending.current,
+                    }
+                  : {
+                      kind: "blocked",
+                      message: pending.current
+                        ? "Hay un conteo pendiente de resolver en la sesión original. Vuelve al inicio para recuperar el acceso de esa empresa."
+                        : imagePending.current
+                          ? "Hay una imagen pendiente en la sesión original. Recupera el acceso de esa empresa."
+                          : "Tu perfil no permite consultar el inventario.",
+                    },
           );
       })
       .catch(() => {
@@ -77,6 +94,10 @@ export default function InventoryWorkspace() {
           problem(
             "No pudimos comprobar tu sesión. Vuelve al inicio o comprueba el acceso para continuar.",
           );
+      })
+      .finally(() => {
+        if (!current.signal.aborted)
+          setPaused(document.visibilityState === "hidden");
       });
   }, [problem]);
   const onWriting = useCallback((value: boolean) => {
@@ -92,13 +113,11 @@ export default function InventoryWorkspace() {
       if (document.visibilityState === "visible") check();
     };
     const visibility = () => {
-      if (document.visibilityState === "hidden")
-        problem(
-          writing.current
-            ? uncertainInventory
-            : "Comprueba el acceso al volver para continuar.",
-        );
-      else check();
+      if (document.visibilityState === "hidden") {
+        controller.current?.abort();
+        setPaused(true);
+        if (writing.current) problem(uncertainInventory);
+      } else check();
     };
     window.addEventListener("focus", focus);
     window.addEventListener("pageshow", focus);
@@ -140,8 +159,11 @@ export default function InventoryWorkspace() {
           </button>
         </section>
       )}
+      {view.kind === "active" && paused && (
+        <p role="status">Comprobando acceso…</p>
+      )}
       {view.kind === "active" && (
-        <>
+        <div hidden={paused} inert={paused}>
           <p className="membership-company">
             {view.session.tenant_name} <span>· Administrador</span>
           </p>
@@ -156,7 +178,7 @@ export default function InventoryWorkspace() {
             initialImagePending={view.imagePending}
             onImagePending={rememberImage}
           />
-        </>
+        </div>
       )}
     </main>
   );

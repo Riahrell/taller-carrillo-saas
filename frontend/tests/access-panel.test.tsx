@@ -8,6 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import AccessPanel from "@/components/access-panel";
+import { identityApi } from "@/lib/access/identity";
 import { accessApi, type SessionContext } from "@/lib/access/api";
 import { ApiError } from "@/lib/api/client";
 
@@ -26,6 +27,10 @@ const choices = [
 const denied = () => new ApiError("http", "internal-canary", 401);
 
 beforeEach(() => {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "visible",
+  });
   vi.spyOn(accessApi, "session").mockRejectedValue(denied());
   vi.spyOn(accessApi, "prepare").mockResolvedValue(undefined);
   vi.spyOn(accessApi, "login").mockResolvedValue({ status: "authenticated" });
@@ -355,4 +360,58 @@ describe("formulario de acceso", () => {
     unmount();
     expect(current.close).toHaveBeenCalledOnce();
   });
+});
+
+it("conserva el correo al volver a la pestaña y retira la contraseña", async () => {
+  await ready();
+  fireEvent.change(screen.getByLabelText("Correo electrónico"), {
+    target: { value: "persona@example.com" },
+  });
+  fireEvent.change(screen.getByLabelText("Contraseña"), {
+    target: { value: "temporal" },
+  });
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "hidden",
+  });
+  fireEvent(document, new Event("visibilitychange"));
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "visible",
+  });
+  fireEvent(document, new Event("visibilitychange"));
+  fireEvent.focus(window);
+  expect(screen.getByLabelText("Correo electrónico")).toHaveValue(
+    "persona@example.com",
+  );
+  expect(screen.getByLabelText("Contraseña")).toHaveValue("");
+  expect(accessApi.session).toHaveBeenCalledTimes(1);
+});
+
+it("mantiene el paso de verificación al ir a consultar el correo", async () => {
+  await ready();
+  vi.mocked(accessApi.login).mockResolvedValue({ status: "mfa_enrollment" });
+  vi.spyOn(identityApi, "requestEnrollment").mockResolvedValue(undefined);
+  submit();
+  await screen.findByLabelText("Código del correo");
+  fireEvent.click(
+    screen.getByRole("button", { name: "Enviar correo de verificación" }),
+  );
+  await screen.findByText(/Mensaje solicitado/);
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "hidden",
+  });
+  fireEvent(document, new Event("visibilitychange"));
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "visible",
+  });
+  fireEvent(document, new Event("visibilitychange"));
+  fireEvent.focus(window);
+  expect(screen.getByLabelText("Código del correo")).toBeVisible();
+  expect(screen.getByText(/Mensaje solicitado/)).toBeVisible();
+  expect(accessApi.login).toHaveBeenCalledTimes(1);
+  expect(accessApi.session).toHaveBeenCalledTimes(1);
+  expect(identityApi.requestEnrollment).toHaveBeenCalledTimes(1);
 });

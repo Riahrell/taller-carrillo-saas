@@ -223,3 +223,31 @@ it("descarta un borrador cuando cambia el contexto antes de mostrar éxito", asy
   );
   expect(screen.queryByText(/Conteo confirmado/)).not.toBeInTheDocument();
 });
+
+it("mantiene cantidad y motivo sin enviar al cambiar de pestaña", async () => {
+  await open();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Registrar conteo físico" }),
+  );
+  await confirmIdentity();
+  const quantity = await screen.findByLabelText("Cantidad contada");
+  fireEvent.change(quantity, { target: { value: "2.125" } });
+  fireEvent.change(screen.getByLabelText("Motivo"), {
+    target: { value: "Borrador pendiente" },
+  });
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "hidden",
+  });
+  fireEvent(document, new Event("visibilitychange"));
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "visible",
+  });
+  fireEvent(document, new Event("visibilitychange"));
+  await waitFor(() => expect(quantity).toBeVisible());
+  expect(screen.getByLabelText("Cantidad contada")).toBe(quantity);
+  expect(quantity).toHaveValue("2.125");
+  expect(screen.getByLabelText("Motivo")).toHaveValue("Borrador pendiente");
+  expect(inventoryApi.record).not.toHaveBeenCalled();
+});

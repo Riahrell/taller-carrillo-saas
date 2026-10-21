@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { sameContext } from "@/lib/access/same-context";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { accessApi, type SessionContext } from "@/lib/access/api";
 import { ApiError } from "@/lib/api/client";
@@ -40,6 +41,7 @@ export default function MembershipWorkspace({
   mode?: "manage" | "create";
 }) {
   const [view, setView] = useState<View>({ kind: "checking" });
+  const [paused, setPaused] = useState(true);
   const controller = useRef<AbortController | null>(null);
   const writing = useRef(false);
   const channel = useRef<BroadcastChannel | null>(null);
@@ -54,11 +56,33 @@ export default function MembershipWorkspace({
       problem(uncertainChange);
       return;
     }
-    setView({ kind: "checking" });
+    setPaused(true);
+    setView((previous) =>
+      previous.kind === "active" || previous.kind === "confirm"
+        ? previous
+        : { kind: "checking" },
+    );
     const current = new AbortController();
     controller.current = current;
     void load(current.signal).then((next) => {
-      if (!current.signal.aborted) setView(next);
+      if (!current.signal.aborted) {
+        setView((previous) => {
+          if (
+            next.kind === "confirm" &&
+            (previous.kind === "active" || previous.kind === "confirm")
+          ) {
+            return sameContext(previous.session, next.session)
+              ? previous
+              : {
+                  kind: "blocked",
+                  message:
+                    "La sesión cambió. Comprueba el acceso antes de continuar.",
+                };
+          }
+          return next;
+        });
+        setPaused(document.visibilityState === "hidden");
+      }
     });
   }, [problem]);
   const onWriting = useCallback((value: boolean) => {
@@ -72,19 +96,34 @@ export default function MembershipWorkspace({
     const current = new AbortController();
     controller.current = current;
     void load(current.signal).then((next) => {
-      if (!current.signal.aborted) setView(next);
+      if (!current.signal.aborted) {
+        setView((previous) => {
+          if (
+            next.kind === "confirm" &&
+            (previous.kind === "active" || previous.kind === "confirm")
+          ) {
+            return sameContext(previous.session, next.session)
+              ? previous
+              : {
+                  kind: "blocked",
+                  message:
+                    "La sesión cambió. Comprueba el acceso antes de continuar.",
+                };
+          }
+          return next;
+        });
+        setPaused(document.visibilityState === "hidden");
+      }
     });
     const focus = () => {
       if (document.visibilityState === "visible") check();
     };
     const visibility = () => {
-      if (document.visibilityState === "hidden")
-        problem(
-          writing.current
-            ? uncertainChange
-            : "Comprueba el acceso al volver para continuar.",
-        );
-      else check();
+      if (document.visibilityState === "hidden") {
+        controller.current?.abort();
+        setPaused(true);
+        if (writing.current) problem(uncertainChange);
+      } else check();
     };
     window.addEventListener("focus", focus);
     window.addEventListener("pageshow", focus);
@@ -142,8 +181,11 @@ export default function MembershipWorkspace({
           </button>
         </section>
       )}
+      {paused && (view.kind === "active" || view.kind === "confirm") && (
+        <p role="status">Comprobando acceso…</p>
+      )}
       {(view.kind === "active" || view.kind === "confirm") && (
-        <>
+        <div hidden={paused} inert={paused}>
           <p className="membership-company">
             {view.session.tenant_name} <span>· Administrador</span>
           </p>
@@ -175,7 +217,7 @@ export default function MembershipWorkspace({
               onRecheck={check}
             />
           )}
-        </>
+        </div>
       )}
     </main>
   );

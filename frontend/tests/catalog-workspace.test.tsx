@@ -251,3 +251,33 @@ it("caducidad local retira campos y no genera una escritura", async () => {
   );
   expect(catalogApi.createProduct).not.toHaveBeenCalled();
 });
+
+it("conserva el borrador al volver y lo retira si cambia la empresa", async () => {
+  await open();
+  fireEvent.click(screen.getByRole("button", { name: "Nuevo producto" }));
+  await confirmIdentity();
+  const input = await screen.findByLabelText("Nombre");
+  fireEvent.change(input, { target: { value: "Borrador conservado" } });
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "hidden",
+  });
+  fireEvent(document, new Event("visibilitychange"));
+  expect(input).not.toBeVisible();
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "visible",
+  });
+  fireEvent(document, new Event("visibilitychange"));
+  await waitFor(() => expect(input).toBeVisible());
+  expect(screen.getByLabelText("Nombre")).toBe(input);
+  expect(input).toHaveValue("Borrador conservado");
+  expect(catalogApi.createProduct).not.toHaveBeenCalled();
+  vi.mocked(accessApi.session).mockResolvedValue({
+    ...context,
+    tenant_id: createdId,
+  });
+  fireEvent.focus(window);
+  await screen.findByText(/La sesión cambió/);
+  expect(screen.queryByLabelText("Nombre")).not.toBeInTheDocument();
+});

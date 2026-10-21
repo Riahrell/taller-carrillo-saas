@@ -29,6 +29,21 @@ export default function MembershipCreation({
   const form = useRef<HTMLFormElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const notice = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    const hide = () => {
+      if (document.visibilityState !== "hidden") return;
+      form.current
+        ?.querySelectorAll<HTMLInputElement>(
+          'input[type="password"], input[autocomplete="one-time-code"]',
+        )
+        .forEach((field) => {
+          field.value = "";
+        });
+    };
+    document.addEventListener("visibilitychange", hide);
+    return () => document.removeEventListener("visibilitychange", hide);
+  }, []);
+
   useEffect(
     () => () => {
       controller.current?.abort();

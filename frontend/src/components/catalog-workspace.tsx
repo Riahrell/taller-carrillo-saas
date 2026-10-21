@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { sameContext } from "@/lib/access/same-context";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { accessApi, type SessionContext } from "@/lib/access/api";
 import CatalogManager, { uncertainCatalog } from "@/components/catalog-manager";
@@ -11,6 +12,7 @@ type View =
   | { kind: "blocked"; message: string };
 export default function CatalogWorkspace() {
   const [view, setView] = useState<View>({ kind: "checking" });
+  const [paused, setPaused] = useState(true);
   const controller = useRef<AbortController | null>(null);
   const writing = useRef(false);
   const channel = useRef<BroadcastChannel | null>(null);
@@ -27,18 +29,30 @@ export default function CatalogWorkspace() {
     }
     const current = new AbortController();
     controller.current = current;
-    setView({ kind: "checking" });
+    setPaused(true);
+    setView((previous) =>
+      previous.kind === "active" ? previous : { kind: "checking" },
+    );
     void accessApi
       .session({ signal: current.signal })
       .then((session) => {
         if (!current.signal.aborted)
-          setView(
-            session.role === "admin"
-              ? { kind: "active", session }
-              : {
+          setView((previous) =>
+            previous.kind === "active" &&
+            !sameContext(previous.session, session)
+              ? {
                   kind: "blocked",
-                  message: "Tu perfil no permite administrar el catálogo.",
-                },
+                  message:
+                    "La sesión cambió. Comprueba el acceso antes de continuar.",
+                }
+              : previous.kind === "active" && session.role === "admin"
+                ? previous
+                : session.role === "admin"
+                  ? { kind: "active", session }
+                  : {
+                      kind: "blocked",
+                      message: "Tu perfil no permite administrar el catálogo.",
+                    },
           );
       })
       .catch(() => {
@@ -46,6 +60,10 @@ export default function CatalogWorkspace() {
           problem(
             "No pudimos comprobar tu sesión. Vuelve al inicio o comprueba el acceso para continuar.",
           );
+      })
+      .finally(() => {
+        if (!current.signal.aborted)
+          setPaused(document.visibilityState === "hidden");
       });
   }, [problem]);
   const onWriting = useCallback((value: boolean) => {
@@ -61,13 +79,11 @@ export default function CatalogWorkspace() {
       if (document.visibilityState === "visible") check();
     };
     const visibility = () => {
-      if (document.visibilityState === "hidden")
-        problem(
-          writing.current
-            ? uncertainCatalog
-            : "Comprueba el acceso al volver para continuar.",
-        );
-      else check();
+      if (document.visibilityState === "hidden") {
+        controller.current?.abort();
+        setPaused(true);
+        if (writing.current) problem(uncertainCatalog);
+      } else check();
     };
     window.addEventListener("focus", focus);
     window.addEventListener("pageshow", focus);
@@ -109,8 +125,11 @@ export default function CatalogWorkspace() {
           </button>
         </section>
       )}
+      {view.kind === "active" && paused && (
+        <p role="status">Comprobando acceso…</p>
+      )}
       {view.kind === "active" && (
-        <>
+        <div hidden={paused} inert={paused}>
           <p className="membership-company">
             {view.session.tenant_name} <span>· Administrador</span>
           </p>
@@ -121,7 +140,7 @@ export default function CatalogWorkspace() {
             onWriting={onWriting}
             onChanged={announce}
           />
-        </>
+        </div>
       )}
     </main>
   );

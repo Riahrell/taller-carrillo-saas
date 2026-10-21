@@ -229,10 +229,11 @@ describe("alta asistida", () => {
     const old = screen.getByLabelText("Contraseña del nuevo usuario");
     vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
     fireEvent(document, new Event("visibilitychange"));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Comprueba el acceso",
-    );
     expect(old).toHaveValue("");
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    fireEvent(document, new Event("visibilitychange"));
+    await waitFor(() => expect(old).toBeVisible());
+    expect(screen.getByLabelText("Contraseña del nuevo usuario")).toBe(old);
     expect(membershipsApi.create).not.toHaveBeenCalled();
   });
   it("un guardado interrumpido descarta respuesta tardía sin repetir", async () => {
