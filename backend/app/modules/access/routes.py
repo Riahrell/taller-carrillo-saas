@@ -72,13 +72,30 @@ def login(payload: Credentials, request: Request) -> Response:
     policy.login_binding(request.headers)
     binding = browser_binding(policy, request.headers)
     peer = request.app.state.trusted_proxy.client_ip(request.scope, request.headers)
-    request.app.state.identity.cancel(binding)
+    identity = request.app.state.identity.require()
+    identity.cancel(binding)
     with access.password_slot():
         result = access.authenticator.begin_mfa_login(
-            payload, client_ip=peer, browser_binding=binding
+            payload,
+            client_ip=peer,
+            browser_binding=binding,
+            email_access=identity.email_login,
+            remembered=SecretStr(
+                policy.read_cookies(request.headers).get(policy.browser_cookie, "")
+            ),
         )
     if result is None:
         return _denied()
+    from app.modules.access.email_login import PendingEmailLogin
+
+    if isinstance(result, PendingEmailLogin):
+        response = JSONResponse(
+            {"status": "email_code"},
+            status_code=202,
+            headers={"Cache-Control": "no-store"},
+        )
+        policy.set_challenge(response, result)
+        return response
     if isinstance(result, PendingMfaLogin):
         response = JSONResponse(
             {
@@ -121,11 +138,15 @@ def select_membership(payload: MembershipInput, request: Request) -> Response:
     policy.login_binding(request.headers)
     binding = browser_binding(policy, request.headers)
     token = policy.read_cookies(request.headers).get(policy.challenge_cookie)
-    result = request.app.state.identity.sessions.select_membership(
-        proof_token=SecretStr(token or ""),
-        browser_binding=binding,
-        membership_id=payload.membership_id,
+    result = request.app.state.identity.require().email_login.select(
+        SecretStr(token or ""), binding, payload.membership_id
     )
+    if result is None:
+        result = request.app.state.identity.sessions.select_membership(
+            proof_token=SecretStr(token or ""),
+            browser_binding=binding,
+            membership_id=payload.membership_id,
+        )
     if result is None:
         result = access.authenticator.select_membership(
             challenge_token=SecretStr(token or ""),
@@ -190,6 +211,8 @@ def logout(_payload: EmptyInput, request: Request) -> Response:
         cookies.get(policy.session_cookie),
         cookies.get(policy.challenge_cookie),
     )
+    if binding is not None:
+        request.app.state.identity.require().email_login.cancel(binding)
     request.app.state.access.logout(
         session_token=SecretStr(session_token) if session_token else None,
         challenge_token=SecretStr(challenge) if challenge else None,

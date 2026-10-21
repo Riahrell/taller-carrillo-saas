@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import EmailLoginFlow from "@/components/email-login-flow";
 import MfaFlow from "@/components/mfa-flow";
 
 import {
@@ -22,7 +23,7 @@ import { ApiError } from "@/lib/api/client";
 type View =
   | { kind: "checking" }
   | { kind: "login"; message?: string }
-  | { kind: "mfa"; stage: "mfa_totp" | "mfa_enrollment" }
+  | { kind: "mfa"; stage: "mfa_totp" | "mfa_enrollment" | "email_code" }
   | { kind: "choose"; choices: Choice[] }
   | { kind: "active"; session: SessionContext }
   | { kind: "uncertain"; message: string; closing: boolean };
@@ -205,7 +206,8 @@ export default function AccessPanel() {
         if (current.signal.aborted) return;
         if (
           result.status === "mfa_totp" ||
-          result.status === "mfa_enrollment"
+          result.status === "mfa_enrollment" ||
+          result.status === "email_code"
         ) {
           setView({ kind: "mfa", stage: result.status });
         } else if (result.status === "select_membership") {
@@ -299,7 +301,19 @@ export default function AccessPanel() {
             {message}
           </p>
         )}
-        {view.kind === "mfa" && (
+        {view.kind === "mfa" && view.stage === "email_code" && (
+          <EmailLoginFlow
+            onCancel={() => void act("logout")}
+            onLogin={(result) => {
+              if (result.status === "select_membership") {
+                setView({ kind: "choose", choices: result.choices });
+              } else if (result.status === "authenticated") {
+                check();
+              }
+            }}
+          />
+        )}
+        {view.kind === "mfa" && view.stage !== "email_code" && (
           <MfaFlow
             initial={view.stage}
             onCancel={() => void act("logout")}

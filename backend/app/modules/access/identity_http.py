@@ -78,6 +78,9 @@ class IdentityAccess:
                     quota_key=SecretBytes(bytes.fromhex(data["quota_key"])),
                     purpose=purpose,
                 )
+            from app.modules.access.email_login import EmailLogin
+
+            self.email_login = EmailLogin(engine, self.mail[MailPurpose.EMAIL_LOGIN])
             self.verifier = MfaVerifier(engine, keyring=self.keyring)
             self.enrollment_mail = EnrollmentEmailService(
                 engine, protection=self.mail[MailPurpose.ENROLLMENT]

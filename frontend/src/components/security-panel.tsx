@@ -109,8 +109,8 @@ export default function SecurityPanel() {
       {context && security && (
         <>
           <p>
-            Autenticador: {security.mfa_enabled ? "activo" : "sin configurar"}.
-            Correo:{" "}
+            Acceso protegido por contraseña y verificación por correo cada 15
+            días en este navegador. Correo:{" "}
             {security.mailbox_verified
               ? "verificado"
               : "pendiente de verificar"}

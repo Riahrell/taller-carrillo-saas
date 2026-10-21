@@ -33,6 +33,7 @@ COOLDOWN = timedelta(seconds=60)
 
 
 class MailPurpose(StrEnum):
+    EMAIL_LOGIN = "email_login"
     ENROLLMENT = "enrollment"
     PASSWORD_RESET = "password_reset"
     MAILBOX_VERIFICATION = "mailbox_verification"
@@ -72,6 +73,7 @@ def _aad(
         raise MailProtectionError("Mail protection unavailable")
     return (
         {
+            MailPurpose.EMAIL_LOGIN: b"carrillo:email-login-mail:v1\x00",
             MailPurpose.ENROLLMENT: b"carrillo:enrollment-mail:v1\x00",
             MailPurpose.PASSWORD_RESET: b"carrillo:password-reset-mail:v1\x00",
             MailPurpose.MAILBOX_VERIFICATION: (
@@ -136,6 +138,17 @@ class MailProtection:
         self._active = active_key_id
         self._quota_key = quota_key
         self._purpose = purpose
+
+    def login_code_hash(self, challenge_id: UUID, code: str) -> str:
+        if self.purpose != MailPurpose.EMAIL_LOGIN:
+            raise MailProtectionError("Invalid code purpose")
+        return hmac.new(
+            self._quota_key.get_secret_value(),
+            b"carrillo:email-login-code:v1\x00"
+            + challenge_id.bytes
+            + code.encode("ascii"),
+            hashlib.sha256,
+        ).hexdigest()
 
     @property
     def purpose(self) -> MailPurpose:
@@ -221,6 +234,7 @@ class MailProtection:
     def scopes(self, user_id: UUID, client_ip: IPv4Address | IPv6Address):
         if self.purpose not in {
             MailPurpose.ENROLLMENT,
+            MailPurpose.EMAIL_LOGIN,
             MailPurpose.MAILBOX_VERIFICATION,
         } or not isinstance(client_ip, (IPv4Address, IPv6Address)):
             raise MailProtectionError("Mail protection unavailable")

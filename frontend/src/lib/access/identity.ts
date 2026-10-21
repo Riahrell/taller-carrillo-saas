@@ -58,6 +58,9 @@ async function post<T>(
     : sendJson(path, body, csrf, decode);
 }
 export const identityApi = {
+  requestLoginEmail: () => post("/auth/email-login/request", {}, empty),
+  confirmLoginEmail: (code: string): Promise<LoginResult> =>
+    post("/auth/email-login/confirm", { code }, decodeLogin),
   totp: (code: string): Promise<LoginResult> =>
     post("/auth/mfa/totp", { code }, decodeLogin),
   requestEnrollment: () => post("/auth/mfa/enrollment/email", {}, empty),

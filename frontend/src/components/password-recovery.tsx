@@ -62,7 +62,7 @@ export default function PasswordRecovery() {
         await identityApi.reset(code, password);
         setToken("");
         setMessage(
-          "Contraseña cambiada. Se cerraron las sesiones anteriores. Inicia sesión con tu autenticador o conserva tus códigos de recuperación.",
+          "Contraseña cambiada. Se cerraron las sesiones anteriores. Inicia sesión y verifica de nuevo tu navegador por correo.",
         );
       } else {
         await identityApi.resetRequest(email);
@@ -82,7 +82,10 @@ export default function PasswordRecovery() {
   return (
     <section className="access-panel identity-panel" aria-busy={busy}>
       <h1>Recuperar contraseña</h1>
-      <p>No se desactiva el autenticador ni se reemplazan los códigos MFA.</p>
+      <p>
+        Al cambiar tu contraseña se invalidan las verificaciones anteriores del
+        navegador.
+      </p>
       {message && <p role="status">{message}</p>}
       <form ref={form} onSubmit={submit} method="post" action="/recuperar">
         <fieldset disabled={busy}>

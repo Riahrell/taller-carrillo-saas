@@ -72,6 +72,7 @@ def main():
         last_maintenance = 0.0
         while not stopping:
             try:
+                identity.email_login.dispatch_one(transport)
                 identity.reset_inbox.process_one()
                 enrollment.run_one()
                 dispatcher.dispatch_one()

@@ -97,6 +97,7 @@ class HttpSecurity:
         self.preauth_cookie = prefix + "carrillo_preauth"
         self.csrf_cookie = prefix + "carrillo_csrf"
         self.challenge_cookie = prefix + "carrillo_login"
+        self.browser_cookie = prefix + "carrillo_verified_browser"
 
     def _mac(self, purpose: str, binding: str, expiry: str, nonce: str) -> str:
         # Structured encoding avoids ambiguous concatenation; binding is never returned.
@@ -210,6 +211,7 @@ class HttpSecurity:
     def read_cookies(self, headers: Headers) -> dict[str, str]:
         cookies: dict[str, str] = {}
         relevant = {
+            self.browser_cookie,
             self.session_cookie,
             self.preauth_cookie,
             self.csrf_cookie,

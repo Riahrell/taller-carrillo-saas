@@ -98,6 +98,7 @@ def _create_session(
     context: MembershipContext,
     now: datetime,
     mfa_pending_id: UUID | None = None,
+    email_login_id: UUID | None = None,
 ) -> IssuedSession:
     """Private persistence after authentication guards, under the user's lock.
 
@@ -112,6 +113,7 @@ def _create_session(
         token_hash=_token_hash(token),
         security_revision=user.security_revision,
         mfa_pending_id=mfa_pending_id,
+        email_login_id=email_login_id,
         created_at=now,
         last_seen_at=now,
         expires_at=expires_at,
@@ -119,7 +121,7 @@ def _create_session(
     if not user.is_active or context.user_id != user.id:
         raise AccessDenied("Access denied")
     _validate_session_proof(session, record, user)
-    if mfa_pending_id is not None:
+    if mfa_pending_id is not None or email_login_id is not None:
         close_recovery_permits(session, user.id)
     session.add(record)
     session.add(
@@ -142,6 +144,45 @@ def _validate_session_proof(
         or record.security_revision != user.security_revision
     ):
         raise AccessDenied("Access denied")
+    if record.email_login_id is not None:
+        from app.modules.access.email_login_models import (
+            EmailLoginChallenge,
+            VerifiedBrowser,
+        )
+        from app.modules.access.mailbox_verification import _address_hash
+
+        proof = session.get(
+            EmailLoginChallenge, record.email_login_id, populate_existing=True
+        )
+        browser = (
+            session.get(VerifiedBrowser, proof.browser_id, populate_existing=True)
+            if proof
+            else None
+        )
+        fingerprint = hashlib.sha256(user.password_hash.encode("utf-8")).hexdigest()
+        if (
+            record.mfa_pending_id is not None
+            or proof is None
+            or browser is None
+            or proof.user_id != user.id
+            or browser.user_id != user.id
+            or proof.security_revision != user.security_revision
+            or browser.security_revision != user.security_revision
+            or proof.invalidated_at is not None
+            or browser.revoked_at is not None
+            or proof.verified_at is None
+            or proof.finished_at != record.created_at
+            or not proof.created_at
+            <= proof.verified_at
+            <= record.created_at
+            < proof.expires_at
+            or not browser.created_at <= record.created_at < browser.expires_at
+            or not hmac.compare_digest(proof.password_fingerprint, fingerprint)
+            or not hmac.compare_digest(proof.email_fingerprint, _address_hash(user))
+            or not hmac.compare_digest(browser.email_fingerprint, _address_hash(user))
+        ):
+            raise AccessDenied("Access denied")
+        return
     if record.mfa_pending_id is None:
         if _requires_mfa(session, user):
             raise AccessDenied("Access denied")

@@ -100,6 +100,10 @@ class SessionRecord(Base):
     __tablename__ = "sessions"
     __table_args__ = (
         CheckConstraint(
+            "mfa_pending_id IS NULL OR email_login_id IS NULL",
+            name="single_login_method",
+        ),
+        CheckConstraint(
             (
                 "(mfa_reauthenticated_at IS NULL AND "
                 "mfa_reauthentication_credential_id IS NULL) OR "
@@ -148,6 +152,9 @@ class SessionRecord(Base):
     security_revision: Mapped[int | None] = mapped_column(BigInteger)
     mfa_pending_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("mfa_pendings.id", ondelete="RESTRICT"), unique=True
+    )
+    email_login_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("email_login_challenges.id", ondelete="RESTRICT"), unique=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -588,9 +595,8 @@ class VerifiedMailbox(Base):
         ),
         CheckConstraint(
             (
-                "(challenge_id IS NOT NULL AND general_challenge_id IS NULL) "
-                "OR (challenge_id IS NULL AND general_challenge_id IS NOT "
-                "NULL)"
+                "num_nonnulls(challenge_id, general_challenge_id, "
+                "email_login_challenge_id) = 1"
             ),
             name="one_source",
         ),
@@ -618,6 +624,9 @@ class VerifiedMailbox(Base):
     user_id: Mapped[UUID]
     challenge_id: Mapped[UUID | None] = mapped_column(unique=True)
     general_challenge_id: Mapped[UUID | None] = mapped_column(unique=True)
+    email_login_challenge_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("email_login_challenges.id", ondelete="RESTRICT"), unique=True
+    )
     address_hash: Mapped[str] = mapped_column(String(64))
     verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -1180,3 +1189,7 @@ class MfaThrottle(Base):
         DateTime(timezone=True), index=True
     )
     failures: Mapped[int] = mapped_column(Integer)
+
+
+# Register independent browser-verification tables for session foreign keys.
+from app.modules.access import email_login_models as _email_login_models  # noqa: E402, F401

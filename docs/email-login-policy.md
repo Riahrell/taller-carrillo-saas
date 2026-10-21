@@ -2,8 +2,9 @@
 
 Decisión del propietario: sustituir el requisito de aplicación autenticadora
 por contraseña y código numérico por correo, recordando el navegador 15 días.
-Este documento define el cambio; el flujo TOTP desplegado todavía no se ha
-sustituido. No declarar esta modalidad implementada.
+Implementado localmente con la migración 0037_email_browser_login.
+Validación funcional manual pendiente por el propietario; no se afirma que
+la batería automatizada del contrato nuevo haya pasado.
 
 ## Comportamiento
 
@@ -64,4 +65,6 @@ Caída de correo nunca permite saltarse la verificación. La autorización de
 inventario y las transacciones no se modifican.
 
 Pruebas funcionales manuales a cargo del propietario conforme a su preferencia.
-No se ha ejecutado implementación ni validación funcional de esta modalidad.
+No se ha ejecutado la batería funcional automatizada ni el acceso manual por
+parte del agente. Véase deliveries/email-login-3.21.md para resultados de
+compilación y guía de prueba.

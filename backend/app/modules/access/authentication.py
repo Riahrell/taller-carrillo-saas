@@ -284,8 +284,11 @@ class Authenticator:
                     (
                         not isinstance(data, MfaPasswordConfirmation)
                         and (
-                            record.mfa_pending_id is not None
-                            or _requires_mfa(session, user)
+                            record.email_login_id is None
+                            and (
+                                record.mfa_pending_id is not None
+                                or _requires_mfa(session, user)
+                            )
                         )
                     )
                     or (
@@ -431,6 +434,8 @@ class Authenticator:
         tenant_id: UUID | None,
         binding_hash: str | None = None,
         mfa_browser_binding: SecretStr | None = None,
+        email_access=None,
+        remembered: SecretStr | None = None,
     ) -> IssuedSession | PendingLogin | PendingMfaLogin | None:
         # Global order: IP bucket, account bucket, user, challenges, session rows.
         ip = _lock_bucket(session, "ip", ip_key)
@@ -489,6 +494,16 @@ class Authenticator:
 
         if password_needs_rehash(user.password_hash):
             user.password_hash = hash_password(credentials.password)
+        if email_access is not None and mfa_browser_binding is not None:
+            _close_pending(session, user.id)
+            mfa_pending._close_browser_pendings(
+                session, user_id=user.id, binding=mfa_browser_binding
+            )
+            result = email_access.start(session, user, mfa_browser_binding, remembered)
+            account.failures = 0
+            account.window_started_at = _now(session)
+            session.flush()
+            return result
         if mfa_browser_binding is not None:
             # The internal MFA entry point applies global policy, never a role or
             # tenant chosen by the browser. HTTP uses this restricted entry.
@@ -560,6 +575,8 @@ class Authenticator:
         *,
         client_ip: IPv4Address | IPv6Address,
         browser_binding: SecretStr,
+        email_access=None,
+        remembered: SecretStr | None = None,
     ) -> IssuedSession | PendingLogin | PendingMfaLogin | None:
         """Internal entry only: same password quotas, global MFA policy and commit.
 
@@ -587,6 +604,8 @@ class Authenticator:
                     tenant_id=None,
                     binding_hash=binding_hash,
                     mfa_browser_binding=browser_binding,
+                    email_access=email_access,
+                    remembered=remembered,
                 )
             return result
         except AccessDenied:

@@ -17,7 +17,7 @@ export type SessionContext = {
 export type Choice = { membership_id: string; tenant_name: string };
 export type LoginResult =
   | { status: "authenticated" }
-  | { status: "mfa_totp" | "mfa_enrollment" }
+  | { status: "mfa_totp" | "mfa_enrollment" | "email_code" }
   | { status: "select_membership"; choices: Choice[] };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const PROOF = /^v1\.[1-9][0-9]{0,10}\.[A-Za-z0-9_-]{43}\.[0-9a-f]{64}$/;
@@ -61,7 +61,9 @@ export function decodeLogin(value: unknown, status: number): LoginResult {
   const data = object(value);
   if (
     status === 202 &&
-    (data.status === "mfa_totp" || data.status === "mfa_enrollment")
+    (data.status === "mfa_totp" ||
+      data.status === "mfa_enrollment" ||
+      data.status === "email_code")
   )
     return { status: data.status };
   if (status === 200 && data.status === "authenticated")

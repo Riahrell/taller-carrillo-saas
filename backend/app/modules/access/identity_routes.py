@@ -351,7 +351,7 @@ def security(request: Request):
                 min(300, int((oldest - _database_now(session)).total_seconds()) + 300),
             )
         result = {
-            "mfa_enabled": factor is not None,
+            "mfa_enabled": factor is not None and record.email_login_id is None,
             "mailbox_verified": verified is not None,
             "recent_seconds": recent,
         }
@@ -483,3 +483,44 @@ def rotation_activate(data: Code, request: Request):
         ),
         policy,
     )
+
+
+class EmailCode(Empty):
+    code: SecretStr = Field(min_length=6, max_length=6, repr=False, exclude=True)
+
+
+@router.post("/email-login/request", status_code=204)
+def email_login_request(_data: Empty, request: Request):
+    identity, policy = state(request)
+    token, binding = pending(request, policy)
+    peer = request.app.state.trusted_proxy.client_ip(request.scope, request.headers)
+    if not identity.email_login.issue(token, binding, peer):
+        return JSONResponse(
+            {"detail": "Request unavailable"},
+            status_code=429,
+            headers={"Cache-Control": "no-store"},
+        )
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/email-login/confirm")
+def email_login_confirm(data: EmailCode, request: Request):
+    identity, policy = state(request)
+    token, binding = pending(request, policy)
+    peer = request.app.state.trusted_proxy.client_ip(request.scope, request.headers)
+    confirmed = identity.email_login.confirm(token, binding, data.code, peer)
+    if confirmed is None:
+        return denied()
+    result, remembered, expires = confirmed
+    response = complete(result, policy)
+    response.set_cookie(
+        policy.browser_cookie,
+        remembered.get_secret_value(),
+        max_age=15 * 24 * 60 * 60,
+        expires=expires,
+        path="/",
+        secure=policy.secure,
+        httponly=True,
+        samesite="strict",
+    )
+    return response

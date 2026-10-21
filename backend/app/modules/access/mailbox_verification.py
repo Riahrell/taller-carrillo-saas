@@ -102,16 +102,25 @@ def lock_eligible_mailbox(session: Session, *, user_id: UUID) -> VerifiedMailbox
             VerifiedMailbox.id,
             VerifiedMailbox.challenge_id,
             VerifiedMailbox.general_challenge_id,
+            VerifiedMailbox.email_login_challenge_id,
         ).where(
             VerifiedMailbox.user_id == user.id, VerifiedMailbox.invalidated_at.is_(None)
         )
     ).one_or_none()
     if hint is None:
         return None
+    from app.modules.access.email_login_models import EmailLoginChallenge
+
     source = (
-        EnrollmentEmailChallenge if hint.challenge_id is not None else MailboxChallenge
+        EmailLoginChallenge
+        if hint.email_login_challenge_id is not None
+        else EnrollmentEmailChallenge
+        if hint.challenge_id is not None
+        else MailboxChallenge
     )
-    source_id = hint.challenge_id or hint.general_challenge_id
+    source_id = (
+        hint.email_login_challenge_id or hint.challenge_id or hint.general_challenge_id
+    )
     challenge = session.scalar(
         select(source)
         .where(source.id == source_id, source.user_id == user.id)
@@ -132,7 +141,12 @@ def lock_eligible_mailbox(session: Session, *, user_id: UUID) -> VerifiedMailbox
     if (
         record is None
         or challenge is None
-        or challenge.consumed_at != record.verified_at
+        or (
+            challenge.verified_at
+            if hint.email_login_challenge_id is not None
+            else challenge.consumed_at
+        )
+        != record.verified_at
         or not challenge.created_at <= record.verified_at < challenge.expires_at
         or now < record.verified_at
         or not hmac.compare_digest(record.address_hash, _address_hash(user))
