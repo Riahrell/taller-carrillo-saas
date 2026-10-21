@@ -49,10 +49,10 @@ function open(overrides = {}) {
 }
 async function prepare() {
   fireEvent.click(
-    await screen.findByRole("button", { name: "Agregar imagen" }),
+    await screen.findByRole("button", { name: "Agregar foto del producto" }),
   );
   await confirmIdentity();
-  const input = await screen.findByLabelText("Subir desde la galería", {
+  const input = await screen.findByLabelText("Elegir foto de la galería", {
     selector: "input",
   });
   const file = new File(["synthetic bytes"], "producto.png", {
@@ -60,15 +60,19 @@ async function prepare() {
   });
   fireEvent.change(input, { target: { files: [file] } });
   fireEvent.submit(input.closest("form")!);
-  await screen.findByText("Revisar cambio de imagen");
+  await screen.findByText("Revisa la foto antes de guardarla");
   return file;
 }
 it("exige identidad y revisión antes de enviar un archivo privado", async () => {
   const state = open();
   const file = await prepare();
   expect(productImages.upload).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar imagen" }));
-  await screen.findByText("Imagen guardada. Esta imagen sigue siendo privada.");
+  fireEvent.click(
+    screen.getByRole("button", { name: "Guardar foto del producto" }),
+  );
+  await screen.findByText(
+    "Foto guardada. Solo está disponible dentro de tu empresa.",
+  );
   expect(productImages.upload).toHaveBeenCalledWith(
     context.membership_id,
     { key: expect.any(String), product_id: product.id, file },
@@ -80,13 +84,13 @@ it("exige identidad y revisión antes de enviar un archivo privado", async () =>
 it("ofrece cámara trasera y galería separadas sin enviar antes de revisar", async () => {
   open();
   fireEvent.click(
-    await screen.findByRole("button", { name: "Agregar imagen" }),
+    await screen.findByRole("button", { name: "Agregar foto del producto" }),
   );
   await confirmIdentity();
   const camera = await screen.findByLabelText("Tomar foto", {
     selector: "input",
   });
-  const gallery = screen.getByLabelText("Subir desde la galería", {
+  const gallery = screen.getByLabelText("Elegir foto de la galería", {
     selector: "input",
   });
   expect(camera).toHaveAttribute("capture", "environment");
@@ -106,18 +110,22 @@ it("conserva mismo archivo y llave ante una respuesta incierta; nunca reintenta 
   );
   open();
   await prepare();
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar imagen" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Guardar foto del producto" }),
+  );
   await screen.findByText(/La imagen puede haberse guardado/);
   expect(productImages.upload).toHaveBeenCalledTimes(1);
   const first = vi.mocked(productImages.upload).mock.calls[0][1];
   fireEvent.click(
-    screen.getByRole("button", { name: "Resolver imagen pendiente" }),
+    screen.getByRole("button", { name: "Comprobar foto pendiente" }),
   );
   await confirmIdentity();
   fireEvent.click(
-    await screen.findByRole("button", { name: "Reintentar la misma imagen" }),
+    await screen.findByRole("button", { name: "Reintentar guardar esta foto" }),
   );
-  await screen.findByText("Imagen guardada. Esta imagen sigue siendo privada.");
+  await screen.findByText(
+    "Foto guardada. Solo está disponible dentro de tu empresa.",
+  );
   expect(vi.mocked(productImages.upload).mock.calls[1][1]).toBe(first);
 });
 it("una reserva terminal permite revisar otra imagen sin reutilizar la operación", async () => {
@@ -126,10 +134,14 @@ it("una reserva terminal permite revisar otra imagen sin reutilizar la operació
   );
   const state = open();
   await prepare();
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar imagen" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Guardar foto del producto" }),
+  );
   await screen.findByText(/La operación no puede continuar/);
   expect(state.onPending).toHaveBeenLastCalledWith(null);
-  expect(screen.getByRole("button", { name: "Agregar imagen" })).toBeEnabled();
+  expect(
+    screen.getByRole("button", { name: "Agregar foto del producto" }),
+  ).toBeEnabled();
 });
 it("retira la vista ante cambio de empresa después del envío", async () => {
   vi.mocked(accessApi.session)
@@ -137,7 +149,9 @@ it("retira la vista ante cambio de empresa después del envío", async () => {
     .mockResolvedValueOnce({ ...context, tenant_id: context.user_id });
   const state = open();
   await prepare();
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar imagen" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Guardar foto del producto" }),
+  );
   await waitFor(() => expect(state.onProblem).toHaveBeenCalled());
   expect(state.onPending).not.toHaveBeenLastCalledWith(null);
 });
@@ -155,7 +169,9 @@ it("la cancelación desmonta la solicitud y no registra éxito tardío", async (
   );
   const state = open();
   await prepare();
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar imagen" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Guardar foto del producto" }),
+  );
   await waitFor(() => expect(productImages.upload).toHaveBeenCalledTimes(1));
   const signal = vi.mocked(productImages.upload).mock.calls[0][2]!;
   state.unmount();

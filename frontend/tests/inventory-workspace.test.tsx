@@ -56,20 +56,22 @@ async function open() {
 async function draft() {
   await open();
   fireEvent.click(
-    screen.getByRole("button", { name: "Registrar conteo físico" }),
+    screen.getByRole("button", { name: "Actualizar existencias" }),
   );
   await confirmIdentity();
-  await screen.findByLabelText("Cantidad contada");
-  fireEvent.change(screen.getByLabelText("Cantidad contada"), {
+  await screen.findByLabelText("Existencias reales en bodega");
+  fireEvent.change(screen.getByLabelText("Existencias reales en bodega"), {
     target: { value: "2" },
   });
-  fireEvent.change(screen.getByLabelText("Motivo"), {
+  fireEvent.change(screen.getByLabelText("¿Por qué cambian las existencias?"), {
     target: { value: "Conteo inicial" },
   });
-  fireEvent.change(screen.getByLabelText(/Costo unitario declarado/), {
+  fireEvent.change(screen.getByLabelText(/Costo por unidad/), {
     target: { value: "3" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Revisar conteo" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Actualizar inventario" }),
+  );
 }
 it("muestra datos privados solo tras comprobar sesión y separa costo del precio", async () => {
   await open();
@@ -93,8 +95,10 @@ it("no consulta datos con un perfil no administrador", async () => {
 it("exige identidad antes de mostrar campos y revisión antes del POST", async () => {
   await draft();
   expect(inventoryApi.record).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar conteo" }));
-  await screen.findByText(/Conteo confirmado/);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Confirmar actualización" }),
+  );
+  await screen.findByText(/Existencias actualizadas/);
   expect(inventoryApi.record).toHaveBeenCalledWith(
     actor,
     {
@@ -116,19 +120,23 @@ it("conserva la misma clave y contenido tras una respuesta perdida, sin reintent
     new ApiError("network", "Disconnected"),
   );
   await draft();
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar conteo" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Confirmar actualización" }),
+  );
   await screen.findByRole("heading", { name: "Resultado por confirmar" });
   expect(inventoryApi.record).toHaveBeenCalledTimes(1);
   const first = vi.mocked(inventoryApi.record).mock.calls[0][1];
   fireEvent.click(
-    screen.getByRole("button", { name: "Resolver conteo pendiente" }),
+    screen.getByRole("button", { name: "Comprobar actualización pendiente" }),
   );
   await confirmIdentity();
-  await screen.findByRole("button", { name: "Resolver con la misma clave" });
+  await screen.findByRole("button", {
+    name: "Comprobar actualización pendiente",
+  });
   fireEvent.click(
-    screen.getByRole("button", { name: "Resolver con la misma clave" }),
+    screen.getByRole("button", { name: "Comprobar actualización pendiente" }),
   );
-  await screen.findByText(/Conteo confirmado/);
+  await screen.findByText(/Existencias actualizadas/);
   expect(vi.mocked(inventoryApi.record).mock.calls[1][1]).toEqual(first);
 });
 it("doble clic no inicia dos conteos", async () => {
@@ -140,18 +148,22 @@ it("doble clic no inicia dos conteos", async () => {
       }),
   );
   await draft();
-  const button = screen.getByRole("button", { name: "Confirmar conteo" });
+  const button = screen.getByRole("button", {
+    name: "Confirmar actualización",
+  });
   fireEvent.click(button);
   fireEvent.click(button);
   expect(inventoryApi.record).toHaveBeenCalledTimes(1);
   await act(async () => finish(evidence));
-  await screen.findByText(/Conteo confirmado/);
+  await screen.findByText(/Existencias actualizadas/);
 });
 
 it("no intenta registrar si falta generación segura de claves", async () => {
   await draft();
   vi.stubGlobal("crypto", { randomUUID: undefined });
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar conteo" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Confirmar actualización" }),
+  );
   await screen.findByText(/navegador actualizado en HTTPS o localhost/);
   expect(inventoryApi.record).not.toHaveBeenCalled();
 });
@@ -160,7 +172,9 @@ it("oculta datos al perder visibilidad y conserva el pendiente para su mismo con
     new ApiError("network", "Disconnected"),
   );
   await draft();
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar conteo" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Confirmar actualización" }),
+  );
   await screen.findByRole("heading", { name: "Resultado por confirmar" });
   const first = vi.mocked(inventoryApi.record).mock.calls[0][1];
   Object.defineProperty(document, "visibilityState", {
@@ -185,7 +199,9 @@ it("no revela ni reintenta el pendiente en otra empresa", async () => {
     new ApiError("network", "Disconnected"),
   );
   await draft();
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar conteo" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Confirmar actualización" }),
+  );
   await screen.findByRole("heading", { name: "Resultado por confirmar" });
   vi.mocked(accessApi.session).mockResolvedValue({
     ...context,
@@ -204,9 +220,13 @@ it("rechazo 422 vuelve a edición y actualiza el saldo sin repetir automáticame
     new ApiError("http", "Invalid", 422),
   );
   await draft();
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar conteo" }));
-  await screen.findByText(/conteo fue rechazado y actualizamos/);
-  expect(screen.getByLabelText("Cantidad contada")).toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Confirmar actualización" }),
+  );
+  await screen.findByText(/No se guardó la actualización. Revisa/);
+  expect(
+    screen.getByLabelText("Existencias reales en bodega"),
+  ).toBeInTheDocument();
   expect(inventoryApi.record).toHaveBeenCalledTimes(1);
 });
 it("descarta un borrador cuando cambia el contexto antes de mostrar éxito", async () => {
@@ -215,24 +235,28 @@ it("descarta un borrador cuando cambia el contexto antes de mostrar éxito", asy
     ...context,
     tenant_id: actor,
   });
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar conteo" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Confirmar actualización" }),
+  );
   await waitFor(() =>
     expect(
       screen.queryByRole("heading", { name: "Filtro de aceite" }),
     ).not.toBeInTheDocument(),
   );
-  expect(screen.queryByText(/Conteo confirmado/)).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(/Existencias actualizadas/),
+  ).not.toBeInTheDocument();
 });
 
 it("mantiene cantidad y motivo sin enviar al cambiar de pestaña", async () => {
   await open();
   fireEvent.click(
-    screen.getByRole("button", { name: "Registrar conteo físico" }),
+    screen.getByRole("button", { name: "Actualizar existencias" }),
   );
   await confirmIdentity();
-  const quantity = await screen.findByLabelText("Cantidad contada");
+  const quantity = await screen.findByLabelText("Existencias reales en bodega");
   fireEvent.change(quantity, { target: { value: "2.125" } });
-  fireEvent.change(screen.getByLabelText("Motivo"), {
+  fireEvent.change(screen.getByLabelText("¿Por qué cambian las existencias?"), {
     target: { value: "Borrador pendiente" },
   });
   Object.defineProperty(document, "visibilityState", {
@@ -246,8 +270,10 @@ it("mantiene cantidad y motivo sin enviar al cambiar de pestaña", async () => {
   });
   fireEvent(document, new Event("visibilitychange"));
   await waitFor(() => expect(quantity).toBeVisible());
-  expect(screen.getByLabelText("Cantidad contada")).toBe(quantity);
+  expect(screen.getByLabelText("Existencias reales en bodega")).toBe(quantity);
   expect(quantity).toHaveValue("2.125");
-  expect(screen.getByLabelText("Motivo")).toHaveValue("Borrador pendiente");
+  expect(
+    screen.getByLabelText("¿Por qué cambian las existencias?"),
+  ).toHaveValue("Borrador pendiente");
   expect(inventoryApi.record).not.toHaveBeenCalled();
 });

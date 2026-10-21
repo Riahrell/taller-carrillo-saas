@@ -162,7 +162,7 @@ export default function ProductImage(props: Props) {
       setFile(null);
       setStage("closed");
       setRevision((value) => value + 1);
-      setMessage("Imagen guardada. Esta imagen sigue siendo privada.");
+      setMessage("Foto guardada. Solo está disponible dentro de tu empresa.");
     } catch (error) {
       if (abort.signal.aborted || !alive.current) return;
       if (
@@ -226,11 +226,11 @@ export default function ProductImage(props: Props) {
           className="text-action"
           disabled={disabled || busy}
           onClick={() => {
-            setMessage("Consultando imagen…");
+            setMessage("Cargando foto…");
             setRevision((value) => value + 1);
           }}
         >
-          Volver a consultar imagen
+          Volver a cargar la foto
         </button>
       )}
       {stage === "closed" && (
@@ -243,10 +243,10 @@ export default function ProductImage(props: Props) {
           }}
         >
           {pending
-            ? "Resolver imagen pendiente"
+            ? "Comprobar foto pendiente"
             : url
-              ? "Cambiar imagen"
-              : "Agregar imagen"}
+              ? "Cambiar foto del producto"
+              : "Agregar foto del producto"}
         </button>
       )}
       {stage === "identity" && (
@@ -278,7 +278,7 @@ export default function ProductImage(props: Props) {
             />
           </label>
           <label>
-            Subir desde la galería
+            Elegir foto de la galería
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
@@ -297,13 +297,13 @@ export default function ProductImage(props: Props) {
             galería.
           </p>
           <button className="action" type="submit" disabled={busy}>
-            Revisar imagen
+            Continuar y revisar foto
           </button>
         </form>
       )}
       {stage === "review" && (
         <div>
-          <h3>Revisar cambio de imagen</h3>
+          <h3>Revisa la foto antes de guardarla</h3>
           <p>Producto: {productName}</p>
           <p>
             Archivo: {chosen?.name} ·{" "}
@@ -321,8 +321,8 @@ export default function ProductImage(props: Props) {
             {busy
               ? "Guardando…"
               : pending
-                ? "Reintentar la misma imagen"
-                : "Confirmar imagen"}
+                ? "Reintentar guardar esta foto"
+                : "Guardar foto del producto"}
           </button>
         </div>
       )}
@@ -335,7 +335,7 @@ export default function ProductImage(props: Props) {
             setFile(null);
           }}
         >
-          Cancelar
+          Cancelar, conservar la foto actual
         </button>
       )}
       {!available && (

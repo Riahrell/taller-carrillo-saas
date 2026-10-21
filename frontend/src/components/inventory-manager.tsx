@@ -34,7 +34,7 @@ import {
 
 export type ScopedPending = { session: SessionContext; command: PendingCount };
 export const uncertainInventory =
-  "El conteo puede haberse guardado. Comprueba el acceso y resuelve la operación pendiente con la misma clave; no registres otra para sustituirla.";
+  "La actualización puede haberse guardado. Comprueba tu acceso y revisa la actualización pendiente antes de volver a cambiar las existencias.";
 export function sameInventorySession(a: SessionContext, b: SessionContext) {
   return (
     a.user_id === b.user_id &&
@@ -337,7 +337,7 @@ export default function InventoryManager({
       (typeof crypto === "undefined" || typeof crypto.randomUUID !== "function")
     ) {
       onProblem(
-        "Necesitas un navegador actualizado en HTTPS o localhost para registrar el conteo.",
+        "No se pudo preparar la actualización. Comprueba tu acceso desde un navegador actualizado.",
       );
       return;
     }
@@ -374,7 +374,7 @@ export default function InventoryManager({
       setStage("closed");
       setSuccess(true);
       setMessage(
-        "Conteo confirmado. El saldo mostrado incluye las operaciones registradas hasta su consulta.",
+        "Existencias actualizadas. Se muestran las existencias y el costo calculados hasta esta consulta.",
       );
     } catch (error) {
       if (current.signal.aborted) return;
@@ -391,18 +391,20 @@ export default function InventoryManager({
           setSelected(detail);
           setStage("edit");
           setMessage(
-            "El conteo fue rechazado y actualizamos el saldo. Revisa costo y cantidad antes de enviarlo de nuevo.",
+            "No se guardó la actualización. Revisa las existencias actuales, la cantidad y el costo antes de volver a confirmar.",
           );
         } catch {
           if (!current.signal.aborted)
             onProblem(
-              "El conteo fue rechazado. No pudimos actualizar el saldo; comprueba el acceso.",
+              "No se guardó la actualización y no pudimos consultar las existencias actuales. Comprueba el acceso.",
             );
         }
       } else if (error instanceof ApiError && error.status === 428) {
         setStage("identity");
         setDeadline(null);
-        setMessage("Confirma tu identidad para resolver el mismo conteo.");
+        setMessage(
+          "Comprueba tu acceso para revisar la actualización pendiente.",
+        );
       } else if (
         error instanceof ApiError &&
         (error.kind === "network" || error.status === 503)
@@ -454,11 +456,14 @@ export default function InventoryManager({
         </p>
       )}
       {pending && stage === "closed" && (
-        <section className="membership-notice" aria-label="Conteo pendiente">
+        <section
+          className="membership-notice"
+          aria-label="Actualización pendiente"
+        >
           <h2>Resultado por confirmar</h2>
           <p>
-            Resolveremos el mismo conteo sin crear otra clave. La operación se
-            conserva solo mientras permanezcas en esta pantalla.
+            Revisaremos si esta actualización ya se guardó, sin duplicarla.
+            Mantén esta pantalla abierta hasta conocer el resultado.
           </p>
           <p>
             Referencia: <code>{pending.key}</code>
@@ -471,7 +476,7 @@ export default function InventoryManager({
               setStage("identity");
             }}
           >
-            Resolver conteo pendiente
+            Comprobar actualización pendiente
           </button>
         </section>
       )}
@@ -602,15 +607,15 @@ export default function InventoryManager({
                   setStage("identity");
                 }}
               >
-                Registrar conteo físico
+                Actualizar existencias
               </button>
             )}
             {stage === "identity" && (
               <IdentityConfirmation
                 purpose={
                   pending
-                    ? "resolver el conteo pendiente"
-                    : "registrar un conteo físico"
+                    ? "comprobar la actualización pendiente"
+                    : "actualizar las existencias"
                 }
                 session={session}
                 onWriting={identityWriting}
@@ -625,9 +630,9 @@ export default function InventoryManager({
             )}
             {stage === "edit" && (
               <form onSubmit={prepare} className="catalog-form">
-                <h3>Conteo físico</h3>
+                <h3>Actualizar existencias</h3>
                 <label>
-                  Cantidad contada
+                  Existencias reales en bodega
                   <input
                     inputMode="decimal"
                     autoComplete="off"
@@ -638,11 +643,11 @@ export default function InventoryManager({
                   />
                 </label>
                 <p>
-                  Escribe la cantidad física final, incluyendo cero si no hay
-                  unidades. Hasta tres decimales.
+                  Escribe cuántas unidades hay ahora. Escribe 0 si no hay.
+                  Puedes usar hasta tres decimales.
                 </p>
                 <label>
-                  Motivo
+                  ¿Por qué cambian las existencias?
                   <textarea
                     required
                     maxLength={500}
@@ -652,7 +657,7 @@ export default function InventoryManager({
                 </label>
                 {needsCost && (
                   <label>
-                    Costo unitario declarado (USD)
+                    Costo por unidad (USD)
                     <input
                       inputMode="decimal"
                       autoComplete="off"
@@ -662,41 +667,48 @@ export default function InventoryManager({
                       onChange={(event) => setCost(event.target.value)}
                     />
                     <small>
-                      Este aumento requiere un costo explícito porque no hay
-                      valoración histórica utilizable. Hasta seis decimales.
+                      Indica cuánto costó cada unidad. Hace falta este dato
+                      porque el inventario aún no tiene un costo calculable.
+                      Puedes usar hasta seis decimales.
                     </small>
                   </label>
                 )}
+                <p>
+                  En el siguiente paso revisarás los datos antes de guardar.
+                </p>
                 <button className="action primary" disabled={busy}>
-                  Revisar conteo
+                  Actualizar inventario
                 </button>
               </form>
             )}
             {(stage === "review" || stage === "recover") && reviewed && (
               <section
                 className="catalog-review"
-                aria-label="Revisión del conteo"
+                aria-label="Revisión de la actualización"
               >
                 <h3>
-                  {pending ? "Resolver operación pendiente" : "Revisar conteo"}
+                  {pending
+                    ? "Comprobar actualización pendiente"
+                    : "Actualizar inventario"}
                 </h3>
                 <dl>
                   <dt>Producto</dt>
                   <dd>{selected.product.name}</dd>
-                  <dt>Cantidad física final</dt>
+                  <dt>Existencias reales en bodega</dt>
                   <dd>{displayDecimal(reviewed.counted_quantity)}</dd>
-                  <dt>Motivo</dt>
+                  <dt>¿Por qué cambian las existencias?</dt>
                   <dd>{reviewed.reason}</dd>
-                  <dt>Costo declarado</dt>
+                  <dt>Costo por unidad</dt>
                   <dd>
                     {reviewed.declared_unit_cost === null
-                      ? "Usar valoración histórica cuando corresponda"
+                      ? "Usar el costo del inventario actual, si corresponde"
                       : `${displayDecimal(reviewed.declared_unit_cost, 2)} USD`}
                   </dd>
                 </dl>
                 <p>
-                  El servidor calculará la diferencia y valoración desde el
-                  saldo vigente. No registra una compra, venta ni pago.
+                  Al confirmar, se ajustarán las existencias a la cantidad que
+                  indicaste y se calculará el cambio de valor. Esta acción no
+                  registra una compra, una venta ni un pago.
                 </p>
                 <button
                   className="action primary"
@@ -706,8 +718,8 @@ export default function InventoryManager({
                   {busy
                     ? "Confirmando…"
                     : pending
-                      ? "Resolver con la misma clave"
-                      : "Confirmar conteo"}
+                      ? "Comprobar actualización pendiente"
+                      : "Confirmar actualización"}
                 </button>
                 {!pending && (
                   <button
@@ -715,7 +727,7 @@ export default function InventoryManager({
                     disabled={busy}
                     onClick={() => setStage("edit")}
                   >
-                    Editar conteo
+                    Corregir datos
                   </button>
                 )}
               </section>
@@ -729,20 +741,21 @@ export default function InventoryManager({
                   setStage("closed");
                 }}
               >
-                Cancelar
+                {pending ? "Volver al producto" : "Cancelar, no cambiar nada"}
               </button>
             )}
             <section
-              aria-label="Historial de conteos"
+              aria-label="Historial de actualizaciones"
               className="inventory-history"
             >
-              <h3>Historial de conteos</h3>
+              <h3>Historial de actualizaciones</h3>
               <p>
-                Hora de El Salvador. Incluye conteos sin diferencia; otros
-                movimientos llegarán con sus módulos.
+                Hora de El Salvador. Aquí aparecen los ajustes de existencias,
+                incluso cuando la cantidad no cambió. Las compras y ventas no se
+                muestran en este historial.
               </p>
               {selected.history.items.length === 0 ? (
-                <p>Todavía no hay conteos registrados.</p>
+                <p>Todavía no hay actualizaciones registradas.</p>
               ) : (
                 <ol>
                   {selected.history.items.map((item) => (
@@ -751,18 +764,18 @@ export default function InventoryManager({
                       <p>{item.reason}</p>
                       <dl>
                         <div>
-                          <dt>Cantidad anterior → final</dt>
+                          <dt>Existencias anteriores → actuales</dt>
                           <dd>
                             {displayDecimal(item.before_quantity)} →{" "}
                             {displayDecimal(item.after_quantity)}
                           </dd>
                         </div>
                         <div>
-                          <dt>Diferencia de cantidad</dt>
+                          <dt>Cambio en existencias</dt>
                           <dd>{displayDecimal(item.quantity_delta)}</dd>
                         </div>
                         <div>
-                          <dt>Diferencia de valor</dt>
+                          <dt>Cambio en el valor del inventario</dt>
                           <dd>{displayDecimal(item.value_delta, 2)} USD</dd>
                         </div>
                       </dl>
@@ -787,7 +800,7 @@ export default function InventoryManager({
                     void historyPage(selected.history.items.at(-1))
                   }
                 >
-                  Conteos anteriores
+                  Actualizaciones anteriores
                 </button>
               </div>
             </section>
@@ -796,8 +809,8 @@ export default function InventoryManager({
       </div>
       <p className="membership-help">
         Consulta privada. Crear un producto no lo publica en la vitrina. Si
-        cierras esta pantalla durante un conteo incierto, revisa su historial
-        antes de iniciar otro.
+        cierras esta pantalla con una actualización sin confirmar, revisa su
+        historial antes de volver a cambiar las existencias.
       </p>
     </section>
   );
