@@ -1001,7 +1001,8 @@ h1 span {
   gap: 0.5rem;
   font-weight: 600;
 }
-.product-search input {
+.product-search input,
+.product-search select {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -1013,7 +1014,8 @@ h1 span {
   border: 1px solid #777f73;
   border-radius: 0.5rem;
 }
-.product-search input:focus-visible {
+.product-search input:focus-visible,
+.product-search select:focus-visible {
   outline: 3px solid #526732;
   outline-offset: 3px;
 }

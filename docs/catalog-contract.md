@@ -78,3 +78,7 @@ de exponer esos formularios. HTTP exige CSRF/origen y vincula contexto.
 
 Servicios de taller, publicación y movimientos se incorporarán por separado.
 Crear, editar o desactivar un producto no crea ni altera existencias.
+
+La consulta administrativa de productos admite búsqueda por nombre/SKU y filtro
+por categoría, combinables y paginados dentro de la empresa de sesión. Contrato
+HTTP actualizado en `catalog-http-contract.md`; entregas 3.30 y 3.31.

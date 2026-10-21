@@ -14,7 +14,7 @@ referencia de requisitos; no autorizan accesos externos ni despliegues por sí s
 | Parte | Implementación actual | Brecha antes de considerarla lista |
 | --- | --- | --- |
 | Productos | Crear, listar, detalle, categorías, SKU y precio | Edición/activación todavía sin flujo HTTP/UI completo |
-| Buscador | Nombre o SKU parcial, sin distinguir mayúsculas; filtro de empresa y paginación en servidor | Validación manual del propietario |
+| Buscador | Nombre o SKU parcial y categoría combinables; filtro de empresa y paginación en servidor | Validación manual del propietario |
 | Fotos | Carga privada S3, cámara/galería y lectura | Validar miniatura al volver al catálogo y cámara en móvil físico |
 | Existencias | Saldo, costo promedio, conteos y entradas/salidas manuales con cantidad positiva | Validación manual del propietario; reversas aún pendientes |
 | Recepción de compra | API y transacción de recepción | Pantalla de proveedores/compra/recepción |
@@ -89,3 +89,6 @@ no declara el inventario completo ni autoriza cambios destructivos en la VPS.
 
 Entrega 3.30 incorpora el buscador privado de productos en Inventario y Catálogo.
 No reemplaza el trabajo pendiente de historial unificado, edición y stock bajo.
+
+Entrega 3.31 agrega el selector de categoría al buscador de Inventario y Catálogo.
+Todas las categorías elimina ese filtro; Limpiar búsqueda elimina texto y categoría.

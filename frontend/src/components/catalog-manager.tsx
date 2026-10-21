@@ -41,6 +41,7 @@ export default function CatalogManager({
   onChanged,
 }: Props) {
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [kind, setKind] = useState<Kind>("products");
   const [products, setProducts] = useState<Page<Product> | null>(null);
   const [categories, setCategories] = useState<Page<Category> | null>(null);
@@ -138,7 +139,12 @@ export default function CatalogManager({
     setSelected(null);
     setStage("closed");
   }
-  async function page(collection: Kind, after?: string, term = search) {
+  async function page(
+    collection: Kind,
+    after?: string,
+    term = search,
+    category = categoryFilter,
+  ) {
     if (operation.current) return;
     operation.current = true;
     setBusy(true);
@@ -156,10 +162,12 @@ export default function CatalogManager({
             signal: current.signal,
           },
           term,
+          category,
         );
         if (!current.signal.aborted) {
           setProducts(value);
           setSearch(term);
+          setCategoryFilter(category);
         }
       } else {
         const value = await catalogApi.categories(identity, after, {
@@ -255,6 +263,7 @@ export default function CatalogManager({
       if (!current.signal.aborted) {
         setProducts(p);
         setSearch("");
+        setCategoryFilter(null);
         setCategories(c);
         reset();
         setSuccess(true);
@@ -349,9 +358,13 @@ export default function CatalogManager({
       </div>
       {kind === "products" && (
         <ProductSearch
+          actor={identity}
+          category={categoryFilter}
           value={search}
           disabled={busy || stage !== "closed"}
-          onSearch={(term) => void page("products", undefined, term)}
+          onSearch={(term, category) =>
+            void page("products", undefined, term, category)
+          }
         />
       )}
       {message && (
@@ -567,8 +580,8 @@ export default function CatalogManager({
           {currentPage?.items.length === 0 && (
             <p>
               {kind === "products"
-                ? search
-                  ? "No se encontraron productos con ese nombre o SKU."
+                ? search || categoryFilter
+                  ? "No se encontraron productos con esos filtros."
                   : "Todavía no hay productos."
                 : "Todavía no hay categorías."}
             </p>

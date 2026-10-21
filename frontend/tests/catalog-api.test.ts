@@ -153,3 +153,35 @@ it("codifica la búsqueda como un único parámetro sin permitir inyectar empres
   expect(url.searchParams.has("tenant_id")).toBe(false);
   expect(url.hash).toBe("");
 });
+it("combina nombre y categoría sin enviar autoridad de empresa", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(
+      Response.json(
+        { items: [{ ...product, category_id: target }], next_after: null },
+        { headers: headers() },
+      ),
+    );
+  vi.stubGlobal("fetch", fetch);
+  await catalogApi.products(actor, undefined, {}, "filtro", target);
+  const url = new URL(fetch.mock.calls[0][0], "https://same-origin.invalid");
+  expect(url.searchParams.get("q")).toBe("filtro");
+  expect(url.searchParams.get("category_id")).toBe(target);
+  expect(url.searchParams.has("tenant_id")).toBe(false);
+});
+it("rechaza resultados que no pertenecen a la categoría consultada", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json(
+          { items: [product], next_after: null },
+          { headers: headers() },
+        ),
+      ),
+  );
+  await expect(
+    catalogApi.products(actor, undefined, {}, "", target),
+  ).rejects.toThrow();
+});

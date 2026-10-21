@@ -328,3 +328,86 @@ def test_search_pagination_finds_matches_beyond_first_page(catalog_web):
     ).json()
     assert len(second["items"]) == 1 and second["next_after"] is None
     assert {row["id"] for row in first["items"] + second["items"]} == expected
+
+
+def test_category_filter_combines_with_search_and_stays_tenant_scoped(catalog_web):
+    client, state, _ = catalog_web
+    with Session(state["runtime"]) as session, session.begin():
+        first = Category(tenant_id=state["tenant"], name="Filtros")
+        second = Category(tenant_id=state["tenant"], name="Llantas")
+        foreign = Category(tenant_id=state["other"], name="Filtros")
+        session.add_all([first, second, foreign])
+        session.flush()
+        matches = [
+            Product(
+                tenant_id=state["tenant"],
+                category_id=first.id,
+                name=f"Filtro {i}",
+                price="1",
+            )
+            for i in range(26)
+        ]
+        session.add_all(
+            matches
+            + [
+                Product(
+                    tenant_id=state["tenant"],
+                    category_id=second.id,
+                    name="Filtro distinto",
+                    price="1",
+                ),
+                Product(
+                    tenant_id=state["tenant"],
+                    category_id=first.id,
+                    name="Otro nombre",
+                    price="1",
+                ),
+                Product(
+                    tenant_id=state["tenant"], name="Filtro sin categoría", price="1"
+                ),
+                Product(
+                    tenant_id=state["other"],
+                    category_id=foreign.id,
+                    name="Filtro ajeno",
+                    price="1",
+                ),
+            ]
+        )
+        session.flush()
+        category, foreign_category = str(first.id), str(foreign.id)
+        expected = {str(row.id) for row in matches}
+    query = {"q": "filtro", "category_id": category}
+    first = client.get("/catalog/products", params=query, headers=READ).json()
+    second = client.get(
+        "/catalog/products", params=query | {"after": first["next_after"]}, headers=READ
+    ).json()
+    assert len(first["items"]) == 25 and len(second["items"]) == 1
+    assert {row["id"] for row in first["items"] + second["items"]} == expected
+    assert all(
+        row["category_id"] == category for row in first["items"] + second["items"]
+    )
+    only_category = client.get(
+        "/catalog/products",
+        params={"category_id": category, "limit": 100},
+        headers=READ,
+    ).json()
+    assert len(only_category["items"]) == 27
+    foreign = client.get(
+        "/catalog/products", params={"category_id": foreign_category}, headers=READ
+    )
+    unknown = client.get(
+        "/catalog/products", params={"category_id": str(uuid4())}, headers=READ
+    )
+    assert foreign.status_code == unknown.status_code == 200
+    assert foreign.json() == unknown.json() == {"items": [], "next_after": None}
+    assert (
+        client.get("/catalog/products?category_id=invalid", headers=READ).status_code
+        == 422
+    )
+    assert (
+        client.get(
+            f"/catalog/products?category_id={category}&category_id={foreign_category}",
+            headers=READ,
+        ).status_code
+        == 422
+    )

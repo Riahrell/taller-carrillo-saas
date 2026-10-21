@@ -118,3 +118,19 @@ def test_product_search_normalizes_empty_and_rejects_authority():
         ProductSearchQuery(q="filtro", tenant_id="foreign")
     with pytest.raises(ValidationError):
         CatalogPageQuery(q="filtro")
+
+
+def test_product_category_filter_is_uuid_and_never_tenant_authority():
+    from uuid import uuid4
+
+    from app.modules.catalog.inputs import ProductSearchQuery
+
+    category = uuid4()
+    assert (
+        ProductSearchQuery(category_id=str(category), q="filtro").category_id
+        == category
+    )
+    with pytest.raises(ValidationError):
+        ProductSearchQuery(category_id="all")
+    with pytest.raises(ValidationError):
+        ProductSearchQuery(category_id=str(category), tenant_id=str(uuid4()))

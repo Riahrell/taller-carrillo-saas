@@ -208,6 +208,10 @@ class CatalogAdministrator:
                 _limit_transaction(session)
                 actor = self._authorize(session, token, expected_actor, recent=False)
                 statement = select(Product).where(Product.tenant_id == actor.tenant_id)
+                if query.category_id is not None:
+                    statement = statement.where(
+                        Product.category_id == query.category_id
+                    )
                 if query.q is not None:
                     # Bind a literal substring, never accept SQL LIKE wildcards
                     # as a way to widen the tenant-bound query.

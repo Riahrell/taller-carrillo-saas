@@ -75,6 +75,7 @@ class CatalogPageQuery(BaseModel):
 
 
 class ProductSearchQuery(CatalogPageQuery):
+    category_id: UUID | None = None
     q: str | None = Field(default=None, max_length=200, strict=True)
 
     @field_validator("q")

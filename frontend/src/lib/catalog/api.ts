@@ -155,11 +155,26 @@ export const catalogApi = {
     after?: string,
     options: RequestOptions = {},
     search = "",
+    category: string | null = null,
   ) =>
     getJson(
-      `/catalog/products?limit=25${after ? `&after=${id(after)}` : ""}${searchQuery(search)}`,
-      (value, status, headers) =>
-        decodePage(value, status, headers, actor, decodeProduct, after),
+      `/catalog/products?limit=25${after ? `&after=${id(after)}` : ""}${searchQuery(search)}${category === null ? "" : `&category_id=${id(category)}`}`,
+      (value, status, headers) => {
+        const page = decodePage(
+          value,
+          status,
+          headers,
+          actor,
+          decodeProduct,
+          after,
+        );
+        if (
+          category !== null &&
+          page.items.some((item) => item.category_id !== category)
+        )
+          throw new Error("Unmatched category filter");
+        return page;
+      },
       options,
     ),
   categories: (actor: string, after?: string, options: RequestOptions = {}) =>

@@ -6,7 +6,7 @@ del proxy antepone `/api`; FastAPI recibe `/catalog/...` internamente.
 
 | Método y ruta pública | Entrada | Resultado |
 | --- | --- | --- |
-| GET `/api/catalog/products` | limit y after opcionales | Página de productos administrativos. |
+| GET `/api/catalog/products` | limit, after, q y category_id opcionales | Página de productos administrativos. |
 | GET `/api/catalog/categories` | limit y after opcionales | Página de categorías administrativas. |
 | GET `/api/catalog/products/{product_id}` | UUID de producto | Detalle de la empresa autorizada. |
 | POST `/api/catalog/products` | ProductCreation existente | 201, producto confirmado y auditado. |
@@ -52,8 +52,12 @@ su existencia ni cambia empresa. Páginas vivas: no son snapshot transaccional
 entre peticiones. Administrador puede consultar registros inactivos para gestión.
 
 Parámetros repetidos/desconocidos y límites ambiguos se rechazan. POST y detalle
-no admiten query. No hay filtros, edición, eliminación, ETag o promesa de precio
-para cobro en esta entrega. Consulta no crea eventos comerciales; actividad de
+no admiten query. Productos admite `q` (nombre/SKU parcial, hasta 200 caracteres,
+sin distinguir mayúsculas) y `category_id` UUID, combinados con AND y siempre
+limitados a la empresa de sesión. Categorías ajenas o desconocidas producen
+la misma página vacía. El texto trata `%`, `_` y barra inversa como literales.
+Categorías solo admite limit/after. No hay edición, eliminación, ETag o promesa
+de precio para cobro en esta entrega. Consulta no crea eventos comerciales; actividad de
 sesión se confirma en la transacción de lectura. Se devuelven DTO tras commit.
 
 ## Errores y reintentos

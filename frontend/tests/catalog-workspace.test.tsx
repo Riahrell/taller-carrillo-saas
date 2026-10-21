@@ -292,15 +292,14 @@ it("busca en el servidor y permite limpiar el filtro del catálogo", async () =>
   });
   fireEvent.click(screen.getByRole("button", { name: "Buscar" }));
   expect(
-    await screen.findByText(
-      "No se encontraron productos con ese nombre o SKU.",
-    ),
+    await screen.findByText("No se encontraron productos con esos filtros."),
   ).toBeInTheDocument();
   expect(catalogApi.products).toHaveBeenLastCalledWith(
     actor,
     undefined,
     expect.objectContaining({ signal: expect.any(AbortSignal) }),
     "filtro",
+    null,
   );
   fireEvent.click(screen.getByRole("button", { name: "Limpiar búsqueda" }));
   expect(await screen.findByText("Filtro existente")).toBeInTheDocument();
@@ -309,6 +308,7 @@ it("busca en el servidor y permite limpiar el filtro del catálogo", async () =>
     undefined,
     expect.anything(),
     "",
+    null,
   );
 });
 it("no permite buscar mientras se revisa un producto por registrar", async () => {
@@ -316,4 +316,55 @@ it("no permite buscar mientras se revisa un producto por registrar", async () =>
   expect(
     screen.getByLabelText("Buscar producto por nombre o SKU"),
   ).toBeDisabled();
+});
+it("combina categoría y texto en catálogo y limpia ambos filtros", async () => {
+  await open();
+  vi.mocked(catalogApi.products).mockResolvedValue({
+    items: [{ ...product, category_id: category.id }],
+    next_after: null,
+  });
+  await screen.findByRole("option", { name: "Repuestos" });
+  fireEvent.change(screen.getByLabelText("Filtrar por categoría"), {
+    target: { value: category.id },
+  });
+  await waitFor(() =>
+    expect(catalogApi.products).toHaveBeenLastCalledWith(
+      actor,
+      undefined,
+      expect.anything(),
+      "",
+      category.id,
+    ),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Buscar" })).not.toBeDisabled(),
+  );
+  fireEvent.change(screen.getByLabelText("Buscar producto por nombre o SKU"), {
+    target: { value: "filtro" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Buscar" }));
+  await waitFor(() =>
+    expect(catalogApi.products).toHaveBeenLastCalledWith(
+      actor,
+      undefined,
+      expect.anything(),
+      "filtro",
+      category.id,
+    ),
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Limpiar búsqueda" }),
+    ).not.toBeDisabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Limpiar búsqueda" }));
+  await waitFor(() =>
+    expect(catalogApi.products).toHaveBeenLastCalledWith(
+      actor,
+      undefined,
+      expect.anything(),
+      "",
+      null,
+    ),
+  );
 });

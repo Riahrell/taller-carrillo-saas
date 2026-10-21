@@ -122,6 +122,7 @@ export default function InventoryManager({
     [onImagePending],
   );
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [products, setProducts] = useState<Page<Product> | null>(null);
   const [selected, setSelected] = useState<Selection | null>(null);
   const [pending, setPending] = useState<PendingCount | null>(
@@ -287,15 +288,26 @@ export default function InventoryManager({
       if (!signal.aborted) setSelected(detail);
     });
   }
-  async function productPage(after?: string, term = search) {
+  async function productPage(
+    after?: string,
+    term = search,
+    category = categoryFilter,
+  ) {
     await read(async (signal) => {
-      const page = await catalogApi.products(actor, after, { signal }, term);
+      const page = await catalogApi.products(
+        actor,
+        after,
+        { signal },
+        term,
+        category,
+      );
       const detail = page.items[0]
         ? await selection(actor, page.items[0].id, signal)
         : null;
       if (!signal.aborted) {
         setProducts(page);
         setSearch(term);
+        setCategoryFilter(category);
         setSelected(detail);
       }
     });
@@ -530,9 +542,13 @@ export default function InventoryManager({
         >
           <h2>Productos</h2>
           <ProductSearch
+            actor={actor}
+            category={categoryFilter}
             value={search}
             disabled={frozen}
-            onSearch={(term) => void productPage(undefined, term)}
+            onSearch={(term, category) =>
+              void productPage(undefined, term, category)
+            }
           />
           {!products ? (
             <p role="status">Cargando productos…</p>
@@ -556,8 +572,8 @@ export default function InventoryManager({
               </ul>
               {products.items.length === 0 && (
                 <p>
-                  {search
-                    ? "No se encontraron productos con ese nombre o SKU."
+                  {search || categoryFilter
+                    ? "No se encontraron productos con esos filtros."
                     : "No hay productos. Créalos en el catálogo para comenzar."}
                 </p>
               )}
