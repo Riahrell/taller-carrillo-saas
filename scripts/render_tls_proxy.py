@@ -33,7 +33,7 @@ def render(hostname: str) -> str:
         template[:index]
         + """    server {
         listen 127.0.0.1:8081;
-        location = /health { proxy_pass http://backend:8000/health/live; }
+        location = /health { proxy_pass http://carrillo_backend/health/live; }
     }
 """
         + """    server {
