@@ -121,7 +121,10 @@ export default function MfaFlow({ initial, onLogin, onCancel }: Props) {
         <>
           <p>
             Solicita el mensaje y confirma el código del correo desde este
-            navegador.
+            navegador. Solo se envía un mensaje por intento de incorporación.
+            Para solicitar otro, cancela el acceso pendiente e inicia sesión de
+            nuevo. Espera al menos 60 segundos entre envíos; los límites de
+            seguridad pueden exigir una espera mayor.
           </p>
           <button
             disabled={busy}
@@ -130,7 +133,7 @@ export default function MfaFlow({ initial, onLogin, onCancel }: Props) {
               void run(async () => {
                 await identityApi.requestEnrollment();
                 setMessage(
-                  "Mensaje solicitado. Revisa tu correo; el permiso caduca quince minutos después de introducir tu contraseña.",
+                  "Mensaje solicitado. Revisa también la carpeta de spam. El permiso caduca quince minutos después de introducir tu contraseña. Para pedir otro mensaje, reinicia el acceso y espera al menos 60 segundos desde el envío anterior.",
                 );
               })
             }

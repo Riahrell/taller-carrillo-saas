@@ -67,7 +67,7 @@ export default function PasswordRecovery() {
       } else {
         await identityApi.resetRequest(email);
         setMessage(
-          "Si la cuenta tiene un correo verificado y puede recibir mensajes, enviaremos las instrucciones. Revisa tu bandeja y espera antes de solicitar otra vez.",
+          "Si la cuenta tiene un correo verificado y puede recibir mensajes, enviaremos las instrucciones. Revisa tu bandeja y la carpeta de spam. Espera al menos 60 segundos antes de solicitar otro mensaje; los límites de seguridad pueden exigir una espera mayor.",
         );
       }
     } catch {
@@ -88,6 +88,10 @@ export default function PasswordRecovery() {
         <fieldset disabled={busy}>
           {!resetMode ? (
             <>
+              <p>
+                Espera al menos 60 segundos entre solicitudes. Si alcanzas el
+                límite de seguridad, tendrás que esperar más.
+              </p>
               <label htmlFor="recovery-email">Correo de tu cuenta</label>
               <input
                 id="recovery-email"
