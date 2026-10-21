@@ -5,6 +5,7 @@ import Image from "next/image";
 import {
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
   type FormEvent,
@@ -45,6 +46,7 @@ export default function ProductImage(props: Props) {
     onChanged,
     onProblem,
   } = props;
+  const photoFormId = useId();
   const [url, setUrl] = useState<string | null>(null);
   const [available, setAvailable] = useState(true);
   const [stage, setStage] = useState<"closed" | "identity" | "pick" | "review">(
@@ -205,7 +207,11 @@ export default function ProductImage(props: Props) {
   }
   const chosen = pending?.file ?? file;
   return (
-    <section className="product-image" aria-label="Imagen del producto">
+    <section
+      className="product-image"
+      data-editing={stage !== "closed"}
+      aria-label="Imagen del producto"
+    >
       {url ? (
         <Image
           unoptimized
@@ -273,26 +279,28 @@ export default function ProductImage(props: Props) {
         />
       )}
       {stage === "pick" && (
-        <form onSubmit={review}>
-          <label>
-            Tomar foto
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-            />
-          </label>
-          <label>
-            Elegir foto de la galería
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={(event) => {
-                setFile(event.target.files?.[0] ?? null);
-              }}
-            />
-          </label>
+        <form id={photoFormId} className="photo-form" onSubmit={review}>
+          <div className="photo-source-options">
+            <label>
+              Tomar foto
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              />
+            </label>
+            <label>
+              Elegir foto de la galería
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(event) => {
+                  setFile(event.target.files?.[0] ?? null);
+                }}
+              />
+            </label>
+          </div>
           {file && <p>Archivo elegido: {file.name}</p>}
           <p>
             JPEG, PNG o WebP estático. Máximo 8 MiB. Se eliminarán metadatos y
@@ -302,9 +310,6 @@ export default function ProductImage(props: Props) {
             La cámara depende del navegador del móvil. Si no se abre, usa la
             galería.
           </p>
-          <button className="action" type="submit" disabled={busy}>
-            Continuar y revisar foto
-          </button>
         </form>
       )}
       {stage === "review" && (
@@ -319,30 +324,51 @@ export default function ProductImage(props: Props) {
             Reemplazará la imagen principal privada. No publica el producto ni
             modifica costo, precio o existencias.
           </p>
-          <button
-            className="action primary"
-            disabled={busy}
-            onClick={() => void upload()}
-          >
-            {busy
-              ? "Guardando…"
-              : pending
-                ? "Reintentar guardar esta foto"
-                : "Guardar foto del producto"}
-          </button>
         </div>
       )}
-      {stage !== "closed" && !pending && (
-        <button
-          className="action"
-          disabled={busy}
-          onClick={() => {
-            setStage("closed");
-            setFile(null);
-          }}
-        >
-          Cancelar, conservar la foto actual
-        </button>
+      {stage !== "closed" && (
+        <div className="form-actions">
+          {stage === "pick" && (
+            <>
+              <button
+                className="action primary"
+                type="submit"
+                form={photoFormId}
+                disabled={busy}
+              >
+                Continuar y revisar foto
+              </button>
+            </>
+          )}
+          {stage === "review" && (
+            <>
+              <button
+                className="action primary"
+                disabled={busy}
+                onClick={() => void upload()}
+              >
+                {busy
+                  ? "Guardando…"
+                  : pending
+                    ? "Reintentar guardar esta foto"
+                    : "Guardar foto del producto"}
+              </button>
+            </>
+          )}
+          {!pending && (
+            <button
+              className="action secondary"
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setStage("closed");
+                setFile(null);
+              }}
+            >
+              Cancelar, conservar la foto actual
+            </button>
+          )}
+        </div>
       )}
       {!available && (
         <button

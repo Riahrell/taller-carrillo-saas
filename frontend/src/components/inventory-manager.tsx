@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
   type FormEvent,
@@ -110,6 +111,7 @@ export default function InventoryManager({
   onChanged,
 }: Props) {
   const actor = session.membership_id;
+  const movementFormId = useId();
   const [imageEngaged, setImageEngaged] = useState(
     initialImagePending !== null,
   );
@@ -711,7 +713,11 @@ export default function InventoryManager({
               />
             )}
             {stage === "edit" && (
-              <form onSubmit={prepare} className="catalog-form">
+              <form
+                id={movementFormId}
+                onSubmit={prepare}
+                className="catalog-form"
+              >
                 <h3>{actionLabel}</h3>
                 <label>
                   {mode === "COUNT"
@@ -765,11 +771,6 @@ export default function InventoryManager({
                 <p>
                   En el siguiente paso revisarás los datos antes de guardar.
                 </p>
-                <button className="action primary" disabled={busy}>
-                  {mode === "COUNT"
-                    ? "Actualizar inventario"
-                    : "Revisar movimiento"}
-                </button>
               </form>
             )}
             {(stage === "review" || stage === "recover") && reviewed && (
@@ -818,43 +819,64 @@ export default function InventoryManager({
                     : "Al confirmar, se ajustarán las existencias a la cantidad que indicaste y se calculará el cambio de valor."}
                   Esta acción no registra una compra, una venta ni un pago.
                 </p>
-                <button
-                  className="action primary"
-                  disabled={busy}
-                  onClick={() => void save()}
-                >
-                  {busy
-                    ? "Confirmando…"
-                    : pending
-                      ? "Comprobar actualización pendiente"
-                      : mode === "COUNT"
-                        ? "Confirmar actualización"
-                        : mode === "IN"
-                          ? "Confirmar entrada"
-                          : "Confirmar salida"}
-                </button>
-                {!pending && (
-                  <button
-                    className="action"
-                    disabled={busy}
-                    onClick={() => setStage("edit")}
-                  >
-                    Corregir datos
-                  </button>
-                )}
               </section>
             )}
             {stage !== "closed" && (
-              <button
-                className="action"
-                disabled={busy}
-                onClick={() => {
-                  clearDraft();
-                  setStage("closed");
-                }}
-              >
-                {pending ? "Volver al producto" : "Cancelar, no cambiar nada"}
-              </button>
+              <div className="form-actions">
+                {stage === "edit" && (
+                  <>
+                    <button
+                      className="action primary"
+                      type="submit"
+                      form={movementFormId}
+                      disabled={busy}
+                    >
+                      {mode === "COUNT"
+                        ? "Actualizar inventario"
+                        : "Revisar movimiento"}
+                    </button>
+                  </>
+                )}
+                {(stage === "review" || stage === "recover") && reviewed && (
+                  <>
+                    <button
+                      className="action primary"
+                      disabled={busy}
+                      onClick={() => void save()}
+                    >
+                      {busy
+                        ? "Confirmando…"
+                        : pending
+                          ? "Comprobar actualización pendiente"
+                          : mode === "COUNT"
+                            ? "Confirmar actualización"
+                            : mode === "IN"
+                              ? "Confirmar entrada"
+                              : "Confirmar salida"}
+                    </button>
+                    {!pending && (
+                      <button
+                        className="action secondary"
+                        disabled={busy}
+                        onClick={() => setStage("edit")}
+                      >
+                        Corregir datos
+                      </button>
+                    )}
+                  </>
+                )}
+                <button
+                  className="action secondary"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    clearDraft();
+                    setStage("closed");
+                  }}
+                >
+                  {pending ? "Volver al producto" : "Cancelar, no cambiar nada"}
+                </button>
+              </div>
             )}
             <section
               className="inventory-history"
