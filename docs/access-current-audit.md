@@ -72,3 +72,11 @@ seguidos de esta auditoría son documentación; no requiere reiniciar la aplicac
 
 Próximo trabajo local autorizado: imágenes privadas de productos en Contabo.
 Endpoint/bucket solicitados sin claves; la configuración real sigue sin verificarse.
+
+
+Actualización 3.39 (2026-10-21): se ejecutó nuevamente el ensayo aislado de
+restauración de la aplicación nueva, ahora con producto/auditoría, mínimo,
+conteo, entrada manual, reversa y saldo conciliado con el libro. También pasaron
+el descifrado del factor y la cuarentena. Ver `inventory-restore-evidence.md`.
+Esto no cambia el estado pendiente de recuperación de la copia antigua de
+Contabo ni prueba respaldo de objetos S3 o HTTPS real.

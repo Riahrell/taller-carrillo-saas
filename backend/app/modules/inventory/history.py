@@ -12,7 +12,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.modules.access.authentication import _limit_transaction
 from app.modules.access.models import TenantMembership, User
 from app.modules.inventory.inputs import HistoryPageQuery
-from app.modules.inventory.models import ManualStockRecord, StockCountRecord
+from app.modules.inventory.models import (
+    ManualStockRecord,
+    StockCountRecord,
+    StockReversalRecord,
+)
 from app.modules.inventory.service import InventoryDenied, InventoryUnavailable
 from app.modules.purchases.models import PurchaseReceipt, PurchaseReceiptLine
 
@@ -21,7 +25,7 @@ class HistoryEntry(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     id: UUID
     product_id: UUID
-    source: Literal["COUNT", "MANUAL", "RECEIPT"]
+    source: Literal["COUNT", "MANUAL", "RECEIPT", "REVERSAL"]
     direction: Literal["IN", "OUT"] | None
     source_document_id: UUID
     recorded_by: str
@@ -58,6 +62,7 @@ def evidence(tenant_id: UUID, product_id: UUID):
         (StockCountRecord, "COUNT"),
         (ManualStockRecord, "MANUAL"),
         (PurchaseReceiptLine, "RECEIPT"),
+        (StockReversalRecord, "REVERSAL"),
     ):
         receipt = source == "RECEIPT"
         actor = (
@@ -73,7 +78,13 @@ def evidence(tenant_id: UUID, product_id: UUID):
             (
                 model.direction if source == "MANUAL" else cast(literal(None), String)
             ).label("direction"),
-            (model.purchase_id if receipt else model.id).label("source_document_id"),
+            (
+                model.purchase_id
+                if receipt
+                else model.original_id
+                if source == "REVERSAL"
+                else model.id
+            ).label("source_document_id"),
             User.email.label("recorded_by"),
             (cast(literal(None), String) if receipt else model.reason).label("reason"),
             model.before_quantity,

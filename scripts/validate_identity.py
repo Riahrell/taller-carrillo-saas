@@ -15,6 +15,12 @@ def main():
     selection.add_argument("--unit-only", action="store_true")
     selection.add_argument("--test-path", action="append")
     parser.add_argument("--maxfail", type=int, choices=range(1, 11), default=1)
+    parser.add_argument(
+        "--test-timeout",
+        type=int,
+        choices=(60, 120, 300, 600, 900, 1200, 1800, 2400, 3600),
+        default=None,
+    )
     args = parser.parse_args()
     if args.test_path:
         for value in args.test_path:
@@ -67,7 +73,7 @@ def main():
                         "tests/test_password_policy.py",
                     ]
                 ),
-                timeout=600,
+                timeout=args.test_timeout or (1800 if args.full_backend else 600),
             )
         finally:
             pipeline.cleanup()

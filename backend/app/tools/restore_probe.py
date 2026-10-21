@@ -27,6 +27,7 @@ from app.modules.access.models import (
 )
 from app.modules.access.passwords import hash_password
 from app.modules.access.sessions import _database_now
+from app.tools import inventory_restore_probe as inventory_probe
 from app.tools.restore_quarantine import quarantine
 
 
@@ -38,7 +39,15 @@ def main():
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "phase", choices=["seed", "mutate", "check", "quarantine", "verify-quarantine"]
+        "phase",
+        choices=[
+            "seed",
+            "mutate",
+            "check-mutated",
+            "check",
+            "quarantine",
+            "verify-quarantine",
+        ],
     )
     args = parser.parse_args()
     config = load_settings()
@@ -77,11 +86,12 @@ def main():
                     )
                     session.add_all([tenant, user])
                     session.flush()
-                    session.add(
-                        TenantMembership(
-                            user_id=user.id, tenant_id=tenant.id, role="read_only"
-                        )
+                    member = TenantMembership(
+                        user_id=user.id, tenant_id=tenant.id, role="read_only"
                     )
+                    session.add(member)
+                    session.flush()
+                    inventory_probe.seed(session, member, now)
                     seed = generate_totp_seed()
                     envelope = keyring.encrypt(
                         seed, user_id=user_id, credential_id=credential_id
@@ -119,6 +129,12 @@ def main():
                         for i, code in enumerate(generate_recovery_codes())
                     )
                 elif args.phase == "mutate":
+                    member = session.scalar(
+                        select(TenantMembership).where(
+                            TenantMembership.user_id == user_id
+                        )
+                    )
+                    inventory_probe.mutate(session, member)
                     session.execute(
                         update(MfaRecoveryCode)
                         .where(
@@ -127,7 +143,28 @@ def main():
                         )
                         .values(used_at=now)
                     )
+                elif args.phase == "check-mutated":
+                    member = session.scalar(
+                        select(TenantMembership).where(
+                            TenantMembership.user_id == user_id
+                        )
+                    )
+                    inventory_probe.check_mutated(session, member)
+                    code = session.scalar(
+                        select(MfaRecoveryCode).where(
+                            MfaRecoveryCode.set_id == set_id,
+                            MfaRecoveryCode.position == 1,
+                        )
+                    )
+                    if code is None or code.used_at is None:
+                        raise ValueError("Recovery mutation missing")
                 else:
+                    member = session.scalar(
+                        select(TenantMembership).where(
+                            TenantMembership.user_id == user_id
+                        )
+                    )
+                    inventory_probe.check(session, member)
                     record = session.get(MfaCredential, credential_id)
                     if record is None or record.revoked_at is not None:
                         raise ValueError("Factor missing")

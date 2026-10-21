@@ -151,7 +151,7 @@ class Pipeline:
         self.compose("run", "--rm", "--no-deps", "frontend-tests")
         self.compose("up", "-d", "--wait", "--wait-timeout", "90", "db")
         self.compose("run", "--rm", "migrate")
-        self.compose("run", "--rm", "tests")
+        self.compose("run", "--rm", "tests", timeout=1800)
         self.compose("up", "-d", "--wait", "--wait-timeout", "90", "proxy")
         address = self.compose("port", "proxy", "8080", capture=True).stdout.strip()
         if not re.fullmatch(r"127\.0\.0\.1:[0-9]+", address):

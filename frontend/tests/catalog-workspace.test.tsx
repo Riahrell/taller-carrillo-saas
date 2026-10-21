@@ -422,3 +422,13 @@ it("edita un producto existente y refresca su estado sin crear otro", async () =
   expect(screen.getByText("Inactivo")).toBeInTheDocument();
   expect(catalogApi.createProduct).not.toHaveBeenCalled();
 });
+
+it("al cancelar un producto devuelve el foco al botón de registro", async () => {
+  await draft();
+  fireEvent.click(screen.getByRole("button", { name: "Cancelar, no guardar" }));
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Nuevo producto" }),
+    ).toHaveFocus(),
+  );
+});

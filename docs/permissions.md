@@ -237,3 +237,9 @@ de sesión, membresía esperada obligatoria también en lectura. Lecturas sin
 confirmación reciente; escrituras con confirmación reciente/CSRF/origen.
 Recepción recibe solo compra/clave, no cantidades/costos. Sin cambios de rol SQL.
 Contrato completo en `purchases-http-contract.md`. Sin nuevos permisos públicos.
+
+
+Inventario 3.39: deshacer el último movimiento manual/ajuste es exclusivo del
+administrador vigente y exige confirmación de identidad e idempotencia. No amplía
+los permisos de cajeros, mecánicos o solo lectura. Original y compensación son
+append-only; no se autoriza borrar movimientos, saldos históricos o documentos.

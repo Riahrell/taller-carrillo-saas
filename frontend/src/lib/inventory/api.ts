@@ -39,7 +39,7 @@ export type ManualMovement = Count & { direction: "IN" | "OUT" };
 export type HistoryEntry = {
   id: string;
   product_id: string;
-  source: "COUNT" | "MANUAL" | "RECEIPT";
+  source: "COUNT" | "MANUAL" | "RECEIPT" | "REVERSAL";
   direction: "IN" | "OUT" | null;
   source_document_id: string;
   recorded_by: string;
@@ -52,7 +52,20 @@ export type HistoryEntry = {
   value_delta: string;
   created_at: string;
 };
-export type PendingCount = { key: string; data: CountInput | ManualInput };
+export type ReversalInput = {
+  product_id: string;
+  source: "COUNT" | "MANUAL";
+  original_id: string;
+  reason: string;
+};
+export type ReversalResult = Omit<Count, "declared_unit_cost"> & {
+  original_source: "COUNT" | "MANUAL";
+  original_id: string;
+};
+export type PendingCount = {
+  key: string;
+  data: CountInput | ManualInput | ReversalInput;
+};
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function id(value: unknown): string {
@@ -275,7 +288,10 @@ function decodePage(
 function historyCursor(value: unknown): string {
   if (typeof value !== "string") throw new Error("Invalid cursor");
   const [source, key, extra] = value.split(":");
-  if (!["COUNT", "MANUAL", "RECEIPT"].includes(source) || extra !== undefined)
+  if (
+    !["COUNT", "MANUAL", "RECEIPT", "REVERSAL"].includes(source) ||
+    extra !== undefined
+  )
     throw new Error("Invalid cursor");
   return `${source}:${id(key)}`;
 }
@@ -297,12 +313,17 @@ export function decodeHistory(value: unknown, product: string): HistoryEntry {
     "created_at",
   ]);
   const source = row.source;
-  if (source !== "COUNT" && source !== "MANUAL" && source !== "RECEIPT")
+  if (
+    source !== "COUNT" &&
+    source !== "MANUAL" &&
+    source !== "RECEIPT" &&
+    source !== "REVERSAL"
+  )
     throw new Error("Invalid source");
   if (id(row.product_id) !== id(product)) throw new Error("Changed product");
   const key = id(row.id),
     documentId = id(row.source_document_id);
-  if (source !== "RECEIPT" && key !== documentId)
+  if (source !== "RECEIPT" && source !== "REVERSAL" && key !== documentId)
     throw new Error("Changed source");
   const direction = row.direction;
   if (
@@ -338,7 +359,7 @@ export function decodeHistory(value: unknown, product: string): HistoryEntry {
     scaled(after_value) - scaled(before_value) !== dv ||
     (scaled(before_quantity) === 0n && scaled(before_value) !== 0n) ||
     (scaled(after_quantity) === 0n && scaled(after_value) !== 0n) ||
-    (dq === 0n && dv !== 0n) ||
+    (dq === 0n && (dv !== 0n || source === "REVERSAL")) ||
     (dq > 0n && dv < 0n) ||
     (dq < 0n && dv > 0n) ||
     ((source === "RECEIPT" || direction === "IN") && dq <= 0n) ||
@@ -447,7 +468,9 @@ export const inventoryApi = {
     actor: string,
     pending: PendingCount,
     options: RequestOptions = {},
-  ): Promise<Count> => {
+  ): Promise<Count | ReversalResult> => {
+    if ("source" in pending.data)
+      return recordReversal(actor, pending.key, pending.data, options);
     const key = id(pending.key);
     const raw = pending.data;
     const data: CountInput | ManualInput =
@@ -515,3 +538,108 @@ export const inventoryApi = {
     );
   },
 };
+
+function decodeReversal(value: unknown, product: string): ReversalResult {
+  const row = object(value, [
+    "id",
+    "product_id",
+    "operation_key",
+    "original_source",
+    "original_id",
+    "reason",
+    "before_quantity",
+    "after_quantity",
+    "before_value",
+    "after_value",
+    "quantity_delta",
+    "value_delta",
+    "created_at",
+  ]);
+  if (
+    id(row.product_id) !== id(product) ||
+    (row.original_source !== "COUNT" && row.original_source !== "MANUAL")
+  )
+    throw new Error("Changed source");
+  const before_quantity = decimal(row.before_quantity, 3, 15),
+    after_quantity = decimal(row.after_quantity, 3, 15);
+  const before_value = decimal(row.before_value, 6, 22),
+    after_value = decimal(row.after_value, 6, 22);
+  const quantity_delta = decimal(row.quantity_delta, 3, 15, true),
+    value_delta = decimal(row.value_delta, 6, 22, true);
+  const dq = scaled(quantity_delta),
+    dv = scaled(value_delta);
+  if (
+    dq === 0n ||
+    scaled(after_quantity) - scaled(before_quantity) !== dq ||
+    scaled(after_value) - scaled(before_value) !== dv ||
+    (dq > 0n && dv < 0n) ||
+    (dq < 0n && dv > 0n) ||
+    (scaled(before_quantity) === 0n && scaled(before_value) !== 0n) ||
+    (scaled(after_quantity) === 0n && scaled(after_value) !== 0n)
+  )
+    throw new Error("Invalid compensation");
+  if (
+    typeof row.reason !== "string" ||
+    reasonInput(row.reason) !== row.reason ||
+    typeof row.created_at !== "string"
+  )
+    throw new Error("Invalid evidence");
+  timeKey(row.created_at);
+  return {
+    id: id(row.id),
+    product_id: product,
+    operation_key: id(row.operation_key),
+    original_source: row.original_source,
+    original_id: id(row.original_id),
+    reason: row.reason,
+    before_quantity,
+    after_quantity,
+    before_value,
+    after_value,
+    quantity_delta,
+    value_delta,
+    created_at: row.created_at,
+  };
+}
+async function recordReversal(
+  actor: string,
+  operationKey: string,
+  raw: ReversalInput,
+  options: RequestOptions,
+): Promise<ReversalResult> {
+  id(actor);
+  const key = id(operationKey);
+  if (raw.source !== "COUNT" && raw.source !== "MANUAL")
+    throw new Error("Invalid source");
+  const data = {
+    product_id: id(raw.product_id),
+    source: raw.source,
+    original_id: id(raw.original_id),
+    reason: reasonInput(raw.reason),
+  };
+  await accessApi.prepare(options);
+  const csrf = readCsrfCookie(
+    document.cookie,
+    window.location.protocol === "https:",
+  );
+  return operationJson(
+    "/inventory/reversals",
+    data,
+    csrf,
+    actor,
+    key,
+    (value, status, headers) => {
+      bound(status, headers, actor);
+      const result = decodeReversal(value, data.product_id);
+      if (
+        result.operation_key !== key ||
+        result.original_source !== data.source ||
+        result.original_id !== data.original_id ||
+        result.reason !== data.reason
+      )
+        throw new Error("Changed operation");
+      return result;
+    },
+    options,
+  );
+}

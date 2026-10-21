@@ -20,6 +20,7 @@ from app.modules.inventory.models import (
     StockCountRecord,
     StockMinimumRecord,
     StockMovement,
+    StockReversalRecord,
 )
 from app.modules.inventory.service import InventoryUnavailable
 
@@ -54,7 +55,14 @@ def inventory_web(http_identity, monkeypatch):
             yield client, state, policy
     finally:
         with state["owner"].begin() as connection:
+            connection.execute(
+                delete(StockMovement).where(
+                    StockMovement.tenant_id.in_([state["tenant"], state["other"]]),
+                    StockMovement.reversal_id.is_not(None),
+                )
+            )
             for model in (
+                StockReversalRecord,
                 StockMovement,
                 ManualStockRecord,
                 StockCountRecord,
@@ -648,3 +656,51 @@ def test_low_stock_http_contract_and_boundaries(inventory_web):
         "limit=1&limit=2",
     ):
         assert client.get(url + "?" + query, headers=READ).status_code == 422
+
+
+def test_stock_reversal_http_replay_and_history(inventory_web):
+    client, state, policy = inventory_web
+    original = write(client, state, policy).json()
+    body = {
+        "product_id": str(state["product"]),
+        "source": "COUNT",
+        "original_id": original["id"],
+        "reason": "Mistaken count",
+    }
+    headers = {
+        "Origin": policy.origin,
+        "X-CSRF-Token": client.cookies[policy.csrf_cookie],
+        "X-Expected-Membership": str(state["membership"]),
+        "Idempotency-Key": str(uuid4()),
+    }
+    assert client.post("/inventory/reversals", json=body).status_code == 403
+    assert (
+        client.post(
+            "/inventory/reversals", json=body | {"quantity": "5"}, headers=headers
+        ).status_code
+        == 422
+    )
+    response = client.post("/inventory/reversals", json=body, headers=headers)
+    assert response.status_code == 200
+    assert response.json()["after_quantity"] == "0.000"
+    assert (
+        client.post("/inventory/reversals", json=body, headers=headers).json()
+        == response.json()
+    )
+    assert (
+        client.post(
+            "/inventory/reversals", json=body | {"reason": "Changed"}, headers=headers
+        ).status_code
+        == 409
+    )
+    history = client.get(path(state, "history"), headers=READ).json()["items"]
+    assert [row["source"] for row in history] == ["REVERSAL", "COUNT"]
+    assert history[0]["source_document_id"] == original["id"]
+    assert (
+        client.post(
+            "/inventory/reversals",
+            json=body,
+            headers=headers | {"Idempotency-Key": str(uuid4())},
+        ).status_code
+        == 422
+    )

@@ -16,10 +16,10 @@ referencia de requisitos; no autorizan accesos externos ni despliegues por sí s
 | Productos | Crear, listar, detalle y editar nombre, categoría, SKU, precio y estado con control de versión y auditoría | Validación manual del propietario |
 | Buscador | Nombre o SKU parcial y categoría combinables; filtro de empresa y paginación en servidor | Validación manual del propietario |
 | Fotos | Carga privada S3, cámara/galería y lectura | Validar miniatura al volver al catálogo y cámara en móvil físico |
-| Existencias | Saldo, costo promedio, conteos y entradas/salidas manuales con cantidad positiva | Validación manual del propietario; reversas aún pendientes |
+| Existencias | Saldo, costo promedio, conteos, entradas/salidas manuales y reversa controlada del último movimiento manual/ajuste | Validación manual; anulaciones de compras/ventas dependen de sus documentos |
 | Recepción de compra | API y transacción de recepción | Pantalla de proveedores/compra/recepción |
 | Salida por venta u orden | No integrada | Necesita origen real y su módulo; no basta un campo de texto que diga venta |
-| Historial | Historial unificado de ajustes, entradas/salidas manuales y recepciones, con origen, responsable y paginación | Validación manual del propietario; ventas/órdenes y reversas dependen de sus módulos |
+| Historial | Historial unificado de ajustes, entradas/salidas manuales y recepciones, con origen, responsable y paginación | Validación manual del propietario; ventas/órdenes dependen de sus módulos |
 | Stock bajo | Mínimo configurable, aviso en ficha y lista global privada de productos por reponer | Validación manual; consulta a demanda |
 | Acceso | Email de seis caracteres, navegador 15 días y sesión opaca; regresión de CI cerrada en 3.28 | Registro de empleados y aprobación/permisos pendientes |
 | Operación | Compose local, configuración externa de S3/correo | Preparar entorno de pruebas separado, HTTPS, backup/restauración y despliegue revisable |
@@ -67,9 +67,10 @@ compilación correcta no validan concurrencia, aislamiento ni una restauración.
   Cerrar sesión revoca explícitamente.
 - No se inicia despliegue productivo con estas brechas sin resolver.
 
-El propietario conserva las pruebas manuales. No se ejecutaron baterías
-funcionales en esta revisión. Las pruebas de transacciones y seguridad siguen
-siendo una condición pendiente del cierre para producción.
+El propietario conserva las pruebas manuales. Los resultados técnicos ejecutados
+se documentan por entrega; la 3.39 incluye concurrencia, rollback y restauración
+local con conciliación del inventario. La aceptación manual y la operación remota
+siguen siendo condiciones pendientes del cierre para producción.
 
 
 ## Primer despliegue acotado a inventario
@@ -115,3 +116,9 @@ Entrega 3.38 agrega la vista global de productos por reponer, con foto, cantidad
 mínimo vigente, acceso a la ficha y paginación. La consulta respeta empresa,
 estado y último mínimo. Sigue la reversa controlada de movimientos manuales y
 ajustes; recepciones de compra y ventas requieren sus propios flujos documentales.
+
+Entrega 3.39 agrega la compensación idempotente del último movimiento manual o
+ajuste con diferencia, sin operaciones posteriores y con saldo intacto. Invierte
+cantidad y valoración originales, conserva historial y rechaza repeticiones.
+No cancela recepciones de compra, ventas u órdenes. Continúan pendientes registro
+y permisos de empleados, revisión manual y cierre operativo del despliegue.

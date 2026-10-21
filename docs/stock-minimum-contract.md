@@ -1,8 +1,8 @@
 # Mínimo de inventario por producto
 
 Primera entrega de stock bajo: configuración y aviso en la ficha del producto.
-El listado global de productos por reponer sigue pendiente; no se presenta como
-implementado. No se generan compras, movimientos, correos ni pedidos automáticos.
+El listado global se incorporó después en la entrega 3.38; su contrato está en
+`docs/low-stock-list-contract.md`. No se generan compras, movimientos, correos ni pedidos automáticos.
 
 ## Regla explícita
 
@@ -58,4 +58,4 @@ BigInt y se comprueba la sesión antes de anunciar éxito. El aviso se renueva a
 cambiar la cantidad del producto o al recargar la ficha. No es una suscripción en
 tiempo real; cambios hechos en otra pestaña pueden requerir recargar.
 
-Pendientes: vista global por reponer y revisión visual del propietario en móvil.
+Pendiente: revisión visual del propietario en móvil.

@@ -35,6 +35,7 @@ import {
   type PendingCount,
   type ManualInput,
   type HistoryEntry,
+  type ReversalInput,
 } from "@/lib/inventory/api";
 
 export type ScopedPending = { session: SessionContext; command: PendingCount };
@@ -53,6 +54,7 @@ type Selection = {
   product: Product;
   balance: Balance;
   history: Page<HistoryEntry>;
+  historyStart: boolean;
   category: string;
 };
 async function selection(
@@ -81,7 +83,7 @@ async function selection(
       after = page.next_after;
     } while (!signal.aborted);
   }
-  return { product, balance, history, category };
+  return { product, balance, history, historyStart: true, category };
 }
 type Props = {
   initialImagePending: ScopedImagePending | null;
@@ -134,18 +136,28 @@ export default function InventoryManager({
   const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState("");
   const [cost, setCost] = useState("");
-  const [mode, setMode] = useState<"COUNT" | "IN" | "OUT">(
-    initialPending && "direction" in initialPending.command.data
-      ? initialPending.command.data.direction
-      : "COUNT",
+  const [reverseTarget, setReverseTarget] = useState<{
+    source: "COUNT" | "MANUAL";
+    id: string;
+  } | null>(null);
+  const [mode, setMode] = useState<"COUNT" | "IN" | "OUT" | "REVERSE">(
+    initialPending && "source" in initialPending.command.data
+      ? "REVERSE"
+      : initialPending && "direction" in initialPending.command.data
+        ? initialPending.command.data.direction
+        : "COUNT",
   );
   const actionLabel =
     mode === "IN"
       ? "Registrar entrada"
       : mode === "OUT"
         ? "Registrar salida"
-        : "Actualizar existencias";
-  const [review, setReview] = useState<CountInput | ManualInput | null>(null);
+        : mode === "REVERSE"
+          ? "Deshacer último movimiento"
+          : "Actualizar existencias";
+  const [review, setReview] = useState<
+    CountInput | ManualInput | ReversalInput | null
+  >(null);
   const [deadline, setDeadline] = useState<number | null>(null);
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("");
@@ -154,7 +166,9 @@ export default function InventoryManager({
   const locked = useRef(true);
   const controller = useRef<AbortController | null>(null);
   const notice = useRef<HTMLParagraphElement>(null);
-  const heading = useRef<HTMLHeadingElement>(null);
+  const operationHeading = useRef<HTMLHeadingElement>(null);
+  const detailRef = useRef<HTMLElement>(null);
+  const previousStage = useRef<Stage>("closed");
   const reportWriting = useCallback(
     (value: boolean) => {
       if (alive.current) onWriting(value);
@@ -236,10 +250,16 @@ export default function InventoryManager({
     };
   }, [actor, initialPending, initialImagePending, onProblem, onWriting]);
   useEffect(() => {
+    const previous = previousStage.current;
+    previousStage.current = stage;
     if (message) notice.current?.focus({ preventScroll: true });
-    else if (stage !== "identity")
-      heading.current?.focus({ preventScroll: true });
-  }, [message, stage]);
+    else if (stage === "edit" || stage === "review" || stage === "recover")
+      operationHeading.current?.focus({ preventScroll: true });
+    else if (stage === "closed" && previous !== "closed")
+      detailRef.current
+        ?.querySelector<HTMLButtonElement>(`[data-stock-action="${mode}"]`)
+        ?.focus({ preventScroll: true });
+  }, [message, stage, mode]);
   useEffect(() => {
     if (deadline === null || stage === "closed" || stage === "identity") return;
     const timer = setTimeout(
@@ -324,7 +344,12 @@ export default function InventoryManager({
         after,
         { signal },
       );
-      if (!signal.aborted) setSelected({ ...selected, history });
+      if (!signal.aborted)
+        setSelected({
+          ...selected,
+          history,
+          historyStart: after === undefined,
+        });
     });
   }
   let needsCost = mode === "IN";
@@ -343,6 +368,18 @@ export default function InventoryManager({
     event.preventDefault();
     if (!selected || busy) return;
     try {
+      if (mode === "REVERSE") {
+        if (!reverseTarget) throw new Error("Missing source");
+        setReview({
+          product_id: selected.product.id,
+          source: reverseTarget.source,
+          original_id: reverseTarget.id,
+          reason: reasonInput(reason),
+        });
+        setMessage("");
+        setStage("review");
+        return;
+      }
       const amount = quantityInput(quantity);
       if (mode !== "COUNT" && BigInt(amount.replace(".", "")) <= 0n)
         throw new Error("Positive quantity required");
@@ -435,6 +472,15 @@ export default function InventoryManager({
           );
           if (current.signal.aborted) return;
           setSelected(detail);
+          if ("source" in command.data) {
+            clearDraft();
+            setReverseTarget(null);
+            setStage("closed");
+            setMessage(
+              "No se revirtió el movimiento. Solo puede compensarse el último movimiento sin operaciones posteriores, sin una reversa previa y con el saldo original intacto. Revisa el historial actualizado.",
+            );
+            return;
+          }
           setStage("edit");
           setMessage(
             "No se guardó la actualización. Revisa las existencias actuales, la cantidad y el costo antes de volver a confirmar.",
@@ -502,41 +548,6 @@ export default function InventoryManager({
         onProblem={onProblem}
         onSelect={(target) => void choose(target)}
       />
-      {message && (
-        <p
-          ref={notice}
-          tabIndex={-1}
-          role={success ? "status" : "alert"}
-          className="membership-notice"
-        >
-          {message}
-        </p>
-      )}
-      {pending && stage === "closed" && (
-        <section
-          className="membership-notice"
-          aria-label="Actualización pendiente"
-        >
-          <h2>Resultado por confirmar</h2>
-          <p>
-            Revisaremos si esta actualización ya se guardó, sin duplicarla.
-            Mantén esta pantalla abierta hasta conocer el resultado.
-          </p>
-          <p>
-            Referencia: <code>{pending.key}</code>
-          </p>
-          <button
-            className="action primary"
-            disabled={busy}
-            onClick={() => {
-              setMessage("");
-              setStage("identity");
-            }}
-          >
-            Comprobar actualización pendiente
-          </button>
-        </section>
-      )}
       <div className="inventory-columns">
         <section
           aria-label="Productos de inventario"
@@ -603,6 +614,7 @@ export default function InventoryManager({
         {selected && (
           <section
             className="inventory-detail"
+            ref={detailRef}
             aria-label="Ficha de inventario"
           >
             <div className="inventory-detail-heading">
@@ -634,9 +646,7 @@ export default function InventoryManager({
                   PRODUCTO ·{" "}
                   {selected.product.is_active ? "ACTIVO" : "INACTIVO"}
                 </p>
-                <h2 ref={heading} tabIndex={-1}>
-                  {selected.product.name}
-                </h2>
+                <h2>{selected.product.name}</h2>
                 <p>SKU: {selected.product.sku ?? "Sin SKU"}</p>
                 <p>Categoría: {selected.category}</p>
               </div>
@@ -690,6 +700,7 @@ export default function InventoryManager({
                 ).map(([kind, label]) => (
                   <button
                     key={kind}
+                    data-stock-action={kind}
                     className="action primary"
                     disabled={
                       busy ||
@@ -709,6 +720,42 @@ export default function InventoryManager({
                   </button>
                 ))}
               </div>
+            )}
+            {message && (
+              <p
+                ref={notice}
+                tabIndex={-1}
+                role={success ? "status" : "alert"}
+                className="membership-notice"
+              >
+                {message}
+              </p>
+            )}
+            {pending && stage === "closed" && (
+              <section
+                className="membership-notice"
+                aria-label="Actualización pendiente"
+              >
+                <h2>Resultado por confirmar</h2>
+                <p>
+                  Revisaremos si esta actualización ya se guardó, sin
+                  duplicarla. Mantén esta pantalla abierta hasta conocer el
+                  resultado.
+                </p>
+                <p>
+                  Referencia: <code>{pending.key}</code>
+                </p>
+                <button
+                  className="action primary"
+                  disabled={busy}
+                  onClick={() => {
+                    setMessage("");
+                    setStage("identity");
+                  }}
+                >
+                  Comprobar actualización pendiente
+                </button>
+              </section>
             )}
             {stage === "identity" && (
               <IdentityConfirmation
@@ -734,28 +781,41 @@ export default function InventoryManager({
                 onSubmit={prepare}
                 className="catalog-form"
               >
-                <h3>{actionLabel}</h3>
-                <label>
-                  {mode === "COUNT"
-                    ? "Existencias reales en bodega"
-                    : mode === "IN"
-                      ? "Unidades que entran"
-                      : "Unidades que salen"}
-                  <input
-                    inputMode="decimal"
-                    autoComplete="off"
-                    required
-                    maxLength={19}
-                    value={quantity}
-                    onChange={(event) => setQuantity(event.target.value)}
-                  />
-                </label>
-                <p>
-                  {mode === "COUNT"
-                    ? "Escribe cuántas unidades hay ahora. Escribe 0 si no hay."
-                    : "Escribe cuántas unidades se agregan o retiran, no las existencias finales. La cantidad debe ser mayor que cero."}{" "}
-                  Puedes usar hasta tres decimales.
-                </p>
+                <h3 ref={operationHeading} tabIndex={-1}>
+                  {actionLabel}
+                </h3>
+                {mode !== "REVERSE" && (
+                  <>
+                    <label>
+                      {mode === "COUNT"
+                        ? "Existencias reales en bodega"
+                        : mode === "IN"
+                          ? "Unidades que entran"
+                          : "Unidades que salen"}
+                      <input
+                        inputMode="decimal"
+                        autoComplete="off"
+                        required
+                        maxLength={19}
+                        value={quantity}
+                        onChange={(event) => setQuantity(event.target.value)}
+                      />
+                    </label>
+                    <p>
+                      {mode === "COUNT"
+                        ? "Escribe cuántas unidades hay ahora. Escribe 0 si no hay."
+                        : "Escribe cuántas unidades se agregan o retiran, no las existencias finales. La cantidad debe ser mayor que cero."}{" "}
+                      Puedes usar hasta tres decimales.
+                    </p>
+                  </>
+                )}
+                {mode === "REVERSE" && (
+                  <p>
+                    Se compensarán las unidades y el valor originales del último
+                    movimiento. Comprueba que esta corrección coincide con las
+                    existencias reales. El registro original se conserva.
+                  </p>
+                )}
                 <label>
                   ¿Por qué cambian las existencias?
                   <textarea
@@ -789,62 +849,98 @@ export default function InventoryManager({
                 </p>
               </form>
             )}
-            {(stage === "review" || stage === "recover") && reviewed && (
-              <section
-                className="catalog-review"
-                aria-label="Revisión de la actualización"
-              >
-                <h3>
-                  {pending
-                    ? "Comprobar actualización pendiente"
-                    : mode === "COUNT"
-                      ? "Actualizar inventario"
-                      : actionLabel}
-                </h3>
-                <dl className="movement-summary">
-                  <div>
-                    <dt>Producto</dt>
-                    <dd>{selected.product.name}</dd>
-                  </div>
-                  <div>
-                    <dt>
-                      {"direction" in reviewed
-                        ? reviewed.direction === "IN"
-                          ? "Unidades que entran"
-                          : "Unidades que salen"
-                        : "Existencias reales en bodega"}
-                    </dt>
-                    <dd>
-                      {displayDecimal(
-                        "direction" in reviewed
-                          ? reviewed.quantity
-                          : reviewed.counted_quantity,
-                      )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>¿Por qué cambian las existencias?</dt>
-                    <dd>{reviewed.reason}</dd>
-                  </div>
-                  <div>
-                    <dt>Costo por unidad</dt>
-                    <dd>
-                      {("direction" in reviewed
-                        ? reviewed.unit_cost
-                        : reviewed.declared_unit_cost) === null
-                        ? "Usar el costo del inventario actual, si corresponde"
-                        : `${displayDecimal(("direction" in reviewed ? reviewed.unit_cost : reviewed.declared_unit_cost)!, 2)} USD`}
-                    </dd>
-                  </div>
-                </dl>
-                <p>
-                  {"direction" in reviewed
-                    ? "Al confirmar, se sumarán o restarán las unidades al saldo actual del servidor. Si no hay suficientes unidades, la salida se rechazará sin cambiar el inventario."
-                    : "Al confirmar, se ajustarán las existencias a la cantidad que indicaste y se calculará el cambio de valor."}{" "}
-                  Esta acción no registra una compra, una venta ni un pago.
-                </p>
-              </section>
-            )}
+            {(stage === "review" || stage === "recover") &&
+              reviewed &&
+              "source" in reviewed && (
+                <section
+                  className="catalog-review"
+                  aria-label="Revisión de la reversa"
+                >
+                  <h3 ref={operationHeading} tabIndex={-1}>
+                    {pending
+                      ? "Comprobar corrección pendiente"
+                      : "Revisa cómo se deshará el movimiento"}
+                  </h3>
+                  <dl className="movement-summary">
+                    <div>
+                      <dt>Producto</dt>
+                      <dd>{selected.product.name}</dd>
+                    </div>
+                    <div>
+                      <dt>Registro original</dt>
+                      <dd>{reviewed.original_id}</dd>
+                    </div>
+                    <div>
+                      <dt>Motivo</dt>
+                      <dd>{reviewed.reason}</dd>
+                    </div>
+                  </dl>
+                  <p>
+                    Se creará un movimiento compensatorio con la cantidad y
+                    valoración originales. Si hubo movimientos posteriores, el
+                    servidor rechazará la operación. No se borra historial ni se
+                    registra un pago, compra o devolución de venta.
+                  </p>
+                </section>
+              )}
+            {(stage === "review" || stage === "recover") &&
+              reviewed &&
+              !("source" in reviewed) && (
+                <section
+                  className="catalog-review"
+                  aria-label="Revisión de la actualización"
+                >
+                  <h3 ref={operationHeading} tabIndex={-1}>
+                    {pending
+                      ? "Comprobar actualización pendiente"
+                      : mode === "COUNT"
+                        ? "Actualizar inventario"
+                        : actionLabel}
+                  </h3>
+                  <dl className="movement-summary">
+                    <div>
+                      <dt>Producto</dt>
+                      <dd>{selected.product.name}</dd>
+                    </div>
+                    <div>
+                      <dt>
+                        {"direction" in reviewed
+                          ? reviewed.direction === "IN"
+                            ? "Unidades que entran"
+                            : "Unidades que salen"
+                          : "Existencias reales en bodega"}
+                      </dt>
+                      <dd>
+                        {displayDecimal(
+                          "direction" in reviewed
+                            ? reviewed.quantity
+                            : reviewed.counted_quantity,
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>¿Por qué cambian las existencias?</dt>
+                      <dd>{reviewed.reason}</dd>
+                    </div>
+                    <div>
+                      <dt>Costo por unidad</dt>
+                      <dd>
+                        {("direction" in reviewed
+                          ? reviewed.unit_cost
+                          : reviewed.declared_unit_cost) === null
+                          ? "Usar el costo del inventario actual, si corresponde"
+                          : `${displayDecimal(("direction" in reviewed ? reviewed.unit_cost : reviewed.declared_unit_cost)!, 2)} USD`}
+                      </dd>
+                    </div>
+                  </dl>
+                  <p>
+                    {"direction" in reviewed
+                      ? "Al confirmar, se sumarán o restarán las unidades al saldo actual del servidor. Si no hay suficientes unidades, la salida se rechazará sin cambiar el inventario."
+                      : "Al confirmar, se ajustarán las existencias a la cantidad que indicaste y se calculará el cambio de valor."}{" "}
+                    Esta acción no registra una compra, una venta ni un pago.
+                  </p>
+                </section>
+              )}
             {stage !== "closed" && (
               <div className="form-actions">
                 {stage === "edit" && (
@@ -857,9 +953,11 @@ export default function InventoryManager({
                     >
                       {mode === "COUNT"
                         ? "Actualizar inventario"
-                        : mode === "IN"
-                          ? "Revisar entrada"
-                          : "Revisar salida"}
+                        : mode === "REVERSE"
+                          ? "Revisar corrección"
+                          : mode === "IN"
+                            ? "Revisar entrada"
+                            : "Revisar salida"}
                     </button>
                   </>
                 )}
@@ -874,11 +972,13 @@ export default function InventoryManager({
                         ? "Confirmando…"
                         : pending
                           ? "Comprobar actualización pendiente"
-                          : mode === "COUNT"
-                            ? "Confirmar actualización"
-                            : mode === "IN"
-                              ? "Confirmar entrada"
-                              : "Confirmar salida"}
+                          : mode === "REVERSE"
+                            ? "Confirmar corrección"
+                            : mode === "COUNT"
+                              ? "Confirmar actualización"
+                              : mode === "IN"
+                                ? "Confirmar entrada"
+                                : "Confirmar salida"}
                     </button>
                     {!pending && (
                       <button
@@ -911,23 +1011,25 @@ export default function InventoryManager({
               <h3>Historial de inventario</h3>
               <p>
                 Hora de El Salvador. Entradas, salidas, ajustes y recepciones de
-                compra, del más reciente al más antiguo. Incluye ajustes sin
-                cambio de existencias.
+                compra y reversas, del más reciente al más antiguo. Incluye
+                ajustes sin cambio de existencias.
               </p>
               {selected.history.items.length === 0 ? (
                 <p>Todavía no hay movimientos registrados.</p>
               ) : (
                 <ol>
-                  {selected.history.items.map((item) => (
+                  {selected.history.items.map((item, index) => (
                     <li key={`${item.source}:${item.id}`}>
                       <strong>
                         {item.source === "COUNT"
                           ? "Ajuste de existencias"
-                          : item.source === "RECEIPT"
-                            ? "Recepción de compra"
-                            : item.direction === "IN"
-                              ? "Entrada manual"
-                              : "Salida manual"}{" "}
+                          : item.source === "REVERSAL"
+                            ? "Movimiento deshecho"
+                            : item.source === "RECEIPT"
+                              ? "Recepción de compra"
+                              : item.direction === "IN"
+                                ? "Entrada manual"
+                                : "Salida manual"}{" "}
                         · {date.format(new Date(item.created_at))}
                       </strong>
                       <p>Registrado por: {item.recorded_by}</p>
@@ -939,6 +1041,28 @@ export default function InventoryManager({
                           {item.source_document_id}
                         </p>
                       </details>
+                      {selected.historyStart &&
+                        index === 0 &&
+                        (item.source === "COUNT" || item.source === "MANUAL") &&
+                        item.quantity_delta !== "0.000" && (
+                          <button
+                            className="action secondary"
+                            disabled={frozen || !selected.product.is_active}
+                            onClick={() => {
+                              clearDraft();
+                              setReverseTarget({
+                                source: item.source as "COUNT" | "MANUAL",
+                                id: item.id,
+                              });
+                              setMode("REVERSE");
+                              setSuccess(false);
+                              setMessage("");
+                              setStage("identity");
+                            }}
+                          >
+                            Deshacer último movimiento
+                          </button>
+                        )}
                       <dl>
                         <div>
                           <dt>Existencias anteriores → actuales</dt>

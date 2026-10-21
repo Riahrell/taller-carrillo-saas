@@ -17,6 +17,7 @@ from app.modules.inventory.inputs import (
     ManualStockInput,
     PhysicalCount,
     StockMinimumChange,
+    StockReversalInput,
 )
 
 router = APIRouter(prefix="/inventory", tags=["inventory administration"])
@@ -195,5 +196,21 @@ def list_low_stock(request: Request, query: Annotated[CountPageQuery, Query()]):
             _token(request, pagination=True),
             query=query,
             expected_actor=expected_membership(request),
+        )
+    )
+
+
+@router.post("/reversals")
+def reverse_stock(payload: StockReversalInput, request: Request):
+    token = _token(request)
+    expected = expected_membership(request)
+    if expected is None:
+        raise HTTPException(428, "Precondition required", headers=NO_STORE)
+    return _response(
+        request.app.state.inventory.reverse(
+            token,
+            data=payload,
+            operation_key=_operation_key(request),
+            expected_actor=expected,
         )
     )

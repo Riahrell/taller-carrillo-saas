@@ -67,13 +67,15 @@ class ManualStockInput(BaseModel):
 
 
 class HistoryPageQuery(CountPageQuery):
-    after: str | None = Field(default=None, strict=True, max_length=44)
+    after: str | None = Field(default=None, strict=True, max_length=45)
 
     @field_validator("after")
     @classmethod
     def typed_cursor(cls, value: str | None) -> str | None:
         if value is not None:
-            match = re.fullmatch(r"(COUNT|MANUAL|RECEIPT):([0-9a-f-]{36})", value)
+            match = re.fullmatch(
+                r"(COUNT|MANUAL|RECEIPT|REVERSAL):([0-9a-f-]{36})", value
+            )
             if match is None or str(UUID(match[2])) != match[2]:
                 raise ValueError("Invalid history cursor")
         return value
@@ -82,3 +84,16 @@ class HistoryPageQuery(CountPageQuery):
 class StockMinimumChange(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
     minimum: StockCount | None
+
+
+class StockReversalInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    product_id: UUID
+    source: Literal["COUNT", "MANUAL"]
+    original_id: UUID
+    reason: str = Field(min_length=1, max_length=500, strict=True)
+
+    @field_validator("reason")
+    @classmethod
+    def meaningful_reason(cls, value: str) -> str:
+        return PhysicalCount.meaningful_reason(value)

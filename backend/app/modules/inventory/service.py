@@ -289,6 +289,17 @@ class InventoryAdministrator:
             expected_actor=expected_actor,
         )
 
+    def reverse(self, token, *, data, operation_key, expected_actor):
+        from app.modules.inventory.reversals import reverse
+
+        return reverse(
+            self,
+            token,
+            data=data,
+            operation_key=operation_key,
+            expected_actor=expected_actor,
+        )
+
     def low_stock(self, token, *, query, expected_actor=None):
         from app.modules.inventory.low_stock import low_stock
 

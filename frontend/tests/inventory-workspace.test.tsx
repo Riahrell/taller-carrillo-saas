@@ -523,3 +523,109 @@ it("bloquea movimientos mientras se configura el mínimo y los recupera al cance
   );
   expect(inventoryApi.record).not.toHaveBeenCalled();
 });
+
+async function reviewReversal() {
+  vi.mocked(inventoryApi.history).mockResolvedValue({
+    items: [historyEvidence],
+    next_after: null,
+  });
+  vi.mocked(inventoryApi.balance).mockResolvedValue({
+    ...empty,
+    quantity: "2.000",
+    value: "6.000000",
+    average_unit_cost: "3.000000",
+  });
+  await open();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Deshacer último movimiento" }),
+  );
+  await confirmIdentity();
+  await screen.findByLabelText("¿Por qué cambian las existencias?");
+  expect(
+    screen.queryByLabelText("Existencias reales en bodega"),
+  ).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("¿Por qué cambian las existencias?"), {
+    target: { value: "Registro equivocado" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Revisar corrección" }));
+}
+it("revisa la reversa y conserva referencia y clave si la respuesta se pierde", async () => {
+  vi.mocked(inventoryApi.record).mockRejectedValueOnce(
+    new ApiError("network", "lost"),
+  );
+  await reviewReversal();
+  expect(inventoryApi.record).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar corrección" }));
+  await screen.findByRole("heading", { name: "Resultado por confirmar" });
+  const original = vi.mocked(inventoryApi.record).mock.calls[0][1];
+  expect(original.data).toEqual({
+    product_id: product.id,
+    source: "COUNT",
+    original_id: historyEvidence.id,
+    reason: "Registro equivocado",
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Comprobar actualización pendiente" }),
+  );
+  await confirmIdentity();
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "Comprobar actualización pendiente",
+    }),
+  );
+  await waitFor(() => expect(inventoryApi.record).toHaveBeenCalledTimes(2));
+  expect(vi.mocked(inventoryApi.record).mock.calls[1][1]).toEqual(original);
+});
+it("una reversa rechazada por cambios posteriores refresca sin repetir", async () => {
+  vi.mocked(inventoryApi.record).mockRejectedValueOnce(
+    new ApiError("http", "later movement", 422),
+  );
+  await reviewReversal();
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar corrección" }));
+  await screen.findByText(/No se revirtió el movimiento/);
+  expect(
+    screen.queryByRole("heading", { name: "Resultado por confirmar" }),
+  ).not.toBeInTheDocument();
+  expect(inventoryApi.record).toHaveBeenCalledOnce();
+});
+
+it("mantiene el foco en la operación y lo devuelve al botón al cancelar", async () => {
+  await open();
+  fireEvent.click(screen.getByRole("button", { name: "Registrar salida" }));
+  await confirmIdentity();
+  const title = await screen.findByRole("heading", {
+    name: "Registrar salida",
+  });
+  await waitFor(() => expect(title).toHaveFocus());
+  fireEvent.click(
+    screen.getByRole("button", { name: "Cancelar, no cambiar nada" }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Registrar salida" }),
+    ).toHaveFocus(),
+  );
+  expect(inventoryApi.record).not.toHaveBeenCalled();
+});
+
+it("al regresar de otra pestaña restaura el campo solo tras comprobar la sesión", async () => {
+  await open();
+  fireEvent.click(screen.getByRole("button", { name: "Registrar salida" }));
+  await confirmIdentity();
+  const input = await screen.findByLabelText("Unidades que salen");
+  input.focus();
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "hidden",
+  });
+  fireEvent(document, new Event("visibilitychange"));
+  input.blur();
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "visible",
+  });
+  fireEvent(document, new Event("visibilitychange"));
+  await waitFor(() => expect(input).toBeVisible());
+  await waitFor(() => expect(input).toHaveFocus());
+  expect(inventoryApi.record).not.toHaveBeenCalled();
+});

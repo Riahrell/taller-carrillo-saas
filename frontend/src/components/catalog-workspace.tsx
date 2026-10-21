@@ -13,6 +13,8 @@ type View =
 export default function CatalogWorkspace() {
   const [view, setView] = useState<View>({ kind: "checking" });
   const [paused, setPaused] = useState(true);
+  const content = useRef<HTMLDivElement>(null);
+  const resumeFocus = useRef<HTMLElement | null>(null);
   const controller = useRef<AbortController | null>(null);
   const writing = useRef(false);
   const channel = useRef<BroadcastChannel | null>(null);
@@ -105,6 +107,18 @@ export default function CatalogWorkspace() {
   useEffect(() => {
     if (view.kind === "blocked") notice.current?.focus({ preventScroll: true });
   }, [view]);
+  useEffect(() => {
+    if (paused || view.kind !== "active") return;
+    const target = resumeFocus.current;
+    resumeFocus.current = null;
+    if (
+      document.activeElement === document.body &&
+      target?.isConnected &&
+      content.current?.contains(target)
+    ) {
+      target.focus({ preventScroll: true });
+    }
+  }, [paused, view.kind]);
   return (
     <main id="contenido" className="memberships-workspace" tabIndex={-1}>
       <nav aria-label="Navegación">
@@ -130,6 +144,11 @@ export default function CatalogWorkspace() {
       )}
       {view.kind === "active" && (
         <div
+          ref={content}
+          onFocusCapture={(event) => {
+            if (event.target instanceof HTMLElement)
+              resumeFocus.current = event.target;
+          }}
           style={{ visibility: paused ? "hidden" : undefined }}
           aria-hidden={paused || undefined}
           inert={paused}

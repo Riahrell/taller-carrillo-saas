@@ -16,20 +16,20 @@ indistinguible 403. Respuestas `Cache-Control: no-store` y cabecera
 
 Respuesta: `items`, `next_after`. Cada fila contiene exclusivamente:
 
-- `id`, `product_id`, `source`: `COUNT`, `MANUAL` o `RECEIPT`.
+- `id`, `product_id`, `source`: `COUNT`, `MANUAL`, `RECEIPT` o `REVERSAL`.
 - `direction`: `IN`/`OUT` en manuales; `null` en los otros orígenes.
-- `source_document_id`: UUID del ajuste/registro manual; UUID de compra en recepción.
+- `source_document_id`: UUID del ajuste/registro manual; UUID de compra en recepción; UUID del registro original en una reversa.
 - `recorded_by`: correo actual del usuario de la membresía que creó la evidencia.
   No es un nombre histórico capturado; la membresía original permanece en el
   registro inmutable. No se excluyen actores por estar desactivados actualmente.
-- `reason`: motivo original del ajuste/manual; `null` en recepción porque ese
+- `reason`: motivo original del ajuste/manual/reversa; `null` en recepción porque ese
   documento no tiene un motivo de inventario libre. No se inventa uno.
 - `before_quantity`, `after_quantity`, `quantity_delta`: cadenas con tres decimales.
 - `before_value`, `after_value`, `value_delta`: cadenas con seis decimales, USD.
 - `created_at`: fecha UTC de la evidencia o de su recepción; UI en El Salvador.
 
 Orden descendente por `(created_at, source, id)`. Desempata fechas iguales y UUID
-iguales entre tablas sin confundir registros. `after` es `SOURCE:UUID` canónico;
+iguales entre tablas sin confundir registros. `after` es `SOURCE:UUID` canónico (incluye REVERSAL);
 se resuelve únicamente dentro del producto/empresa autorizado. `limit` entre 1
 y 100, por defecto 25; se consulta una fila extra para decidir el siguiente cursor.
 El cliente web pide 25 y valida orden, cursor, campos, decimales, diferencias,

@@ -329,3 +329,47 @@ it("acepta una página completa y su cursor de origen sin duplicar la frontera",
   ).resolves.toEqual({ items: [], next_after: null });
   expect(String(fetch.mock.calls[1][0])).toContain(`after=COUNT%3A${last.id}`);
 });
+
+it("envía una reversa sin cantidades, costos ni saldos del cliente", async () => {
+  document.cookie = `carrillo_csrf=${proof}; Path=/`;
+  const key = command.key;
+  const result = {
+    id: actor,
+    product_id: target,
+    operation_key: key,
+    original_source: "COUNT",
+    original_id: evidence.id,
+    reason: "Corrección",
+    before_quantity: "2.000",
+    after_quantity: "0.000",
+    before_value: "6.000000",
+    after_value: "0.000000",
+    quantity_delta: "-2.000",
+    value_delta: "-6.000000",
+    created_at: evidence.created_at,
+  };
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    .mockResolvedValueOnce(Response.json(result, { headers: headers() }));
+  vi.stubGlobal("fetch", fetch);
+  const data = {
+    product_id: target,
+    source: "COUNT" as const,
+    original_id: evidence.id,
+    reason: "Corrección",
+    quantity: "999",
+    price: "0.01",
+  };
+  await expect(inventoryApi.record(actor, { key, data })).resolves.toEqual(
+    result,
+  );
+  expect(fetch.mock.calls[1][0]).toBe("/api/inventory/reversals");
+  expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
+    product_id: target,
+    source: "COUNT",
+    original_id: evidence.id,
+    reason: "Corrección",
+  });
+  expect(fetch.mock.calls[1][1].headers["Idempotency-Key"]).toBe(key);
+});

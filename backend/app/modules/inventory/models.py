@@ -250,9 +250,32 @@ class StockMovement(Base):
         ),
         UniqueConstraint("count_id"),
         UniqueConstraint("receipt_line_id"),
+        UniqueConstraint("reversal_id"),
+        UniqueConstraint(
+            "tenant_id",
+            "product_id",
+            "id",
+            "quantity_delta",
+            "value_delta",
+            name="uq_stock_movements_reversal_original",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "product_id", "reversal_id", "quantity_delta", "value_delta"],
+            [
+                "stock_reversals.tenant_id",
+                "stock_reversals.product_id",
+                "stock_reversals.id",
+                "stock_reversals.quantity_delta",
+                "stock_reversals.value_delta",
+            ],
+            name="fk_stock_movements_reversal_source",
+            use_alter=True,
+            ondelete="RESTRICT",
+        ),
         UniqueConstraint("manual_record_id"),
         CheckConstraint(
-            "num_nonnulls(count_id, receipt_line_id, manual_record_id) = 1",
+            "num_nonnulls(count_id, receipt_line_id, manual_record_id, "
+            "reversal_id) = 1",
             name="one_source",
         ),
         ForeignKeyConstraint(
@@ -307,6 +330,7 @@ class StockMovement(Base):
     count_id: Mapped[UUID | None] = mapped_column()
     receipt_line_id: Mapped[UUID | None] = mapped_column()
     manual_record_id: Mapped[UUID | None] = mapped_column()
+    reversal_id: Mapped[UUID | None] = mapped_column()
     quantity_delta: Mapped[Decimal] = mapped_column(Numeric(18, 3))
     value_delta: Mapped[Decimal] = mapped_column(Numeric(28, 6))
     created_at: Mapped[datetime] = mapped_column(
@@ -346,6 +370,105 @@ class StockMinimumRecord(Base):
     revision: Mapped[int] = mapped_column(BigInteger)
     before_minimum: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
     minimum: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class StockReversalRecord(Base):
+    __tablename__ = "stock_reversals"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "product_id"],
+            ["products.tenant_id", "products.id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "actor_membership_id"],
+            ["tenant_memberships.tenant_id", "tenant_memberships.id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            [
+                "tenant_id",
+                "product_id",
+                "original_movement_id",
+                "original_quantity_delta",
+                "original_value_delta",
+            ],
+            [
+                "stock_movements.tenant_id",
+                "stock_movements.product_id",
+                "stock_movements.id",
+                "stock_movements.quantity_delta",
+                "stock_movements.value_delta",
+            ],
+            name="fk_stock_reversals_original",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint("tenant_id", "operation_key"),
+        UniqueConstraint("original_movement_id"),
+        UniqueConstraint(
+            "tenant_id",
+            "product_id",
+            "id",
+            "quantity_delta",
+            "value_delta",
+            name="uq_stock_reversals_movement_source",
+        ),
+        CheckConstraint(
+            "original_source IN ('COUNT', 'MANUAL')", name="source_allowed"
+        ),
+        CheckConstraint(
+            "reason = trim(reason) AND length(reason) > 0", name="reason_present"
+        ),
+        CheckConstraint(
+            "request_fingerprint ~ '^[0-9a-f]{64}$'", name="fingerprint_shape"
+        ),
+        CheckConstraint(
+            "before_quantity >= 0 AND before_quantity < 'Infinity'::numeric "
+            "AND after_quantity >= 0 AND after_quantity < 'Infinity'::numeric",
+            name="quantity_bounds",
+        ),
+        CheckConstraint(
+            "before_value >= 0 AND before_value < 'Infinity'::numeric AND "
+            "after_value >= 0 AND after_value < 'Infinity'::numeric",
+            name="value_bounds",
+        ),
+        CheckConstraint(
+            "(before_quantity <> 0 OR before_value = 0) AND (after_quantity <> "
+            "0 OR after_value = 0)",
+            name="empty_value",
+        ),
+        CheckConstraint(
+            "quantity_delta = after_quantity - before_quantity AND value_delta "
+            "= after_value - before_value",
+            name="delta_matches",
+        ),
+        CheckConstraint(
+            "quantity_delta <> 0 AND quantity_delta = -original_quantity_delta "
+            "AND value_delta = -original_value_delta",
+            name="exact_inverse",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column()
+    product_id: Mapped[UUID] = mapped_column()
+    actor_membership_id: Mapped[UUID] = mapped_column()
+    operation_key: Mapped[UUID] = mapped_column()
+    request_fingerprint: Mapped[str] = mapped_column(String(64))
+    original_movement_id: Mapped[UUID] = mapped_column()
+    original_source: Mapped[str] = mapped_column(String(6))
+    original_id: Mapped[UUID] = mapped_column()
+    original_quantity_delta: Mapped[Decimal] = mapped_column(Numeric(18, 3))
+    original_value_delta: Mapped[Decimal] = mapped_column(Numeric(28, 6))
+    reason: Mapped[str] = mapped_column(String(500))
+    before_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3))
+    after_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3))
+    before_value: Mapped[Decimal] = mapped_column(Numeric(28, 6))
+    after_value: Mapped[Decimal] = mapped_column(Numeric(28, 6))
+    quantity_delta: Mapped[Decimal] = mapped_column(Numeric(18, 3))
+    value_delta: Mapped[Decimal] = mapped_column(Numeric(28, 6))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

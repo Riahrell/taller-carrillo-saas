@@ -88,6 +88,7 @@ def main():
                     timeout=120,
                 )
             run("mutate")
+            run("check-mutated")
             with dump.open("rb") as source:
                 subprocess.run(
                     [
@@ -113,7 +114,8 @@ def main():
             run("verify-quarantine")
             print(
                 "Full restore drill passed: snapshot/code replay risk "
-                "demonstrated; factor decrypts and quarantine retains MFA."
+                "demonstrated; factor decrypts, quarantine retains MFA and "
+                "inventory/catalog/minimum/reversal evidence reconciles."
             )
         finally:
             pipeline.cleanup()

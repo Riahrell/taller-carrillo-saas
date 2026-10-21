@@ -68,6 +68,10 @@ export default function CatalogManager({
   const controller = useRef<AbortController | null>(null);
   const notice = useRef<HTMLParagraphElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  const manager = useRef<HTMLElement>(null);
+  const opener = useRef<HTMLButtonElement>(null);
+  const previousStage = useRef(stage);
+  const previousTarget = useRef<string | null>(null);
   const reportWriting = useCallback(
     (value: boolean) => {
       if (alive.current) onWriting(value);
@@ -131,10 +135,22 @@ export default function CatalogManager({
     return () => clearTimeout(timer);
   }, [deadline, stage, onProblem]);
   useEffect(() => {
+    const previous = previousStage.current;
+    previousStage.current = stage;
     if (message) notice.current?.focus({ preventScroll: true });
-    else if (stage !== "identity")
+    else if (stage === "edit" || stage === "review")
       heading.current?.focus({ preventScroll: true });
+    else if (stage === "closed" && previous !== "closed")
+      opener.current?.focus({ preventScroll: true });
   }, [message, stage]);
+  useEffect(() => {
+    const previous = previousTarget.current;
+    previousTarget.current = editingTarget;
+    if (previous && editingTarget === null && !busy && !message)
+      manager.current
+        ?.querySelector<HTMLButtonElement>(`[data-edit-product="${previous}"]`)
+        ?.focus({ preventScroll: true });
+  }, [editingTarget, busy, message]);
   function reset() {
     setName("");
     setPrice("");
@@ -312,6 +328,7 @@ export default function CatalogManager({
       aria-label="Administración del catálogo"
       aria-busy={busy}
       className="catalog-manager"
+      ref={manager}
     >
       <div className="catalog-toolbar">
         <div className="catalog-tabs" aria-label="Tipo de catálogo">
@@ -340,6 +357,7 @@ export default function CatalogManager({
         </div>
         <button
           className="action primary"
+          ref={opener}
           disabled={busy || stage !== "closed" || editingTarget !== null}
           onClick={() => {
             reset();
@@ -645,6 +663,7 @@ export default function CatalogManager({
                   <button
                     className="action"
                     aria-label={`Editar producto de ${item.name}`}
+                    data-edit-product={item.id}
                     disabled={busy || editingTarget !== null}
                     onClick={() => {
                       setMessage("");
