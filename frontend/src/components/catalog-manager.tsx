@@ -516,7 +516,9 @@ export default function CatalogManager({
                   disabled={busy}
                   onClick={() => void save()}
                 >
-                  Confirmar alta
+                  {kind === "products"
+                    ? "Registrar producto"
+                    : "Registrar categoría"}
                 </button>
                 <button
                   className="text-action"

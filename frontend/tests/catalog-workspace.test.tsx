@@ -105,7 +105,7 @@ it("consulta sin pedir contraseña y la exige antes de montar campos de alta", a
 it("revisa el precio exacto y comprueba sesión y detalle tras crear", async () => {
   await draft();
   expect(screen.getByText("12.34 USD")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar alta" }));
+  fireEvent.click(screen.getByRole("button", { name: "Registrar producto" }));
   expect(
     await screen.findByText("Producto creado: Filtro nuevo."),
   ).toBeInTheDocument();
@@ -135,7 +135,7 @@ it("permite crear categoría sin precio ni campos de inventario", async () => {
     screen.queryByLabelText("Precio de venta (USD)"),
   ).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Revisar alta" }));
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar alta" }));
+  fireEvent.click(screen.getByRole("button", { name: "Registrar categoría" }));
   expect(
     await screen.findByText("Categoría creada: Nueva."),
   ).toBeInTheDocument();
@@ -148,7 +148,7 @@ it("permite crear categoría sin precio ni campos de inventario", async () => {
 
 it("reutiliza la confirmación vigente para otra alta sin prolongarla", async () => {
   await draft();
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar alta" }));
+  fireEvent.click(screen.getByRole("button", { name: "Registrar producto" }));
   await screen.findByText("Producto creado: Filtro nuevo.");
   fireEvent.click(screen.getByRole("button", { name: "Nuevo producto" }));
   expect(await screen.findByLabelText("Nombre")).toHaveValue("");
@@ -174,7 +174,7 @@ it("conflicto de SKU conserva el borrador para revisión, sin reintento", async 
     new ApiError("http", "private", 409),
   );
   await draft();
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar alta" }));
+  fireEvent.click(screen.getByRole("button", { name: "Registrar producto" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "SKU ya está en uso",
   );
@@ -188,7 +188,7 @@ it.each([428, 503])(
       new ApiError("http", "private", status),
     );
     await draft();
-    fireEvent.click(screen.getByRole("button", { name: "Confirmar alta" }));
+    fireEvent.click(screen.getByRole("button", { name: "Registrar producto" }));
     await screen.findByRole("alert");
     expect(screen.queryByLabelText("Nombre")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Comprobar acceso" }));
@@ -204,7 +204,7 @@ it("descarta resultado de alta después de perder foco, sin afirmar éxito", asy
     }),
   );
   await draft();
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar alta" }));
+  fireEvent.click(screen.getByRole("button", { name: "Registrar producto" }));
   await waitFor(() => expect(catalogApi.createProduct).toHaveBeenCalledOnce());
   fireEvent.focus(window);
   expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -222,7 +222,7 @@ it("cambio de empresa tras POST retira los datos y exige revisar el resultado", 
     ...context,
     tenant_id: createdId,
   });
-  fireEvent.click(screen.getByRole("button", { name: "Confirmar alta" }));
+  fireEvent.click(screen.getByRole("button", { name: "Registrar producto" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "revisa el catálogo",
   );
