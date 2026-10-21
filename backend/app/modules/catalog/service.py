@@ -4,7 +4,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,7 @@ from app.modules.catalog.inputs import (
     CatalogPageQuery,
     CategoryCreation,
     ProductCreation,
+    ProductSearchQuery,
 )
 from app.modules.catalog.models import Category, Product
 
@@ -199,13 +200,29 @@ class CatalogAdministrator:
         query: CatalogPageQuery,
         expected_actor: UUID | None = None,
     ) -> ProductPage:
-        if type(query) is not CatalogPageQuery:
+        if type(query) not in (CatalogPageQuery, ProductSearchQuery):
             raise AccessDenied("Access denied")
+        query = ProductSearchQuery.model_validate(query.model_dump())
         try:
             with self._factory.begin() as session:
                 _limit_transaction(session)
                 actor = self._authorize(session, token, expected_actor, recent=False)
                 statement = select(Product).where(Product.tenant_id == actor.tenant_id)
+                if query.q is not None:
+                    # Bind a literal substring, never accept SQL LIKE wildcards
+                    # as a way to widen the tenant-bound query.
+                    literal = (
+                        query.q.replace("\\", "\\\\")
+                        .replace("%", "\\%")
+                        .replace("_", "\\_")
+                    )
+                    pattern = "%" + literal + "%"
+                    statement = statement.where(
+                        or_(
+                            Product.name.ilike(pattern, escape="\\"),
+                            Product.sku.ilike(pattern, escape="\\"),
+                        )
+                    )
                 if query.after is not None:
                     statement = statement.where(Product.id > query.after)
                 rows = list(

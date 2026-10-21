@@ -255,3 +255,76 @@ def test_direct_peer_cannot_use_forged_proxy_headers(catalog_web, monkeypatch):
         lambda _: {ip_address("127.0.0.3")},
     )
     assert client.get("/catalog/products", headers=READ).status_code == 403
+
+
+def test_product_search_name_sku_literal_and_company_scope(catalog_web):
+    client, state, _ = catalog_web
+    with Session(state["runtime"]) as session, session.begin():
+        own = Product(
+            tenant_id=state["tenant"], name="Filtro de Aceite", sku="XT-77", price="3"
+        )
+        literal = Product(
+            tenant_id=state["tenant"], name="100%_real\\filtro", price="3"
+        )
+        foreign = Product(
+            tenant_id=state["other"], name="Filtro de Aceite", sku="XT-77", price="3"
+        )
+        session.add_all([own, literal, foreign])
+        session.flush()
+        own_id, literal_id = str(own.id), str(literal.id)
+    for term, expected in [
+        ("aceITE", own_id),
+        ("xt-77", own_id),
+        ("%_", literal_id),
+        ("\\filtro", literal_id),
+    ]:
+        response = client.get("/catalog/products", params={"q": term}, headers=READ)
+        assert response.status_code == 200
+        assert [item["id"] for item in response.json()["items"]] == [expected]
+        assert response.headers["Cache-Control"] == "no-store"
+    assert (
+        client.get(
+            "/catalog/products", params={"q": "' OR 1=1 --"}, headers=READ
+        ).json()["items"]
+        == []
+    )
+    assert (
+        client.get("/catalog/products?q=filtro&q=xt", headers=READ).status_code == 422
+    )
+    assert (
+        client.get(
+            "/catalog/products?q=filtro&tenant_id=foreign", headers=READ
+        ).status_code
+        == 422
+    )
+    assert client.get("/catalog/categories?q=filtro", headers=READ).status_code == 422
+    assert client.get("/catalog/products?q=filtro").status_code == 403
+
+
+def test_search_pagination_finds_matches_beyond_first_page(catalog_web):
+    client, state, _ = catalog_web
+    with Session(state["runtime"]) as session, session.begin():
+        products = [
+            Product(tenant_id=state["tenant"], name=f"Buscable {i}", price="1")
+            for i in range(26)
+        ]
+        session.add_all(
+            products
+            + [
+                Product(tenant_id=state["other"], name="Buscable ajeno", price="1"),
+                Product(tenant_id=state["tenant"], name="Otro producto", price="1"),
+            ]
+        )
+        session.flush()
+        expected = {str(row.id) for row in products}
+    first = client.get(
+        "/catalog/products", params={"q": "buscable"}, headers=READ
+    ).json()
+    assert len(first["items"]) == 25 and first["next_after"] == first["items"][-1]["id"]
+    second = client.get(
+        "/catalog/products",
+        params={"q": "buscable", "after": first["next_after"]},
+        headers=READ,
+    ).json()
+    assert len(second["items"]) == 1 and second["next_after"] is None
+    assert {row["id"] for row in first["items"] + second["items"]} == expected

@@ -136,3 +136,20 @@ it.each([401, 403, 409, 422, 428, 503])(
     expect(fetch).toHaveBeenCalledTimes(2);
   },
 );
+it("codifica la búsqueda como un único parámetro sin permitir inyectar empresa o fragmentos", async () => {
+  const term = "XT%_\\&tenant_id=ajena?#";
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(
+      Response.json(
+        { items: [product], next_after: null },
+        { headers: headers() },
+      ),
+    );
+  vi.stubGlobal("fetch", fetch);
+  await catalogApi.products(actor, undefined, {}, term);
+  const url = new URL(fetch.mock.calls[0][0], "https://same-origin.invalid");
+  expect(url.searchParams.get("q")).toBe(term);
+  expect(url.searchParams.has("tenant_id")).toBe(false);
+  expect(url.hash).toBe("");
+});

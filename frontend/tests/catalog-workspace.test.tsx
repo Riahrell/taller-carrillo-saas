@@ -281,3 +281,39 @@ it("conserva el borrador al volver y lo retira si cambia la empresa", async () =
   await screen.findByText(/La sesión cambió/);
   expect(screen.queryByLabelText("Nombre")).not.toBeInTheDocument();
 });
+it("busca en el servidor y permite limpiar el filtro del catálogo", async () => {
+  await open();
+  vi.mocked(catalogApi.products).mockResolvedValueOnce({
+    items: [],
+    next_after: null,
+  });
+  fireEvent.change(screen.getByLabelText("Buscar producto por nombre o SKU"), {
+    target: { value: "  filtro  " },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Buscar" }));
+  expect(
+    await screen.findByText(
+      "No se encontraron productos con ese nombre o SKU.",
+    ),
+  ).toBeInTheDocument();
+  expect(catalogApi.products).toHaveBeenLastCalledWith(
+    actor,
+    undefined,
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    "filtro",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Limpiar búsqueda" }));
+  expect(await screen.findByText("Filtro existente")).toBeInTheDocument();
+  expect(catalogApi.products).toHaveBeenLastCalledWith(
+    actor,
+    undefined,
+    expect.anything(),
+    "",
+  );
+});
+it("no permite buscar mientras se revisa un producto por registrar", async () => {
+  await draft();
+  expect(
+    screen.getByLabelText("Buscar producto por nombre o SKU"),
+  ).toBeDisabled();
+});

@@ -14,6 +14,7 @@ from app.modules.catalog.inputs import (
     CatalogPageQuery,
     CategoryCreation,
     ProductCreation,
+    ProductSearchQuery,
 )
 
 router = APIRouter(prefix="/catalog", tags=["catalog administration"])
@@ -79,7 +80,7 @@ def list_categories(request: Request, query: Annotated[CatalogPageQuery, Query()
 
 
 @router.get("/products")
-def list_products(request: Request, query: Annotated[CatalogPageQuery, Query()]):
+def list_products(request: Request, query: Annotated[ProductSearchQuery, Query()]):
     request.app.state.http_security.verify_browser_read(request.headers)
     return _response(
         request.app.state.catalog.list_products(

@@ -9,6 +9,7 @@ import {
   type FormEvent,
 } from "react";
 import IdentityConfirmation from "@/components/identity-confirmation";
+import ProductSearch from "@/components/product-search";
 import ProductImage, {
   type ScopedImagePending,
 } from "@/components/product-image";
@@ -120,6 +121,7 @@ export default function InventoryManager({
     },
     [onImagePending],
   );
+  const [search, setSearch] = useState("");
   const [products, setProducts] = useState<Page<Product> | null>(null);
   const [selected, setSelected] = useState<Selection | null>(null);
   const [pending, setPending] = useState<PendingCount | null>(
@@ -285,14 +287,15 @@ export default function InventoryManager({
       if (!signal.aborted) setSelected(detail);
     });
   }
-  async function productPage(after?: string) {
+  async function productPage(after?: string, term = search) {
     await read(async (signal) => {
-      const page = await catalogApi.products(actor, after, { signal });
+      const page = await catalogApi.products(actor, after, { signal }, term);
       const detail = page.items[0]
         ? await selection(actor, page.items[0].id, signal)
         : null;
       if (!signal.aborted) {
         setProducts(page);
+        setSearch(term);
         setSelected(detail);
       }
     });
@@ -526,6 +529,11 @@ export default function InventoryManager({
           className="inventory-products"
         >
           <h2>Productos</h2>
+          <ProductSearch
+            value={search}
+            disabled={frozen}
+            onSearch={(term) => void productPage(undefined, term)}
+          />
           {!products ? (
             <p role="status">Cargando productos…</p>
           ) : (
@@ -547,7 +555,11 @@ export default function InventoryManager({
                 ))}
               </ul>
               {products.items.length === 0 && (
-                <p>No hay productos. Créalos en el catálogo para comenzar.</p>
+                <p>
+                  {search
+                    ? "No se encontraron productos con ese nombre o SKU."
+                    : "No hay productos. Créalos en el catálogo para comenzar."}
+                </p>
               )}
               <div className="catalog-pagination">
                 <button

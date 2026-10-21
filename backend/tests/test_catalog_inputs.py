@@ -99,3 +99,22 @@ def test_page_allows_canonical_query_string_but_not_authority_fields():
     assert CatalogPageQuery(limit="100").limit == 100
     with pytest.raises(ValidationError):
         CatalogPageQuery(tenant_id="forbidden")
+
+
+@pytest.mark.parametrize("value", ["x" * 201, "\x00", "\ud800", 123, True])
+def test_product_search_rejects_invalid_or_unbounded_text(value):
+    from app.modules.catalog.inputs import ProductSearchQuery
+
+    with pytest.raises(ValidationError):
+        ProductSearchQuery(q=value)
+
+
+def test_product_search_normalizes_empty_and_rejects_authority():
+    from app.modules.catalog.inputs import ProductSearchQuery
+
+    assert ProductSearchQuery(q="  filtro  ").q == "filtro"
+    assert ProductSearchQuery(q="   ").q is None
+    with pytest.raises(ValidationError):
+        ProductSearchQuery(q="filtro", tenant_id="foreign")
+    with pytest.raises(ValidationError):
+        CatalogPageQuery(q="filtro")

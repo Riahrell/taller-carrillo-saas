@@ -9,6 +9,7 @@ import {
   type FormEvent,
 } from "react";
 import IdentityConfirmation from "@/components/identity-confirmation";
+import ProductSearch from "@/components/product-search";
 import ProductThumbnail from "@/components/product-thumbnail";
 import { accessApi, type SessionContext } from "@/lib/access/api";
 import { ApiError } from "@/lib/api/client";
@@ -39,6 +40,7 @@ export default function CatalogManager({
   onWriting,
   onChanged,
 }: Props) {
+  const [search, setSearch] = useState("");
   const [kind, setKind] = useState<Kind>("products");
   const [products, setProducts] = useState<Page<Product> | null>(null);
   const [categories, setCategories] = useState<Page<Category> | null>(null);
@@ -136,7 +138,7 @@ export default function CatalogManager({
     setSelected(null);
     setStage("closed");
   }
-  async function page(collection: Kind, after?: string) {
+  async function page(collection: Kind, after?: string, term = search) {
     if (operation.current) return;
     operation.current = true;
     setBusy(true);
@@ -147,10 +149,18 @@ export default function CatalogManager({
     else setCategories(null);
     try {
       if (collection === "products") {
-        const value = await catalogApi.products(identity, after, {
-          signal: current.signal,
-        });
-        if (!current.signal.aborted) setProducts(value);
+        const value = await catalogApi.products(
+          identity,
+          after,
+          {
+            signal: current.signal,
+          },
+          term,
+        );
+        if (!current.signal.aborted) {
+          setProducts(value);
+          setSearch(term);
+        }
       } else {
         const value = await catalogApi.categories(identity, after, {
           signal: current.signal,
@@ -244,6 +254,7 @@ export default function CatalogManager({
       ]);
       if (!current.signal.aborted) {
         setProducts(p);
+        setSearch("");
         setCategories(c);
         reset();
         setSuccess(true);
@@ -336,6 +347,13 @@ export default function CatalogManager({
           {kind === "products" ? "Nuevo producto" : "Nueva categoría"}
         </button>
       </div>
+      {kind === "products" && (
+        <ProductSearch
+          value={search}
+          disabled={busy || stage !== "closed"}
+          onSearch={(term) => void page("products", undefined, term)}
+        />
+      )}
       {message && (
         <p
           role={success ? "status" : "alert"}
@@ -549,7 +567,9 @@ export default function CatalogManager({
           {currentPage?.items.length === 0 && (
             <p>
               {kind === "products"
-                ? "Todavía no hay productos."
+                ? search
+                  ? "No se encontraron productos con ese nombre o SKU."
+                  : "Todavía no hay productos."
                 : "Todavía no hay categorías."}
             </p>
           )}

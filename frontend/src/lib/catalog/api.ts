@@ -135,10 +135,29 @@ async function create<T>(
     options,
   );
 }
+export function productSearchInput(value: string): string {
+  const text = value.trim();
+  if (
+    Array.from(text).length > 200 ||
+    !text.isWellFormed() ||
+    text.includes("\0")
+  )
+    throw new Error("Invalid search");
+  return text;
+}
+function searchQuery(value: string): string {
+  const text = productSearchInput(value);
+  return text ? `&q=${encodeURIComponent(text)}` : "";
+}
 export const catalogApi = {
-  products: (actor: string, after?: string, options: RequestOptions = {}) =>
+  products: (
+    actor: string,
+    after?: string,
+    options: RequestOptions = {},
+    search = "",
+  ) =>
     getJson(
-      `/catalog/products?limit=25${after ? `&after=${id(after)}` : ""}`,
+      `/catalog/products?limit=25${after ? `&after=${id(after)}` : ""}${searchQuery(search)}`,
       (value, status, headers) =>
         decodePage(value, status, headers, actor, decodeProduct, after),
       options,

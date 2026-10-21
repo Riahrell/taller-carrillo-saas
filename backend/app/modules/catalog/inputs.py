@@ -72,3 +72,21 @@ class CatalogPageQuery(BaseModel):
                 raise ValueError("Invalid page limit")
             return int(value)
         return value
+
+
+class ProductSearchQuery(CatalogPageQuery):
+    q: str | None = Field(default=None, max_length=200, strict=True)
+
+    @field_validator("q")
+    @classmethod
+    def clean_search(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if "\x00" in value:
+            raise ValueError("Invalid product search")
+        try:
+            value.encode("utf-8")
+        except UnicodeError:
+            raise ValueError("Invalid product search") from None
+        return value or None

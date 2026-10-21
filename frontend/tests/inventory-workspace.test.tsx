@@ -346,3 +346,60 @@ it("una entrada de cero unidades no llega a confirmación", async () => {
   ).not.toBeInTheDocument();
   expect(inventoryApi.record).not.toHaveBeenCalled();
 });
+it("busca productos de inventario sin conservar la ficha anterior al no encontrar resultados", async () => {
+  await open();
+  vi.mocked(catalogApi.products).mockResolvedValueOnce({
+    items: [],
+    next_after: null,
+  });
+  fireEvent.change(screen.getByLabelText("Buscar producto por nombre o SKU"), {
+    target: { value: "XT-77" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Buscar" }));
+  expect(
+    await screen.findByText(
+      "No se encontraron productos con ese nombre o SKU.",
+    ),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Filtro de aceite" }),
+  ).not.toBeInTheDocument();
+  expect(catalogApi.products).toHaveBeenLastCalledWith(
+    actor,
+    undefined,
+    expect.anything(),
+    "XT-77",
+  );
+  expect(inventoryApi.record).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Limpiar búsqueda" }));
+  expect(
+    await screen.findByRole("heading", { name: "Filtro de aceite" }),
+  ).toBeInTheDocument();
+  expect(catalogApi.products).toHaveBeenLastCalledWith(
+    actor,
+    undefined,
+    expect.anything(),
+    "",
+  );
+});
+it("conserva el filtro al volver al inicio de productos", async () => {
+  await open();
+  fireEvent.change(screen.getByLabelText("Buscar producto por nombre o SKU"), {
+    target: { value: "filtro" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Buscar" }));
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Inicio de productos" }),
+    ).not.toBeDisabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Inicio de productos" }));
+  await waitFor(() =>
+    expect(catalogApi.products).toHaveBeenLastCalledWith(
+      actor,
+      undefined,
+      expect.anything(),
+      "filtro",
+    ),
+  );
+});
