@@ -829,6 +829,7 @@ h1 span {
   padding: 0;
 }
 .inventory-history li {
+  overflow-wrap: anywhere;
   padding: 20px 0;
   border-bottom: 1px solid #e3e5de;
 }
@@ -1188,4 +1189,9 @@ h1 span {
     grid-template-columns: minmax(0, 1fr);
     gap: 6px;
   }
+}
+
+.catalog-manager,
+.inventory-manager {
+  overflow-anchor: none;
 }

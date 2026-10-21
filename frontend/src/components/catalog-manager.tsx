@@ -152,8 +152,6 @@ export default function CatalogManager({
     setMessage("");
     const current = new AbortController();
     controller.current = current;
-    if (collection === "products") setProducts(null);
-    else setCategories(null);
     try {
       if (collection === "products") {
         const value = await catalogApi.products(
@@ -571,83 +569,81 @@ export default function CatalogManager({
           </button>
         </section>
       )}
-      {stage === "closed" && (
-        <>
-          <h2 ref={heading} tabIndex={-1}>
+      <div inert={busy || stage !== "closed"} aria-busy={busy}>
+        <h2>
+          {kind === "products"
+            ? "Productos de esta empresa"
+            : "Categorías de esta empresa"}
+        </h2>
+        {currentPage?.items.length === 0 && (
+          <p>
             {kind === "products"
-              ? "Productos de esta empresa"
-              : "Categorías de esta empresa"}
-          </h2>
-          {currentPage?.items.length === 0 && (
-            <p>
-              {kind === "products"
-                ? search || categoryFilter
-                  ? "No se encontraron productos con esos filtros."
-                  : "Todavía no hay productos."
-                : "Todavía no hay categorías."}
-            </p>
-          )}
-          <ul className="catalog-list">
-            {currentPage?.items.map((item) => (
-              <li key={item.id}>
-                <div className="catalog-product-heading">
-                  {isProduct(item) && (
-                    <ProductThumbnail
-                      actor={identity}
-                      productId={item.id}
-                      name={item.name}
-                      onProblem={onProblem}
-                    />
-                  )}
-                  <div>
-                    <h3>{item.name}</h3>
-                    <span>{item.is_active ? "Activo" : "Inactivo"}</span>
-                  </div>
+              ? search || categoryFilter
+                ? "No se encontraron productos con esos filtros."
+                : "Todavía no hay productos."
+              : "Todavía no hay categorías."}
+          </p>
+        )}
+        <ul className="catalog-list">
+          {currentPage?.items.map((item) => (
+            <li key={item.id}>
+              <div className="catalog-product-heading">
+                {isProduct(item) && (
+                  <ProductThumbnail
+                    actor={identity}
+                    productId={item.id}
+                    name={item.name}
+                    onProblem={onProblem}
+                  />
+                )}
+                <div>
+                  <h3>{item.name}</h3>
+                  <span>{item.is_active ? "Activo" : "Inactivo"}</span>
                 </div>
-                {isProduct(item) && (
-                  <dl>
-                    <div>
-                      <dt>SKU</dt>
-                      <dd>{item.sku ?? "Sin SKU"}</dd>
-                    </div>
-                    <div>
-                      <dt>Precio de venta</dt>
-                      <dd>{displayPrice(item.price)}</dd>
-                    </div>
-                  </dl>
-                )}
-                {isProduct(item) && (
-                  <Link
-                    className="action secondary"
-                    href={`/inventario?producto=${item.id}`}
-                  >
-                    Ver inventario e imagen
-                    <span className="sr-only"> de {item.name}</span>
-                  </Link>
-                )}
-              </li>
-            ))}
-          </ul>
-          <div className="membership-pagination">
+              </div>
+              {isProduct(item) && (
+                <dl>
+                  <div>
+                    <dt>SKU</dt>
+                    <dd>{item.sku ?? "Sin SKU"}</dd>
+                  </div>
+                  <div>
+                    <dt>Precio de venta</dt>
+                    <dd>{displayPrice(item.price)}</dd>
+                  </div>
+                </dl>
+              )}
+              {isProduct(item) && (
+                <Link
+                  className="action secondary"
+                  href={`/inventario?producto=${item.id}`}
+                >
+                  Ver inventario e imagen
+                  <span className="sr-only"> de {item.name}</span>
+                </Link>
+              )}
+            </li>
+          ))}
+        </ul>
+        <div className="membership-pagination">
+          <button
+            className="action"
+            disabled={busy}
+            onClick={() => void page(kind)}
+          >
+            Volver al principio
+          </button>
+          {currentPage?.next_after && (
             <button
               className="action"
               disabled={busy}
-              onClick={() => void page(kind)}
+              onClick={() => void page(kind, currentPage.next_after!)}
             >
-              Volver al principio
+              Siguiente página
             </button>
-            {currentPage?.next_after && (
-              <button
-                className="action"
-                disabled={busy}
-                onClick={() => void page(kind, currentPage.next_after!)}
-              >
-                Siguiente página
-              </button>
-            )}
-          </div>
-        </>
-      )}
+          )}
+        </div>
+      </div>
     </section>
   );
 }

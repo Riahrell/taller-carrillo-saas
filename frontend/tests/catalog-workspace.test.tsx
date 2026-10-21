@@ -368,3 +368,28 @@ it("combina categoría y texto en catálogo y limpia ambos filtros", async () =>
     ),
   );
 });
+
+it("conserva la lista durante la consulta y al abrir el formulario", async () => {
+  await open();
+  let resolve!: (value: { items: Product[]; next_after: null }) => void;
+  vi.mocked(catalogApi.products).mockReturnValueOnce(
+    new Promise((done) => {
+      resolve = done;
+    }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Volver al principio" }));
+  const item = screen.getByText("Filtro existente");
+  expect(item).toBeInTheDocument();
+  expect(item.closest("[inert]")).not.toBeNull();
+  await act(async () => resolve({ items: [product], next_after: null }));
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Nuevo producto" }),
+    ).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Nuevo producto" }));
+  expect(screen.getByText("Filtro existente")).toBeInTheDocument();
+  expect(
+    screen.getByText("Filtro existente").closest("[inert]"),
+  ).not.toBeNull();
+});

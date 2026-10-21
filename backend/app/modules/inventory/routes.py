@@ -10,7 +10,12 @@ from pydantic import BaseModel, SecretStr
 from app.modules.access.http_context import expected_membership
 from app.modules.access.http_security import RequestRejected
 from app.modules.access.membership import AccessDenied
-from app.modules.inventory.inputs import CountPageQuery, ManualStockInput, PhysicalCount
+from app.modules.inventory.inputs import (
+    CountPageQuery,
+    HistoryPageQuery,
+    ManualStockInput,
+    PhysicalCount,
+)
 
 router = APIRouter(prefix="/inventory", tags=["inventory administration"])
 NO_STORE = {"Cache-Control": "no-store"}
@@ -116,6 +121,21 @@ def manual_history(
     request.app.state.http_security.verify_browser_read(request.headers)
     return _response(
         request.app.state.inventory.list_manual(
+            _token(request, pagination=True),
+            product_id=product_id,
+            query=query,
+            expected_actor=expected_membership(request),
+        )
+    )
+
+
+@router.get("/products/{product_id}/history")
+def product_history(
+    product_id: UUID, request: Request, query: Annotated[HistoryPageQuery, Query()]
+):
+    request.app.state.http_security.verify_browser_read(request.headers)
+    return _response(
+        request.app.state.inventory.list_history(
             _token(request, pagination=True),
             product_id=product_id,
             query=query,

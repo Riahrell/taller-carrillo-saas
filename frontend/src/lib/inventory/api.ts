@@ -36,6 +36,22 @@ export type ManualInput = {
   unit_cost: string | null;
 };
 export type ManualMovement = Count & { direction: "IN" | "OUT" };
+export type HistoryEntry = {
+  id: string;
+  product_id: string;
+  source: "COUNT" | "MANUAL" | "RECEIPT";
+  direction: "IN" | "OUT" | null;
+  source_document_id: string;
+  recorded_by: string;
+  reason: string | null;
+  before_quantity: string;
+  after_quantity: string;
+  before_value: string;
+  after_value: string;
+  quantity_delta: string;
+  value_delta: string;
+  created_at: string;
+};
 export type PendingCount = { key: string; data: CountInput | ManualInput };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -256,7 +272,140 @@ function decodePage(
     throw new Error("Invalid cursor");
   return { items, next_after: next };
 }
+function historyCursor(value: unknown): string {
+  if (typeof value !== "string") throw new Error("Invalid cursor");
+  const [source, key, extra] = value.split(":");
+  if (!["COUNT", "MANUAL", "RECEIPT"].includes(source) || extra !== undefined)
+    throw new Error("Invalid cursor");
+  return `${source}:${id(key)}`;
+}
+export function decodeHistory(value: unknown, product: string): HistoryEntry {
+  const row = object(value, [
+    "id",
+    "product_id",
+    "source",
+    "direction",
+    "source_document_id",
+    "recorded_by",
+    "reason",
+    "before_quantity",
+    "after_quantity",
+    "before_value",
+    "after_value",
+    "quantity_delta",
+    "value_delta",
+    "created_at",
+  ]);
+  const source = row.source;
+  if (source !== "COUNT" && source !== "MANUAL" && source !== "RECEIPT")
+    throw new Error("Invalid source");
+  if (id(row.product_id) !== id(product)) throw new Error("Changed product");
+  const key = id(row.id),
+    documentId = id(row.source_document_id);
+  if (source !== "RECEIPT" && key !== documentId)
+    throw new Error("Changed source");
+  const direction = row.direction;
+  if (
+    source === "MANUAL"
+      ? direction !== "IN" && direction !== "OUT"
+      : direction !== null
+  )
+    throw new Error("Invalid direction");
+  if (
+    typeof row.recorded_by !== "string" ||
+    !row.recorded_by.trim() ||
+    row.recorded_by.length > 254 ||
+    row.recorded_by.includes("\0")
+  )
+    throw new Error("Invalid actor");
+  const reason = row.reason;
+  if (
+    source === "RECEIPT"
+      ? reason !== null
+      : typeof reason !== "string" || reasonInput(reason) !== reason
+  )
+    throw new Error("Invalid reason");
+  const before_quantity = decimal(row.before_quantity, 3, 15),
+    after_quantity = decimal(row.after_quantity, 3, 15);
+  const before_value = decimal(row.before_value, 6, 22),
+    after_value = decimal(row.after_value, 6, 22);
+  const quantity_delta = decimal(row.quantity_delta, 3, 15, true),
+    value_delta = decimal(row.value_delta, 6, 22, true);
+  const dq = scaled(quantity_delta),
+    dv = scaled(value_delta);
+  if (
+    scaled(after_quantity) - scaled(before_quantity) !== dq ||
+    scaled(after_value) - scaled(before_value) !== dv ||
+    (scaled(before_quantity) === 0n && scaled(before_value) !== 0n) ||
+    (scaled(after_quantity) === 0n && scaled(after_value) !== 0n) ||
+    (dq === 0n && dv !== 0n) ||
+    (dq > 0n && dv < 0n) ||
+    (dq < 0n && dv > 0n) ||
+    ((source === "RECEIPT" || direction === "IN") && dq <= 0n) ||
+    (direction === "OUT" && dq >= 0n)
+  )
+    throw new Error("Invalid stock evidence");
+  if (typeof row.created_at !== "string") throw new Error("Invalid time");
+  timeKey(row.created_at);
+  return {
+    id: key,
+    product_id: product,
+    source,
+    direction: direction as HistoryEntry["direction"],
+    source_document_id: documentId,
+    recorded_by: row.recorded_by,
+    reason: reason as string | null,
+    before_quantity,
+    after_quantity,
+    before_value,
+    after_value,
+    quantity_delta,
+    value_delta,
+    created_at: row.created_at,
+  };
+}
+function decodeHistoryPage(
+  value: unknown,
+  product: string,
+  after?: HistoryEntry,
+): Page<HistoryEntry> {
+  const page = object(value, ["items", "next_after"]);
+  if (!Array.isArray(page.items) || page.items.length > 25)
+    throw new Error("Invalid page");
+  const items = page.items.map((row) => decodeHistory(row, product));
+  const order = (row: HistoryEntry) =>
+    `${timeKey(row.created_at)}|${row.source}|${row.id}`;
+  let previous = after ? order(after) : null;
+  for (const row of items) {
+    const current = order(row);
+    if (previous !== null && current >= previous)
+      throw new Error("Invalid order");
+    previous = current;
+  }
+  const next = page.next_after === null ? null : historyCursor(page.next_after);
+  const last = items.at(-1);
+  if (
+    next !== null &&
+    (items.length !== 25 || !last || next !== `${last.source}:${last.id}`)
+  )
+    throw new Error("Invalid cursor");
+  return { items, next_after: next };
+}
 export const inventoryApi = {
+  history: (
+    actor: string,
+    product: string,
+    after?: HistoryEntry,
+    options: RequestOptions = {},
+  ) =>
+    getJson(
+      `/inventory/products/${id(product)}/history?limit=25${after ? `&after=${encodeURIComponent(historyCursor(`${after.source}:${after.id}`))}` : ""}`,
+      (value, status, headers) => {
+        bound(status, headers, actor);
+        return decodeHistoryPage(value, product, after);
+      },
+      options,
+    ),
   balance: (actor: string, product: string, options: RequestOptions = {}) =>
     getJson(
       `/inventory/products/${id(product)}/balance`,

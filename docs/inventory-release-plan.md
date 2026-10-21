@@ -19,7 +19,7 @@ referencia de requisitos; no autorizan accesos externos ni despliegues por sí s
 | Existencias | Saldo, costo promedio, conteos y entradas/salidas manuales con cantidad positiva | Validación manual del propietario; reversas aún pendientes |
 | Recepción de compra | API y transacción de recepción | Pantalla de proveedores/compra/recepción |
 | Salida por venta u orden | No integrada | Necesita origen real y su módulo; no basta un campo de texto que diga venta |
-| Historial | Conteos y entradas/salidas manuales en secciones separadas | Historial unificado con recepciones, origen y responsable visible |
+| Historial | Historial unificado de ajustes, entradas/salidas manuales y recepciones, con origen, responsable y paginación | Validación manual del propietario; ventas/órdenes y reversas dependen de sus módulos |
 | Stock bajo | No configurado | Definir y configurar umbral por producto, sin inventar valores |
 | Acceso | Email de seis caracteres, navegador 15 días y sesión opaca; regresión de CI cerrada en 3.28 | Registro de empleados y aprobación/permisos pendientes |
 | Operación | Compose local, configuración externa de S3/correo | Preparar entorno de pruebas separado, HTTPS, backup/restauración y despliegue revisable |
@@ -92,3 +92,11 @@ No reemplaza el trabajo pendiente de historial unificado, edición y stock bajo.
 
 Entrega 3.31 agrega el selector de categoría al buscador de Inventario y Catálogo.
 Todas las categorías elimina ese filtro; Limpiar búsqueda elimina texto y categoría.
+
+Entrega 3.35 unifica el historial privado por producto, incluyendo ajustes sin
+cambio y recepciones reales existentes. Muestra responsable, fecha y referencia
+del origen, con paginación conjunta. No agrega ventas, órdenes ni reversas.
+También conserva la lista del catálogo durante consultas y formularios para
+reducir saltos de desplazamiento. La siguiente tarea es edición y estado del
+producto; continúan pendientes stock bajo, reversas, registro/permisos y cierre
+operativo del despliegue. La pantalla de compras/recepciones sigue pendiente.

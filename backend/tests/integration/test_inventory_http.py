@@ -516,3 +516,60 @@ def test_manual_write_rejects_client_authority_and_invalid_deltas(inventory_web,
     )
     assert client.get(path(state), headers=READ).json()["quantity"] == "0.000"
     assert client.post("/inventory/movements", json=data).status_code == 403
+
+
+def test_unified_history_http_contract(inventory_web):
+    client, state, policy = inventory_web
+    response = write(client, state, policy)
+    assert response.status_code == 200
+    evidence = response.json()
+    response = client.get(path(state, "history"), headers=READ)
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["X-Access-Membership"] == str(state["membership"])
+    row = response.json()["items"][0]
+    assert row["source"] == "COUNT" and row["id"] == evidence["id"]
+    assert row["source_document_id"] == evidence["id"]
+    assert "@" in row["recorded_by"]
+    assert set(row) == {
+        "id",
+        "product_id",
+        "source",
+        "direction",
+        "source_document_id",
+        "recorded_by",
+        "reason",
+        "before_quantity",
+        "after_quantity",
+        "before_value",
+        "after_value",
+        "quantity_delta",
+        "value_delta",
+        "created_at",
+    }
+    assert client.get(path(state, "history")).status_code == 403
+    assert (
+        client.get(
+            path(state, "history"),
+            headers=READ | {"X-Expected-Membership": str(state["foreign_membership"])},
+        ).status_code
+        == 403
+    )
+    for query in (
+        "limit=0",
+        "limit=101",
+        "after=invalid",
+        "after=COUNT:" + str(uuid4()).upper(),
+        "tenant_id=" + str(state["other"]),
+        "limit=1&limit=2",
+    ):
+        assert (
+            client.get(path(state, "history") + "?" + query, headers=READ).status_code
+            == 422
+        )
+    assert (
+        client.get(
+            f"/inventory/products/{state['foreign_product']}/history", headers=READ
+        ).status_code
+        == 403
+    )

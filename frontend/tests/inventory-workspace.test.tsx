@@ -13,7 +13,14 @@ import { ApiError } from "@/lib/api/client";
 import { catalogApi } from "@/lib/catalog/api";
 import { productImages } from "@/lib/catalog/images";
 import { inventoryApi } from "@/lib/inventory/api";
-import { actor, context, product, empty, evidence } from "./inventory-data";
+import {
+  actor,
+  context,
+  product,
+  empty,
+  evidence,
+  historyEvidence,
+} from "./inventory-data";
 import { confirmIdentity } from "./confirm-identity";
 
 beforeEach(() => {
@@ -40,11 +47,7 @@ beforeEach(() => {
     next_after: null,
   });
   vi.spyOn(inventoryApi, "balance").mockResolvedValue(empty);
-  vi.spyOn(inventoryApi, "manuals").mockResolvedValue({
-    items: [],
-    next_after: null,
-  });
-  vi.spyOn(inventoryApi, "counts").mockResolvedValue({
+  vi.spyOn(inventoryApi, "history").mockResolvedValue({
     items: [],
     next_after: null,
   });
@@ -460,4 +463,33 @@ it("aplica categoría en inventario y conserva el filtro al paginar", async () =
     ),
   );
   expect(inventoryApi.record).not.toHaveBeenCalled();
+});
+
+it("muestra un solo historial con responsable, origen y paginación", async () => {
+  const row = historyEvidence;
+  vi.mocked(inventoryApi.history).mockResolvedValue({
+    items: [row],
+    next_after: `COUNT:${row.id}`,
+  });
+  await open();
+  expect(
+    screen.getByRole("heading", { name: "Historial de inventario" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(/Registrado por: admin@example.test/),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Entradas y salidas manuales" }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Movimientos anteriores" }),
+  );
+  await waitFor(() =>
+    expect(inventoryApi.history).toHaveBeenCalledWith(
+      actor,
+      product.id,
+      row,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    ),
+  );
 });

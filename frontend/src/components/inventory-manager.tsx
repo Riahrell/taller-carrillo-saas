@@ -29,11 +29,10 @@ import {
   reasonInput,
   displayDecimal,
   type Balance,
-  type Count,
   type CountInput,
   type PendingCount,
   type ManualInput,
-  type ManualMovement,
+  type HistoryEntry,
 } from "@/lib/inventory/api";
 
 export type ScopedPending = { session: SessionContext; command: PendingCount };
@@ -51,8 +50,7 @@ export function sameInventorySession(a: SessionContext, b: SessionContext) {
 type Selection = {
   product: Product;
   balance: Balance;
-  history: Page<Count>;
-  manuals: Page<ManualMovement>;
+  history: Page<HistoryEntry>;
   category: string;
 };
 async function selection(
@@ -60,11 +58,10 @@ async function selection(
   target: string,
   signal: AbortSignal,
 ): Promise<Selection> {
-  const [product, balance, history, manuals] = await Promise.all([
+  const [product, balance, history] = await Promise.all([
     catalogApi.detail(actor, target, { signal }),
     inventoryApi.balance(actor, target, { signal }),
-    inventoryApi.counts(actor, target, undefined, { signal }),
-    inventoryApi.manuals(actor, target, undefined, { signal }),
+    inventoryApi.history(actor, target, undefined, { signal }),
   ]);
   let category = "Sin categoría";
   if (product.category_id !== null) {
@@ -82,7 +79,7 @@ async function selection(
       after = page.next_after;
     } while (!signal.aborted);
   }
-  return { product, balance, history, manuals, category };
+  return { product, balance, history, category };
 }
 type Props = {
   initialImagePending: ScopedImagePending | null;
@@ -315,28 +312,16 @@ export default function InventoryManager({
       }
     });
   }
-  async function historyPage(after?: Count) {
+  async function historyPage(after?: HistoryEntry) {
     if (!selected) return;
     await read(async (signal) => {
-      const history = await inventoryApi.counts(
+      const history = await inventoryApi.history(
         actor,
         selected.product.id,
         after,
         { signal },
       );
       if (!signal.aborted) setSelected({ ...selected, history });
-    });
-  }
-  async function manualHistoryPage(after?: Count) {
-    if (!selected) return;
-    await read(async (signal) => {
-      const manuals = await inventoryApi.manuals(
-        actor,
-        selected.product.id,
-        after,
-        { signal },
-      );
-      if (!signal.aborted) setSelected({ ...selected, manuals });
     });
   }
   let needsCost = mode === "IN";
@@ -890,71 +875,40 @@ export default function InventoryManager({
               </div>
             )}
             <section
-              className="inventory-history"
-              aria-label="Entradas y salidas manuales"
-            >
-              <h3>Entradas y salidas manuales</h3>
-              {selected.manuals.items.length === 0 ? (
-                <p>Todavía no hay entradas o salidas manuales.</p>
-              ) : (
-                <ol>
-                  {selected.manuals.items.map((item) => (
-                    <li key={item.id}>
-                      <strong>
-                        {item.direction === "IN" ? "Entrada" : "Salida"} ·{" "}
-                        {date.format(new Date(item.created_at))}
-                      </strong>
-                      <p>{item.reason}</p>
-                      <p>
-                        Existencias: {displayDecimal(item.before_quantity)} →{" "}
-                        {displayDecimal(item.after_quantity)}
-                      </p>
-                      <p>
-                        Cambio de unidades:{" "}
-                        {displayDecimal(item.quantity_delta)} · Cambio de valor:{" "}
-                        {displayDecimal(item.value_delta, 2)} USD
-                      </p>
-                    </li>
-                  ))}
-                </ol>
-              )}
-              <div className="catalog-pagination">
-                <button
-                  className="action"
-                  disabled={frozen}
-                  onClick={() => void manualHistoryPage()}
-                >
-                  Entradas y salidas recientes
-                </button>
-                <button
-                  className="action"
-                  disabled={frozen || !selected.manuals.next_after}
-                  onClick={() =>
-                    void manualHistoryPage(selected.manuals.items.at(-1))
-                  }
-                >
-                  Movimientos anteriores
-                </button>
-              </div>
-            </section>
-            <section
-              aria-label="Historial de actualizaciones"
+              aria-label="Historial de inventario"
               className="inventory-history"
             >
-              <h3>Historial de actualizaciones</h3>
+              <h3>Historial de inventario</h3>
               <p>
-                Hora de El Salvador. Aquí aparecen los ajustes de existencias,
-                incluso cuando la cantidad no cambió. Las compras y ventas no se
-                muestran en este historial.
+                Hora de El Salvador. Entradas, salidas, ajustes y recepciones de
+                compra, del más reciente al más antiguo. Incluye ajustes sin
+                cambio de existencias.
               </p>
               {selected.history.items.length === 0 ? (
-                <p>Todavía no hay actualizaciones registradas.</p>
+                <p>Todavía no hay movimientos registrados.</p>
               ) : (
                 <ol>
                   {selected.history.items.map((item) => (
-                    <li key={item.id}>
-                      <strong>{date.format(new Date(item.created_at))}</strong>
-                      <p>{item.reason}</p>
+                    <li key={`${item.source}:${item.id}`}>
+                      <strong>
+                        {item.source === "COUNT"
+                          ? "Ajuste de existencias"
+                          : item.source === "RECEIPT"
+                            ? "Recepción de compra"
+                            : item.direction === "IN"
+                              ? "Entrada manual"
+                              : "Salida manual"}{" "}
+                        · {date.format(new Date(item.created_at))}
+                      </strong>
+                      <p>Registrado por: {item.recorded_by}</p>
+                      {item.reason && <p>{item.reason}</p>}
+                      <details>
+                        <summary>Referencia del origen</summary>
+                        <p>
+                          {item.source === "RECEIPT" ? "Compra" : "Registro"}:{" "}
+                          {item.source_document_id}
+                        </p>
+                      </details>
                       <dl>
                         <div>
                           <dt>Existencias anteriores → actuales</dt>
@@ -979,21 +933,19 @@ export default function InventoryManager({
               <div className="catalog-pagination">
                 <button
                   className="action"
-                  disabled={busy || stage !== "closed"}
+                  disabled={frozen}
                   onClick={() => void historyPage()}
                 >
-                  Inicio del historial
+                  Movimientos recientes
                 </button>
                 <button
                   className="action"
-                  disabled={
-                    busy || stage !== "closed" || !selected.history.next_after
-                  }
+                  disabled={frozen || !selected.history.next_after}
                   onClick={() =>
                     void historyPage(selected.history.items.at(-1))
                   }
                 >
-                  Actualizaciones anteriores
+                  Movimientos anteriores
                 </button>
               </div>
             </section>

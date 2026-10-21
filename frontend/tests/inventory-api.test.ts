@@ -7,7 +7,14 @@ import {
   costInput,
   displayDecimal,
 } from "@/lib/inventory/api";
-import { actor, target, empty, command, evidence } from "./inventory-data";
+import {
+  actor,
+  target,
+  empty,
+  command,
+  evidence,
+  historyEvidence as historyRow,
+} from "./inventory-data";
 
 const proof = `v1.1999999999.${"a".repeat(43)}.${"b".repeat(64)}`;
 const headers = () => new Headers({ "X-Access-Membership": actor });
@@ -223,4 +230,102 @@ it("registra entrada con costo explícito aunque ya haya existencias", async () 
     reason: evidence.reason,
     unit_cost: "5.000000",
   });
+});
+
+it("combina orígenes con la misma fecha y UUID sin perder registros", async () => {
+  const rows = [
+    {
+      ...historyRow,
+      source: "RECEIPT",
+      source_document_id: actor,
+      reason: null,
+    },
+    { ...historyRow, source: "MANUAL", direction: "IN" },
+    historyRow,
+  ];
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json(
+          { items: rows, next_after: null },
+          { headers: headers() },
+        ),
+      ),
+  );
+  await expect(inventoryApi.history(actor, target)).resolves.toEqual({
+    items: rows,
+    next_after: null,
+  });
+});
+it.each([
+  { product_id: actor },
+  { quantity_delta: "1.000" },
+  { source: "SALE" },
+  { source: "RECEIPT" },
+  { direction: "OUT" },
+  { recorded_by: "" },
+  { source_document_id: actor },
+  { reason: null },
+  { tenant_id: actor },
+])("rechaza historial incoherente: %o", async (change) => {
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json(
+          { items: [{ ...historyRow, ...change }], next_after: null },
+          { headers: headers() },
+        ),
+      ),
+  );
+  await expect(inventoryApi.history(actor, target)).rejects.toMatchObject({
+    kind: "invalid-response",
+  });
+});
+it("liga el cursor al tipo de origen y rechaza páginas repetidas", async () => {
+  const after = { ...historyRow, source: "COUNT" as const, direction: null };
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(
+      Response.json(
+        { items: [after], next_after: null },
+        { headers: headers() },
+      ),
+    );
+  vi.stubGlobal("fetch", fetch);
+  await expect(
+    inventoryApi.history(actor, target, after),
+  ).rejects.toMatchObject({ kind: "invalid-response" });
+  expect(String(fetch.mock.calls[0][0])).toContain(
+    `after=COUNT%3A${evidence.id}`,
+  );
+});
+
+it("acepta una página completa y su cursor de origen sin duplicar la frontera", async () => {
+  const items = Array.from({ length: 25 }, (_, index) => {
+    const id = `00000000-0000-4000-8000-${String(25 - index).padStart(12, "0")}`;
+    return { ...historyRow, id, source_document_id: id };
+  });
+  const last = items.at(-1)!;
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(
+      Response.json(
+        { items, next_after: `COUNT:${last.id}` },
+        { headers: headers() },
+      ),
+    )
+    .mockResolvedValueOnce(
+      Response.json({ items: [], next_after: null }, { headers: headers() }),
+    );
+  vi.stubGlobal("fetch", fetch);
+  const page = await inventoryApi.history(actor, target);
+  expect(page.items).toHaveLength(25);
+  await expect(
+    inventoryApi.history(actor, target, page.items.at(-1)),
+  ).resolves.toEqual({ items: [], next_after: null });
+  expect(String(fetch.mock.calls[1][0])).toContain(`after=COUNT%3A${last.id}`);
 });

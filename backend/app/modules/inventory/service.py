@@ -285,6 +285,17 @@ class InventoryAdministrator:
             expected_actor=expected_actor,
         )
 
+    def list_history(self, token, *, product_id, query, expected_actor=None):
+        from app.modules.inventory.history import list_history
+
+        return list_history(
+            self,
+            token,
+            product_id=product_id,
+            query=query,
+            expected_actor=expected_actor,
+        )
+
     @staticmethod
     def _require_product(session: Session, tenant_id: UUID, product_id: UUID):
         if not isinstance(product_id, UUID):
