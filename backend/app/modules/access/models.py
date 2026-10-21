@@ -1196,3 +1196,6 @@ from app.modules.access import email_login_models as _email_login_models  # noqa
 
 # Register invitation tables with the same metadata used by migrations.
 from app.modules.access import employee_invitation_models as employee_invitation_models  # noqa: E402, F401
+from app.modules.access import (  # noqa: E402
+    employee_registration_models as _employee_registration_models,  # noqa: F401
+)

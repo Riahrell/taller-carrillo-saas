@@ -1,5 +1,8 @@
 # Invitaciones privadas de empleados — 3.40
 
+Estado posterior: la entrega 3.41 conecta la UI y el registro/aprobación descritos
+en `employee-registration-contract.md`. El alcance histórico 3.40 sigue abajo.
+
 Primera entrega del registro autónomo: API administrativa de preparación y
 revocación de invitaciones, ligada a un correo y a la empresa de la sesión.
 Todavía no hay pantalla ni consumo público de la invitación. No crea usuarios,

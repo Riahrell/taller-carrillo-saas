@@ -33,6 +33,7 @@ COOLDOWN = timedelta(seconds=60)
 
 
 class MailPurpose(StrEnum):
+    EMPLOYEE_REGISTRATION = "employee_registration"
     EMAIL_LOGIN = "email_login"
     ENROLLMENT = "enrollment"
     PASSWORD_RESET = "password_reset"
@@ -74,6 +75,9 @@ def _aad(
     return (
         {
             MailPurpose.EMAIL_LOGIN: b"carrillo:email-login-mail:v1\x00",
+            MailPurpose.EMPLOYEE_REGISTRATION: (
+                b"carrillo:employee-registration-mail:v1\x00"
+            ),
             MailPurpose.ENROLLMENT: b"carrillo:enrollment-mail:v1\x00",
             MailPurpose.PASSWORD_RESET: b"carrillo:password-reset-mail:v1\x00",
             MailPurpose.MAILBOX_VERIFICATION: (
@@ -145,6 +149,17 @@ class MailProtection:
         return hmac.new(
             self._quota_key.get_secret_value(),
             b"carrillo:email-login-code:v1\x00"
+            + challenge_id.bytes
+            + code.encode("ascii"),
+            hashlib.sha256,
+        ).hexdigest()
+
+    def registration_code_hash(self, challenge_id: UUID, code: str) -> str:
+        if self.purpose != MailPurpose.EMPLOYEE_REGISTRATION:
+            raise MailProtectionError("Invalid code purpose")
+        return hmac.new(
+            self._quota_key.get_secret_value(),
+            b"carrillo:employee-registration-code:v1\x00"
             + challenge_id.bytes
             + code.encode("ascii"),
             hashlib.sha256,
@@ -236,6 +251,7 @@ class MailProtection:
             MailPurpose.ENROLLMENT,
             MailPurpose.EMAIL_LOGIN,
             MailPurpose.MAILBOX_VERIFICATION,
+            MailPurpose.EMPLOYEE_REGISTRATION,
         } or not isinstance(client_ip, (IPv4Address, IPv6Address)):
             raise MailProtectionError("Mail protection unavailable")
         if isinstance(client_ip, IPv6Address) and client_ip.ipv4_mapped is not None:

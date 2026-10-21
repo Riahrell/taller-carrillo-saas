@@ -251,3 +251,12 @@ Crear y revocar exigen además identidad confirmada y contexto esperado. El cód
 no es sesión ni autorización comercial. Esta entrega no permite al empleado
 registrarse todavía ni concede consultas o escrituras de inventario.
 Contrato: `employee-invitations-contract.md`.
+
+## Incorporación de empleados 3.41
+
+El registro por invitación no crea membresía ni sesión. Solo después del código
+de correo correcto aparece una solicitud pendiente. El administrador de esa
+empresa puede aprobarla, creando role=read_only fijado por servidor. No concede
+módulos ni inventario. La próxima entrega debe aplicar concesiones específicas
+y DTO operativos antes de abrir esas rutas a empleados. Cuentas existentes no
+se vinculan por conocer su correo. Ver `employee-registration-contract.md`.

@@ -5,6 +5,7 @@ import { sameContext } from "@/lib/access/same-context";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { accessApi, type SessionContext } from "@/lib/access/api";
 import { ApiError } from "@/lib/api/client";
+import EmployeeManager from "@/components/employee-manager";
 import MembershipManager from "@/components/membership-manager";
 import MembershipCreation from "@/components/membership-creation";
 import IdentityConfirmation from "@/components/identity-confirmation";
@@ -38,7 +39,7 @@ async function load(signal: AbortSignal): Promise<View> {
 export default function MembershipWorkspace({
   mode = "manage",
 }: {
-  mode?: "manage" | "create";
+  mode?: "manage" | "create" | "employees";
 }) {
   const [view, setView] = useState<View>({ kind: "checking" });
   const [paused, setPaused] = useState(true);
@@ -162,14 +163,20 @@ export default function MembershipWorkspace({
     <main id="contenido" className="memberships-workspace" tabIndex={-1}>
       <nav aria-label="Navegación">
         <Link
-          href={mode === "create" ? "/membresias" : "/"}
+          href={mode !== "manage" ? "/membresias" : "/"}
           className="text-action"
         >
-          {mode === "create" ? "← Volver a membresías" : "← Volver al inicio"}
+          {mode !== "manage" ? "← Volver a membresías" : "← Volver al inicio"}
         </Link>
       </nav>
       <p className="eyebrow">PERSONAL Y ACCESOS</p>
-      <h1>{mode === "create" ? "Nuevo acceso" : "Membresías"}</h1>
+      <h1>
+        {mode === "create"
+          ? "Nuevo acceso"
+          : mode === "employees"
+            ? "Empleados"
+            : "Membresías"}
+      </h1>
       {view.kind === "checking" && <p role="status">Comprobando acceso…</p>}
       {view.kind === "blocked" && (
         <section className="membership-notice">
@@ -193,6 +200,13 @@ export default function MembershipWorkspace({
           <p className="membership-company">
             {view.session.tenant_name} <span>· Administrador</span>
           </p>
+          {mode === "manage" && view.kind === "active" && (
+            <p>
+              <Link href="/empleados" className="text-action">
+                Invitaciones y solicitudes de empleados
+              </Link>
+            </p>
+          )}
           {view.kind === "confirm" ? (
             <IdentityConfirmation
               session={view.session}
@@ -202,6 +216,14 @@ export default function MembershipWorkspace({
               onConfirmed={(remaining) =>
                 setView({ kind: "active", session: view.session, remaining })
               }
+            />
+          ) : mode === "employees" ? (
+            <EmployeeManager
+              key={`${view.session.user_id}:${view.session.tenant_id}:${view.session.membership_id}`}
+              session={view.session}
+              onProblem={problem}
+              onWriting={onWriting}
+              onChanged={announce}
             />
           ) : mode === "create" ? (
             <MembershipCreation

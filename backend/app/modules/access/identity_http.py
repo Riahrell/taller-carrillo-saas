@@ -81,6 +81,11 @@ class IdentityAccess:
             from app.modules.access.email_login import EmailLogin
 
             self.email_login = EmailLogin(engine, self.mail[MailPurpose.EMAIL_LOGIN])
+            from app.modules.access.employee_registration import EmployeeRegistrations
+
+            self.employee_registration = EmployeeRegistrations(
+                engine, self.mail[MailPurpose.EMPLOYEE_REGISTRATION]
+            )
             self.verifier = MfaVerifier(engine, keyring=self.keyring)
             self.enrollment_mail = EnrollmentEmailService(
                 engine, protection=self.mail[MailPurpose.ENROLLMENT]

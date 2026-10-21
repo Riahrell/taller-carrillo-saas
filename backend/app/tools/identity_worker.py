@@ -73,6 +73,7 @@ def main():
         while not stopping:
             try:
                 identity.email_login.dispatch_one(transport)
+                identity.employee_registration.dispatch_one(transport)
                 identity.reset_inbox.process_one()
                 enrollment.run_one()
                 dispatcher.dispatch_one()

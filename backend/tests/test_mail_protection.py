@@ -8,7 +8,11 @@ from uuid import uuid4
 import pytest
 from pydantic import SecretBytes, SecretStr
 
-from app.modules.access.email_outbox import MailProtection, MailProtectionError
+from app.modules.access.email_outbox import (
+    MailProtection,
+    MailProtectionError,
+    MailPurpose,
+)
 
 
 @pytest.fixture
@@ -84,3 +88,46 @@ def test_mail_keys_have_no_defaults_and_distinct_quota_key(crypto, case):
         quota = keys["old"]
     with pytest.raises(MailProtectionError):
         MailProtection(keys, active_key_id=active, quota_key=quota)
+
+
+@pytest.mark.parametrize("purpose", list(MailPurpose))
+def test_each_purpose_has_separate_authenticated_envelope(crypto, purpose):
+    from app.modules.access.email_outbox import MailPurpose
+
+    _, _, keys, quota, context, recipient, token, _ = crypto
+    selected = MailProtection(
+        keys, active_key_id="new", quota_key=quota, purpose=purpose
+    )
+    envelope = selected.encrypt(recipient=recipient, token=token, **context)
+    assert selected.decrypt(envelope, **context).token == token
+    other = MailProtection(
+        keys,
+        active_key_id="new",
+        quota_key=quota,
+        purpose=MailPurpose.PASSWORD_RESET
+        if purpose != MailPurpose.PASSWORD_RESET
+        else MailPurpose.EMAIL_LOGIN,
+    )
+    with pytest.raises(MailProtectionError):
+        other.decrypt(envelope, **context)
+
+
+def test_registration_code_hash_is_separate_from_login_and_has_shared_ip_quota(crypto):
+    from app.modules.access.email_outbox import MailPurpose
+
+    _, _, keys, quota, context, _, _, _ = crypto
+    registration = MailProtection(
+        keys,
+        active_key_id="new",
+        quota_key=quota,
+        purpose=MailPurpose.EMPLOYEE_REGISTRATION,
+    )
+    login = MailProtection(
+        keys, active_key_id="new", quota_key=quota, purpose=MailPurpose.EMAIL_LOGIN
+    )
+    assert registration.registration_code_hash(
+        context["challenge_id"], "ABC234"
+    ) != login.login_code_hash(context["challenge_id"], "ABC234")
+    assert registration.scopes(
+        context["user_id"], ip_address("192.0.2.50")
+    ) == login.scopes(context["user_id"], ip_address("192.0.2.50"))

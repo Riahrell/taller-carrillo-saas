@@ -13,7 +13,7 @@ administrador de su empresa autoriza si puede modificar inventario.
 - El empleado no puede elegir un rol privilegiado, aprobarse ni consultar otras empresas.
 - Revocar permisos debe impedir la siguiente escritura, incluso con una sesión abierta.
 
-## Diseño propuesto, pendiente de implementación
+## Diseño e integración por entregas
 
 Usar una invitación o referencia opaca para dirigir la solicitud a una empresa,
 sin publicar un listado de empresas afiliadas. Mantener separadas la identidad,
@@ -35,10 +35,16 @@ mostrará claramente el estado pendiente y las acciones autorizadas.
 5. La revocación se aplica sin esperar un nuevo inicio de sesión.
 6. La cuenta no enumera empresas ni se concede permisos a sí misma.
 
-Estado: el registro autónomo todavía no está implementado; la preparación
-privada de invitaciones ya está disponible en backend, según el alcance inferior.
+Estado actual: registro de cuentas nuevas por invitación, verificación del correo
+y aprobación administrativa implementados en 3.41. Concesiones de inventario,
+vinculación de cuentas existentes y cierre operativo siguen pendientes.
 
 Entrega 3.40: preparación/listado/revocación privados de invitaciones por correo,
 con vigencia, código guardado solo como hash y evidencia transaccional. Contrato:
 `employee-invitations-contract.md`. No hay todavía consumo público, pantalla de
 registro o aprobación de solicitudes ni concesiones de inventario para empleados.
+
+Entrega 3.41 conecta `/empleados` y `/registro`: el empleado elige su contraseña,
+verifica el código de correo y espera aprobación. Se crea la membresía read_only
+únicamente al aprobar; no se conceden módulos o inventario automáticamente.
+Contrato y límites: `employee-registration-contract.md`.

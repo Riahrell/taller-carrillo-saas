@@ -1241,3 +1241,31 @@ h1 span {
 .low-stock-list h3 {
   margin: 0;
 }
+
+.employee-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+.employee-list > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
+}
+.employee-list > li > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.employee-list p {
+  margin: 8px 0 0;
+}
+.employee-list .action {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
