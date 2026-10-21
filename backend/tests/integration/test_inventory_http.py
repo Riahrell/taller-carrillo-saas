@@ -607,3 +607,44 @@ def test_minimum_http_version_boundaries_and_strict_input(inventory_web):
         assert client.patch(url, json=invalid, headers=headers).status_code == 422
     assert client.patch(url, json={"minimum": None}).status_code == 403
     assert client.get(url).status_code == 403
+
+
+def test_low_stock_http_contract_and_boundaries(inventory_web):
+    client, state, policy = inventory_web
+    url = "/inventory/low-stock"
+    assert client.get(url).status_code == 403
+    assert client.get(url, headers=READ).json() == {"items": [], "next_after": None}
+    initial = client.get(path(state, "minimum"), headers=READ)
+    headers = {
+        "Origin": policy.origin,
+        "X-CSRF-Token": client.cookies[policy.csrf_cookie],
+        "X-Expected-Membership": str(state["membership"]),
+        "If-Match": initial.headers["ETag"],
+    }
+    assert (
+        client.patch(
+            path(state, "minimum"), json={"minimum": "0"}, headers=headers
+        ).status_code
+        == 200
+    )
+    response = client.get(url, headers=READ)
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["X-Access-Membership"] == str(state["membership"])
+    assert response.json()["items"] == [
+        {
+            "id": str(state["product"]),
+            "name": "Stock",
+            "sku": None,
+            "quantity": "0.000",
+            "minimum": "0.000",
+        }
+    ]
+    for query in (
+        "tenant_id=" + str(state["other"]),
+        "limit=0",
+        "limit=101",
+        "after=invalid",
+        "limit=1&limit=2",
+    ):
+        assert client.get(url + "?" + query, headers=READ).status_code == 422

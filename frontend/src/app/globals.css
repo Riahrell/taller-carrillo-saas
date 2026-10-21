@@ -1211,3 +1211,33 @@ h1 span {
   background: #fff3df;
   line-height: 1.6;
 }
+
+.low-stock-panel {
+  margin: 24px 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+.low-stock-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 16px;
+}
+.low-stock-list > li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.low-stock-list > li > div:not(.catalog-thumbnail) {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.low-stock-list h3 {
+  margin: 0;
+}

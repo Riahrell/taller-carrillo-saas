@@ -185,3 +185,15 @@ def change_minimum(product_id: UUID, payload: StockMinimumChange, request: Reque
     response = _response(result)
     response.headers["ETag"] = result.etag
     return response
+
+
+@router.get("/low-stock")
+def list_low_stock(request: Request, query: Annotated[CountPageQuery, Query()]):
+    request.app.state.http_security.verify_browser_read(request.headers)
+    return _response(
+        request.app.state.inventory.low_stock(
+            _token(request, pagination=True),
+            query=query,
+            expected_actor=expected_membership(request),
+        )
+    )

@@ -10,6 +10,7 @@ import {
   type FormEvent,
 } from "react";
 import IdentityConfirmation from "@/components/identity-confirmation";
+import LowStockList from "@/components/low-stock-list";
 import StockMinimumControl from "@/components/stock-minimum";
 import ProductSearch from "@/components/product-search";
 import ProductImage, {
@@ -486,7 +487,7 @@ export default function InventoryManager({
         </Link>
         <button
           className="action"
-          disabled={busy || stage !== "closed"}
+          disabled={frozen}
           onClick={() => {
             if (selected) void choose(selected.product.id);
             else void productPage();
@@ -495,6 +496,12 @@ export default function InventoryManager({
           Actualizar consulta
         </button>
       </div>
+      <LowStockList
+        actor={actor}
+        disabled={frozen}
+        onProblem={onProblem}
+        onSelect={(target) => void choose(target)}
+      />
       {message && (
         <p
           ref={notice}

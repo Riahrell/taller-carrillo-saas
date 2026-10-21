@@ -20,7 +20,7 @@ referencia de requisitos; no autorizan accesos externos ni despliegues por sí s
 | Recepción de compra | API y transacción de recepción | Pantalla de proveedores/compra/recepción |
 | Salida por venta u orden | No integrada | Necesita origen real y su módulo; no basta un campo de texto que diga venta |
 | Historial | Historial unificado de ajustes, entradas/salidas manuales y recepciones, con origen, responsable y paginación | Validación manual del propietario; ventas/órdenes y reversas dependen de sus módulos |
-| Stock bajo | Mínimo configurable por producto y aviso en su ficha; vacío desactiva, cero avisa al agotarse | Vista global de productos por reponer y validación manual |
+| Stock bajo | Mínimo configurable, aviso en ficha y lista global privada de productos por reponer | Validación manual; consulta a demanda |
 | Acceso | Email de seis caracteres, navegador 15 días y sesión opaca; regresión de CI cerrada en 3.28 | Registro de empleados y aprobación/permisos pendientes |
 | Operación | Compose local, configuración externa de S3/correo | Preparar entorno de pruebas separado, HTTPS, backup/restauración y despliegue revisable |
 
@@ -110,3 +110,8 @@ Entrega 3.37 configura mínimos explícitos y aviso en la ficha del producto, co
 versión y evidencia append-only. No cambia cantidades ni costos. Los productos
 existentes siguen sin mínimo hasta una acción explícita. El listado global por
 reponer queda para la siguiente tarea, antes de reversas y cierre de permisos.
+
+Entrega 3.38 agrega la vista global de productos por reponer, con foto, cantidad,
+mínimo vigente, acceso a la ficha y paginación. La consulta respeta empresa,
+estado y último mínimo. Sigue la reversa controlada de movimientos manuales y
+ajustes; recepciones de compra y ventas requieren sus propios flujos documentales.

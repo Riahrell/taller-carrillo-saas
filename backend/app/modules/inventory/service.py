@@ -289,6 +289,11 @@ class InventoryAdministrator:
             expected_actor=expected_actor,
         )
 
+    def low_stock(self, token, *, query, expected_actor=None):
+        from app.modules.inventory.low_stock import low_stock
+
+        return low_stock(self, token, query=query, expected_actor=expected_actor)
+
     def minimum(
         self, token, *, product_id, expected_actor=None, data=None, expected_etag=None
     ):
