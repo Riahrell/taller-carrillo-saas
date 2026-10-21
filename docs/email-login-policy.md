@@ -1,7 +1,7 @@
 # Acceso por correo y navegador verificado
 
 Decisión del propietario: sustituir el requisito de aplicación autenticadora
-por contraseña y código numérico por correo, recordando el navegador 15 días.
+por contraseña y código alfanumérico por correo, recordando el navegador 15 días.
 Implementado localmente con la migración 0037_email_browser_login.
 Validación funcional manual pendiente por el propietario; no se afirma que
 la batería automatizada del contrato nuevo haya pasado.
@@ -10,7 +10,7 @@ la batería automatizada del contrato nuevo haya pasado.
 
 - Contraseña obligatoria en cada inicio de sesión.
 - Primer acceso desde un navegador: código por correo de exactamente seis
-  dígitos, incluidos ceros iniciales. El mismo navegador puede omitir el correo
+  caracteres alfanuméricos. El mismo navegador puede omitir el correo
   durante 15 días desde su última verificación satisfactoria.
 - El plazo es fijo: iniciar sesión o navegar no lo renueva. Al vencer se exige
   otra verificación. No equivale a una sesión de 15 días.
@@ -30,10 +30,11 @@ la batería automatizada del contrato nuevo haya pasado.
 
 ## Valores técnicos propuestos para la implementación
 
-Código criptográficamente aleatorio, válido diez minutos, de uso único y ligado
+Código criptográficamente aleatorio de seis caracteres del alfabeto
+ABCDEFGHJKLMNPQRSTUVWXYZ23456789 (sin 0/O/1/I), válido diez minutos, de uso único y ligado
 a un intento posterior a contraseña válida. Máximo cinco verificaciones fallidas
 por intento y límites acumulados por cuenta/IP, también entre intentos nuevos.
-Verificador mediante HMAC con clave externa: un hash simple de seis dígitos es
+Verificador mediante HMAC con clave externa: un hash simple del código es
 insuficiente frente a enumeración offline. Payload de cola cifrado.
 
 Conservar el mínimo existente de 60 segundos y tres envíos por cuenta cada
@@ -48,7 +49,7 @@ Consumo del código y creación del permiso son atómicos y seguros ante concurr
    una ruta alternativa que omita la protección actual.
 2. Integración de contraseña, selección de empresa, sesión, correo y revocación;
    adaptar confirmación reciente y recuperación al nuevo método.
-3. Interfaz de seis dígitos sin QR, despliegue local y guía manual.
+3. Interfaz de seis caracteres sin QR, despliegue local y guía manual.
 
 No habilitar la modalidad hasta completar el conjunto: el modelo actual exige
 una prueba ligada a credencial TOTP incluso al resolver sesiones. No se resuelve
@@ -66,5 +67,5 @@ inventario y las transacciones no se modifican.
 
 Pruebas funcionales manuales a cargo del propietario conforme a su preferencia.
 No se ha ejecutado la batería funcional automatizada ni el acceso manual por
-parte del agente. Véase deliveries/email-login-3.21.md para resultados de
+parte del agente. Véase deliveries/email-login-alphanumeric-3.23.md para resultados de
 compilación y guía de prueba.

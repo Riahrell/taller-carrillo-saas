@@ -67,13 +67,13 @@ export default function EmailLoginFlow({
   async function confirm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (running.current) return;
-    const code = String(
-      new FormData(event.currentTarget).get("code") ?? "",
-    ).trim();
+    const code = String(new FormData(event.currentTarget).get("code") ?? "")
+      .trim()
+      .toUpperCase();
     event.currentTarget.reset();
-    if (!/^[0-9]{6}$/.test(code)) {
+    if (!/^[A-Z0-9]{6}$/.test(code)) {
       setMessage(
-        "Escribe los 6 números del correo, incluidos los ceros iniciales.",
+        "Escribe los 6 caracteres del correo. Puedes usar mayúsculas o minúsculas.",
       );
       return;
     }
@@ -86,7 +86,7 @@ export default function EmailLoginFlow({
     } catch {
       if (mounted.current)
         setMessage(
-          "No pudimos verificar el código. Usa el último correo, comprueba sus 6 números y su vigencia. Hay un máximo de 5 intentos; si el acceso venció, cancela y vuelve a iniciar sesión.",
+          "No pudimos verificar el código. Usa el último correo, comprueba sus 6 caracteres y su vigencia. Hay un máximo de 5 intentos; si el acceso venció, cancela y vuelve a iniciar sesión.",
         );
     } finally {
       running.current = false;
@@ -97,7 +97,7 @@ export default function EmailLoginFlow({
     <section aria-label="Verificación por correo" aria-busy={busy}>
       <h3>Verifica tu inicio de sesión</h3>
       <p>
-        Introduce los 6 números que recibas por correo. Recordaremos este
+        Introduce los 6 caracteres que recibas por correo. Recordaremos este
         navegador durante 15 días; seguirás usando tu contraseña en cada acceso.
       </p>
       <p>
@@ -128,8 +128,9 @@ export default function EmailLoginFlow({
             id="email-login-code"
             name="code"
             type="text"
-            inputMode="numeric"
-            pattern="[0-9]{6}"
+            inputMode="text"
+            autoCapitalize="characters"
+            pattern="[A-Za-z0-9]{6}"
             minLength={6}
             maxLength={6}
             autoComplete="one-time-code"

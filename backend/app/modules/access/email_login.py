@@ -1,4 +1,4 @@
-"""Password-bound six-digit email login, fixed browser trust, single-use proof."""
+"""Password-bound six-character email login, fixed browser trust, single-use proof."""
 
 import hmac
 import re
@@ -195,9 +195,11 @@ class EmailLogin:
             )
             if reserved is None:
                 return False
-            code = f"{secrets.randbelow(1_000_000):06d}"
+            code = "".join(
+                secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(6)
+            )
             # Existing encrypted mail envelope accepts a 43-character secret.
-            # Padding is never sent; only the first six digits are presented.
+            # Padding is never sent; only the first six characters are presented.
             envelope = self.protection.encrypt(
                 recipient=SecretStr(user.email),
                 token=SecretStr(code + secrets.token_urlsafe(28)[:37]),
@@ -219,7 +221,7 @@ class EmailLogin:
 
     @infrastructure_guard
     def confirm(self, token, binding, code, peer):
-        raw = code.get_secret_value()
+        raw = code.get_secret_value().strip().upper()
         # Hint before quotas, never a user id from the client.
         with self.factory.begin() as session:
             _timeouts(session)
@@ -243,7 +245,7 @@ class EmailLogin:
             if row.verified_at is not None or row.failures >= 5:
                 return None
             valid = (
-                bool(re.fullmatch(r"[0-9]{6}", raw))
+                bool(re.fullmatch(r"[A-Z0-9]{6}", raw))
                 and row.code_hash is not None
                 and hmac.compare_digest(
                     row.code_hash, self.protection.login_code_hash(row.id, raw)
@@ -424,7 +426,7 @@ class EmailLogin:
             )
             code = payload.token.get_secret_value()[:6]
             if (
-                not re.fullmatch(r"[0-9]{6}", code)
+                not re.fullmatch(r"[A-Z0-9]{6}", code)
                 or payload.recipient.get_secret_value() != user.email
                 or row.code_hash is None
                 or not hmac.compare_digest(
