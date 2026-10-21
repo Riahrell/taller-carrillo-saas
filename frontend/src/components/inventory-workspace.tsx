@@ -137,7 +137,7 @@ export default function InventoryWorkspace() {
     };
   }, [check, problem]);
   useEffect(() => {
-    if (view.kind === "blocked") notice.current?.focus();
+    if (view.kind === "blocked") notice.current?.focus({ preventScroll: true });
   }, [view]);
   return (
     <main id="contenido" className="memberships-workspace" tabIndex={-1}>
@@ -163,7 +163,11 @@ export default function InventoryWorkspace() {
         <p role="status">Comprobando acceso…</p>
       )}
       {view.kind === "active" && (
-        <div hidden={paused} inert={paused}>
+        <div
+          style={{ visibility: paused ? "hidden" : undefined }}
+          aria-hidden={paused || undefined}
+          inert={paused}
+        >
           <p className="membership-company">
             {view.session.tenant_name} <span>· Administrador</span>
           </p>

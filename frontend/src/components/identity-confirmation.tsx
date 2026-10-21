@@ -93,10 +93,10 @@ export default function IdentityConfirmation({
     };
   }, [onWriting]);
   useEffect(() => {
-    if (!checking) input.current?.focus();
+    if (!checking) input.current?.focus({ preventScroll: true });
   }, [checking]);
   useEffect(() => {
-    if (message) notice.current?.focus();
+    if (message) notice.current?.focus({ preventScroll: true });
   }, [message]);
   async function confirm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

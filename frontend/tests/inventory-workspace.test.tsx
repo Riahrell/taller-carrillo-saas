@@ -181,11 +181,19 @@ it("oculta datos al perder visibilidad y conserva el pendiente para su mismo con
   );
   await screen.findByRole("heading", { name: "Resultado por confirmar" });
   const first = vi.mocked(inventoryApi.record).mock.calls[0][1];
+  const content = screen
+    .getByRole("heading", { name: "Filtro de aceite" })
+    .closest("main > div");
+  expect(content).not.toBeNull();
   Object.defineProperty(document, "visibilityState", {
     configurable: true,
     value: "hidden",
   });
   fireEvent(document, new Event("visibilitychange"));
+  expect(content).toHaveStyle({ visibility: "hidden" });
+  expect(content).not.toHaveAttribute("hidden");
+  expect(content).toHaveAttribute("aria-hidden", "true");
+  expect(content).toHaveAttribute("inert");
   expect(
     screen.queryByRole("heading", { name: "Filtro de aceite" }),
   ).not.toBeInTheDocument();
@@ -308,7 +316,11 @@ it.each(["IN", "OUT"] as const)(
       expect(
         screen.queryByLabelText(/Costo por unidad/),
       ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Revisar movimiento" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: direction === "IN" ? "Revisar entrada" : "Revisar salida",
+      }),
+    );
     expect(inventoryApi.record).not.toHaveBeenCalled();
     fireEvent.click(
       screen.getByRole("button", {
@@ -340,7 +352,7 @@ it("una entrada de cero unidades no llega a confirmación", async () => {
   fireEvent.change(screen.getByLabelText(/Costo por unidad/), {
     target: { value: "3" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Revisar movimiento" }));
+  fireEvent.click(screen.getByRole("button", { name: "Revisar entrada" }));
   expect(
     screen.queryByRole("button", { name: "Confirmar entrada" }),
   ).not.toBeInTheDocument();

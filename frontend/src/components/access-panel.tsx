@@ -84,12 +84,18 @@ export default function AccessPanel() {
 
   const restore = useCallback(async (signal: AbortSignal) => {
     const next = await loadView(signal);
-    if (!signal.aborted) setView(next);
+    if (!signal.aborted) {
+      setView(next);
+      setSuspended(document.visibilityState === "hidden");
+    }
   }, []);
 
   const check = useCallback(() => {
     if (operation.current) return;
-    setView({ kind: "checking" });
+    setSuspended(true);
+    setView((previous) =>
+      previous.kind === "active" ? previous : { kind: "checking" },
+    );
     setSelected("");
     controller.current?.abort();
     controller.current = new AbortController();
@@ -143,9 +149,9 @@ export default function AccessPanel() {
       ? view.message
       : undefined;
   useEffect(() => {
-    if (message) notice.current?.focus();
+    if (message) notice.current?.focus({ preventScroll: true });
     else if (view.kind === "active" || view.kind === "choose")
-      title.current?.focus();
+      title.current?.focus({ preventScroll: true });
   }, [message, view.kind]);
 
   useEffect(() => {
@@ -286,7 +292,11 @@ export default function AccessPanel() {
       <h2 id="access-title" ref={title} tabIndex={-1}>
         {heading}
       </h2>
-      <div hidden={suspended} inert={suspended}>
+      <div
+        style={{ visibility: suspended ? "hidden" : undefined }}
+        aria-hidden={suspended || undefined}
+        inert={suspended}
+      >
         {message && (
           <p
             className="access-message"

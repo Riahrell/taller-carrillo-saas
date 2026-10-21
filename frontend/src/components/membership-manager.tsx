@@ -70,8 +70,9 @@ export default function MembershipManager({
   const reviewId = review?.member.membership_id;
   const reviewStage = review?.stage;
   useEffect(() => {
-    if (reviewMessage || message) notice.current?.focus();
-    else if (reviewId || page) heading.current?.focus();
+    if (reviewMessage || message)
+      notice.current?.focus({ preventScroll: true });
+    else if (reviewId || page) heading.current?.focus({ preventScroll: true });
   }, [reviewStage, reviewId, reviewMessage, page, message]);
   function begin() {
     if (operation.current) return null;

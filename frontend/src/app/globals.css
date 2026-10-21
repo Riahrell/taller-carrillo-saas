@@ -1148,3 +1148,44 @@ h1 span {
   font-weight: 600;
   cursor: pointer;
 }
+
+.catalog-review {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+.movement-summary {
+  display: grid;
+  gap: 0;
+  margin: 16px 0;
+}
+.movement-summary > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.movement-summary dt {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.movement-summary dd {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.catalog-review > p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+@media (max-width: 600px) {
+  .movement-summary > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+}

@@ -57,8 +57,8 @@ export default function MembershipCreation({
     return () => current?.reset();
   }, [stage]);
   useEffect(() => {
-    if (message) notice.current?.focus();
-    else heading.current?.focus();
+    if (message) notice.current?.focus({ preventScroll: true });
+    else heading.current?.focus({ preventScroll: true });
   }, [stage, message]);
   function review(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

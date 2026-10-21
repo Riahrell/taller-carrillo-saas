@@ -129,8 +129,9 @@ export default function CatalogManager({
     return () => clearTimeout(timer);
   }, [deadline, stage, onProblem]);
   useEffect(() => {
-    if (message) notice.current?.focus();
-    else if (stage !== "identity") heading.current?.focus();
+    if (message) notice.current?.focus({ preventScroll: true });
+    else if (stage !== "identity")
+      heading.current?.focus({ preventScroll: true });
   }, [message, stage]);
   function reset() {
     setName("");

@@ -236,8 +236,9 @@ export default function InventoryManager({
     };
   }, [actor, initialPending, initialImagePending, onProblem, onWriting]);
   useEffect(() => {
-    if (message) notice.current?.focus();
-    else if (stage !== "identity") heading.current?.focus();
+    if (message) notice.current?.focus({ preventScroll: true });
+    else if (stage !== "identity")
+      heading.current?.focus({ preventScroll: true });
   }, [message, stage]);
   useEffect(() => {
     if (deadline === null || stage === "closed" || stage === "identity") return;
@@ -737,7 +738,7 @@ export default function InventoryManager({
                 <p>
                   {mode === "COUNT"
                     ? "Escribe cuántas unidades hay ahora. Escribe 0 si no hay."
-                    : "Escribe cuántas unidades se agregan o retiran, no las existencias finales. La cantidad debe ser mayor que cero."}
+                    : "Escribe cuántas unidades se agregan o retiran, no las existencias finales. La cantidad debe ser mayor que cero."}{" "}
                   Puedes usar hasta tres decimales.
                 </p>
                 <label>
@@ -763,7 +764,7 @@ export default function InventoryManager({
                     <small>
                       {mode === "IN"
                         ? "Indica cuánto costó cada unidad que entra. No es el precio de venta."
-                        : "Indica cuánto costó cada unidad. Hace falta este dato porque el inventario aún no tiene un costo calculable."}
+                        : "Indica cuánto costó cada unidad. Hace falta este dato porque el inventario aún no tiene un costo calculable."}{" "}
                       Puedes usar hasta seis decimales.
                     </small>
                   </label>
@@ -785,38 +786,46 @@ export default function InventoryManager({
                       ? "Actualizar inventario"
                       : actionLabel}
                 </h3>
-                <dl>
-                  <dt>Producto</dt>
-                  <dd>{selected.product.name}</dd>
-                  <dt>
-                    {"direction" in reviewed
-                      ? reviewed.direction === "IN"
-                        ? "Unidades que entran"
-                        : "Unidades que salen"
-                      : "Existencias reales en bodega"}
-                  </dt>
-                  <dd>
-                    {displayDecimal(
-                      "direction" in reviewed
-                        ? reviewed.quantity
-                        : reviewed.counted_quantity,
-                    )}
-                  </dd>
-                  <dt>¿Por qué cambian las existencias?</dt>
-                  <dd>{reviewed.reason}</dd>
-                  <dt>Costo por unidad</dt>
-                  <dd>
-                    {("direction" in reviewed
-                      ? reviewed.unit_cost
-                      : reviewed.declared_unit_cost) === null
-                      ? "Usar el costo del inventario actual, si corresponde"
-                      : `${displayDecimal(("direction" in reviewed ? reviewed.unit_cost : reviewed.declared_unit_cost)!, 2)} USD`}
-                  </dd>
+                <dl className="movement-summary">
+                  <div>
+                    <dt>Producto</dt>
+                    <dd>{selected.product.name}</dd>
+                  </div>
+                  <div>
+                    <dt>
+                      {"direction" in reviewed
+                        ? reviewed.direction === "IN"
+                          ? "Unidades que entran"
+                          : "Unidades que salen"
+                        : "Existencias reales en bodega"}
+                    </dt>
+                    <dd>
+                      {displayDecimal(
+                        "direction" in reviewed
+                          ? reviewed.quantity
+                          : reviewed.counted_quantity,
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>¿Por qué cambian las existencias?</dt>
+                    <dd>{reviewed.reason}</dd>
+                  </div>
+                  <div>
+                    <dt>Costo por unidad</dt>
+                    <dd>
+                      {("direction" in reviewed
+                        ? reviewed.unit_cost
+                        : reviewed.declared_unit_cost) === null
+                        ? "Usar el costo del inventario actual, si corresponde"
+                        : `${displayDecimal(("direction" in reviewed ? reviewed.unit_cost : reviewed.declared_unit_cost)!, 2)} USD`}
+                    </dd>
+                  </div>
                 </dl>
                 <p>
                   {"direction" in reviewed
                     ? "Al confirmar, se sumarán o restarán las unidades al saldo actual del servidor. Si no hay suficientes unidades, la salida se rechazará sin cambiar el inventario."
-                    : "Al confirmar, se ajustarán las existencias a la cantidad que indicaste y se calculará el cambio de valor."}
+                    : "Al confirmar, se ajustarán las existencias a la cantidad que indicaste y se calculará el cambio de valor."}{" "}
                   Esta acción no registra una compra, una venta ni un pago.
                 </p>
               </section>
@@ -833,7 +842,9 @@ export default function InventoryManager({
                     >
                       {mode === "COUNT"
                         ? "Actualizar inventario"
-                        : "Revisar movimiento"}
+                        : mode === "IN"
+                          ? "Revisar entrada"
+                          : "Revisar salida"}
                     </button>
                   </>
                 )}

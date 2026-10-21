@@ -143,7 +143,7 @@ export default function MembershipWorkspace({
     };
   }, [check, problem]);
   useEffect(() => {
-    if (view.kind === "blocked") notice.current?.focus();
+    if (view.kind === "blocked") notice.current?.focus({ preventScroll: true });
   }, [view]);
   useEffect(() => {
     if (view.kind !== "active") return;
@@ -185,7 +185,11 @@ export default function MembershipWorkspace({
         <p role="status">Comprobando acceso…</p>
       )}
       {(view.kind === "active" || view.kind === "confirm") && (
-        <div hidden={paused} inert={paused}>
+        <div
+          style={{ visibility: paused ? "hidden" : undefined }}
+          aria-hidden={paused || undefined}
+          inert={paused}
+        >
           <p className="membership-company">
             {view.session.tenant_name} <span>· Administrador</span>
           </p>
