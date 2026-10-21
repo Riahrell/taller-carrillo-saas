@@ -1269,3 +1269,45 @@ h1 span {
   max-width: 100%;
   overflow-wrap: anywhere;
 }
+
+/* Email verification shares the access controls' spacing and touch targets. */
+.email-login-flow h3 {
+  margin: 22px 0 12px;
+  font-size: 20px;
+}
+.email-login-flow .email-login-help {
+  color: var(--muted);
+  font-size: 14px;
+}
+.email-login-flow form {
+  margin: 20px 0 0;
+}
+.email-login-flow fieldset {
+  margin: 0;
+  gap: 10px;
+}
+.email-login-flow input {
+  letter-spacing: 0.16em;
+}
+.email-login-flow button {
+  margin: 0;
+  font-family: inherit;
+  white-space: normal;
+}
+.email-login-flow .email-login-send {
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+  font-size: 14px;
+}
+.email-login-flow .secondary {
+  color: var(--ink);
+  background: transparent;
+  border-color: #7f8b79;
+}
+.email-login-flow .form-actions {
+  margin-top: 10px;
+}
+.email-login-flow .form-actions > .action {
+  flex-basis: 10rem;
+}

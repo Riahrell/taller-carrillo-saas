@@ -94,19 +94,28 @@ export default function EmailLoginFlow({
     }
   }
   return (
-    <section aria-label="Verificación por correo" aria-busy={busy}>
+    <section
+      className="identity-flow email-login-flow"
+      aria-label="Verificación por correo"
+      aria-busy={busy}
+    >
       <h3>Verifica tu inicio de sesión</h3>
       <p>
         Introduce los 6 caracteres que recibas por correo. Recordaremos este
         navegador durante 15 días; seguirás usando tu contraseña en cada acceso.
       </p>
-      <p>
+      <p id="email-login-help" className="email-login-help">
         El código caduca diez minutos después de iniciar el acceso. Espera 60
         segundos entre envíos; máximo 3 mensajes por cuenta cada 15 minutos.
       </p>
-      {message && <p role="status">{message}</p>}
+      {message && (
+        <p className="access-message" role="status">
+          {message}
+        </p>
+      )}
       <button
         type="button"
+        className="action secondary email-login-send"
         disabled={busy || remaining > 0}
         onClick={() => void send()}
       >
@@ -134,15 +143,25 @@ export default function EmailLoginFlow({
             minLength={6}
             maxLength={6}
             autoComplete="one-time-code"
+            aria-describedby="email-login-help"
             spellCheck={false}
             required
           />
-          <button type="submit">Verificar código</button>
+          <div className="form-actions">
+            <button className="action" type="submit">
+              Verificar código
+            </button>
+            <button
+              className="action secondary"
+              type="button"
+              disabled={busy}
+              onClick={onCancel}
+            >
+              Cancelar y cerrar acceso pendiente
+            </button>
+          </div>
         </fieldset>
       </form>
-      <button type="button" disabled={busy} onClick={onCancel}>
-        Cancelar y cerrar acceso pendiente
-      </button>
     </section>
   );
 }
