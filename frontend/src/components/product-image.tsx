@@ -232,34 +232,45 @@ export default function ProductImage(props: Props) {
         </div>
       )}
       {message && <p role="status">{message}</p>}
-      {!available && stage === "closed" && (
-        <button
-          type="button"
-          className="text-action"
-          disabled={disabled || busy}
-          onClick={() => {
-            setMessage("Cargando foto…");
-            setRevision((value) => value + 1);
-          }}
-        >
-          Volver a cargar la foto
-        </button>
-      )}
       {stage === "closed" && (
-        <button
-          className="action"
-          disabled={disabled || busy || !available}
-          onClick={() => {
-            setStage("identity");
-            setMessage("");
-          }}
-        >
-          {pending
-            ? "Comprobar foto pendiente"
-            : url
-              ? "Cambiar foto del producto"
-              : "Agregar foto del producto"}
-        </button>
+        <div className="form-actions photo-actions">
+          {!available && (
+            <button
+              type="button"
+              className="action secondary"
+              disabled={disabled || busy}
+              onClick={() => {
+                setMessage("Cargando foto…");
+                setRevision((value) => value + 1);
+              }}
+            >
+              Volver a cargar la foto
+            </button>
+          )}
+          <button
+            className="action"
+            disabled={disabled || busy || !available}
+            onClick={() => {
+              setStage("identity");
+              setMessage("");
+            }}
+          >
+            {pending
+              ? "Comprobar foto pendiente"
+              : url
+                ? "Cambiar foto del producto"
+                : "Agregar foto del producto"}
+          </button>
+          {!available && (
+            <button
+              className="action secondary"
+              disabled={busy}
+              onClick={() => setRevision((value) => value + 1)}
+            >
+              Comprobar imágenes
+            </button>
+          )}
+        </div>
       )}
       {stage === "identity" && (
         <IdentityConfirmation
@@ -370,7 +381,7 @@ export default function ProductImage(props: Props) {
           )}
         </div>
       )}
-      {!available && (
+      {!available && stage !== "closed" && (
         <button
           className="action"
           disabled={busy}

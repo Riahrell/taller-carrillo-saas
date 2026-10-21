@@ -1079,14 +1079,16 @@ h1 span {
   font-weight: 400;
   line-height: 1.6;
 }
-.form-actions {
+.form-actions,
+.catalog-pagination {
   display: flex;
   flex-wrap: wrap;
   align-items: stretch;
   gap: 12px;
   margin-top: 18px;
 }
-.form-actions > .action {
+.form-actions > .action,
+.catalog-pagination > .action {
   flex: 1 1 8rem;
   min-width: 0;
   white-space: normal;
@@ -1103,7 +1105,8 @@ h1 span {
   color: var(--ink);
   border-color: #7f8b79;
 }
-.form-actions > .action:disabled {
+.form-actions > .action:disabled,
+.catalog-pagination > .action:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
