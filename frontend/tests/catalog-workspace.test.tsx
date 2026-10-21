@@ -90,7 +90,7 @@ async function draft() {
   fireEvent.change(screen.getByLabelText("Categoría (opcional)"), {
     target: { value: target },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Revisar alta" }));
+  fireEvent.click(screen.getByRole("button", { name: "Revisar producto" }));
 }
 it("consulta sin pedir contraseña y la exige antes de montar campos de alta", async () => {
   await open();
@@ -134,7 +134,7 @@ it("permite crear categoría sin precio ni campos de inventario", async () => {
   expect(
     screen.queryByLabelText("Precio de venta (USD)"),
   ).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Revisar alta" }));
+  fireEvent.click(screen.getByRole("button", { name: "Revisar categoría" }));
   fireEvent.click(screen.getByRole("button", { name: "Registrar categoría" }));
   expect(
     await screen.findByText("Categoría creada: Nueva."),

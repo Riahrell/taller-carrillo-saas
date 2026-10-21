@@ -118,7 +118,7 @@ export default function CatalogManager({
         onProblem(
           saving.current
             ? uncertainCatalog
-            : "La confirmación de identidad venció. Comprueba el acceso y revisa el alta de nuevo.",
+            : "La confirmación de identidad venció. Comprueba el acceso y revisa los datos de nuevo.",
         );
       },
       Math.max(0, deadline - performance.now()),
@@ -264,13 +264,13 @@ export default function CatalogManager({
         setStage("edit");
         setMessage(
           error.status === 409
-            ? "Ese SKU ya está en uso. Revisa el catálogo antes de repetir el alta."
-            : "Revisa los datos y vuelve a revisar el alta.",
+            ? "Ese SKU ya está en uso. Revisa el catálogo antes de registrar el producto."
+            : "Revisa los datos antes de continuar.",
         );
       } else
         onProblem(
           error instanceof ApiError && error.status === 428
-            ? "La confirmación de identidad venció. Comprueba el acceso y revisa el alta de nuevo."
+            ? "La confirmación de identidad venció. Comprueba el acceso y revisa los datos de nuevo."
             : uncertainCatalog,
         );
     } finally {
@@ -363,11 +363,11 @@ export default function CatalogManager({
       )}
       {busy && (
         <p role="status">
-          {stage === "review" ? "Confirmando el alta…" : "Consultando…"}
+          {stage === "review" ? "Guardando…" : "Consultando…"}
         </p>
       )}
       {stage === "identity" && (
-        <section aria-label="Autorizar alta">
+        <section aria-label="Autorizar registro">
           <IdentityConfirmation
             session={session}
             purpose="crear productos o categorías"
@@ -380,7 +380,7 @@ export default function CatalogManager({
             }}
           />
           <button className="text-action" disabled={busy} onClick={reset}>
-            Cancelar alta
+            Cancelar, no guardar
           </button>
         </section>
       )}
@@ -388,7 +388,9 @@ export default function CatalogManager({
         <section className="membership-review membership-creation">
           <h2 ref={heading} tabIndex={-1}>
             {stage === "review"
-              ? "Revisa el alta"
+              ? kind === "products"
+                ? "Revisa el producto"
+                : "Revisa la categoría"
               : kind === "products"
                 ? "Datos del producto"
                 : "Datos de la categoría"}
@@ -482,7 +484,9 @@ export default function CatalogManager({
                   </>
                 )}
                 <button className="action primary" type="submit">
-                  Revisar alta
+                  {kind === "products"
+                    ? "Revisar producto"
+                    : "Revisar categoría"}
                 </button>
               </fieldset>
             </form>
@@ -531,7 +535,7 @@ export default function CatalogManager({
             </>
           )}
           <button className="text-action" disabled={busy} onClick={reset}>
-            Cancelar alta
+            Cancelar, no guardar
           </button>
         </section>
       )}
