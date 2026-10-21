@@ -16,6 +16,7 @@ from app.modules.access.authentication import (
     Authenticator,
     _limit_transaction,
 )
+from app.modules.access.email_login_models import EmailLoginChallenge
 from app.modules.access.login_challenges import _binding_digest, _token_digest
 from app.modules.access.membership import AccessDenied
 from app.modules.access.models import (
@@ -138,6 +139,20 @@ class HttpAccess:
                             )
                         )
                     )
+                email_binding = None
+                if browser_binding is not None:
+                    with suppress(AccessDenied):
+                        email_binding = _token_hash(browser_binding)
+                if email_binding is not None:
+                    users.update(
+                        session.scalars(
+                            select(EmailLoginChallenge.user_id).where(
+                                EmailLoginChallenge.binding_hash == email_binding,
+                                EmailLoginChallenge.finished_at.is_(None),
+                                EmailLoginChallenge.invalidated_at.is_(None),
+                            )
+                        )
+                    )
                 # Mixed/stale cookies may refer to different users: lock in UUID order.
                 for user_id in sorted(user for user in users if user is not None):
                     _lock_user(session, user_id)
@@ -146,6 +161,24 @@ class HttpAccess:
                         mfa_pending._close_browser_pendings(
                             session, user_id=user_id, binding=browser_binding
                         )
+                if email_binding is not None:
+                    for user_id in sorted(user for user in users if user is not None):
+                        rows = session.scalars(
+                            select(EmailLoginChallenge)
+                            .where(
+                                EmailLoginChallenge.user_id == user_id,
+                                EmailLoginChallenge.binding_hash == email_binding,
+                                EmailLoginChallenge.finished_at.is_(None),
+                                EmailLoginChallenge.invalidated_at.is_(None),
+                            )
+                            .order_by(EmailLoginChallenge.id)
+                            .with_for_update()
+                            .execution_options(populate_existing=True)
+                        ).all()
+                        for pending in rows:
+                            pending.invalidated_at = _database_now(session)
+                            pending.code_hash = None
+                            pending.key_id = pending.nonce = pending.ciphertext = None
                 if challenge_hash:
                     record = session.scalar(
                         select(LoginChallenge)

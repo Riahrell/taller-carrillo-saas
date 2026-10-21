@@ -27,6 +27,10 @@ export default function IdentityConfirmation({
   const [mfa, setMfa] = useState(false);
   const [checking, setChecking] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
+  const callbacks = useRef({ onConfirmed, onProblem });
+  useEffect(() => {
+    callbacks.current = { onConfirmed, onProblem };
+  }, [onConfirmed, onProblem]);
   useEffect(() => {
     let active = true;
     const started = performance.now();
@@ -42,7 +46,7 @@ export default function IdentityConfirmation({
             (performance.now() - started) -
             1000;
           if (remaining <= 0) throw new Error("Expired session");
-          onConfirmed(remaining);
+          callbacks.current.onConfirmed(remaining);
           return;
         }
         setMfa(value.mfa_enabled);
@@ -50,14 +54,14 @@ export default function IdentityConfirmation({
       })
       .catch(() => {
         if (active)
-          onProblem(
+          callbacks.current.onProblem(
             "No pudimos comprobar tu sesión. Vuelve a iniciar sesión para continuar.",
           );
       });
     return () => {
       active = false;
     };
-  }, [session, onConfirmed, onProblem]);
+  }, [session]);
   const [message, setMessage] = useState("");
   const operation = useRef(false);
   const controller = useRef<AbortController | null>(null);
@@ -82,13 +86,15 @@ export default function IdentityConfirmation({
 
   useEffect(() => {
     const current = form.current;
-    if (!checking) input.current?.focus();
     return () => {
       controller.current?.abort();
       current?.reset();
       onWriting(false);
     };
-  }, [onWriting, checking]);
+  }, [onWriting]);
+  useEffect(() => {
+    if (!checking) input.current?.focus();
+  }, [checking]);
   useEffect(() => {
     if (message) notice.current?.focus();
   }, [message]);

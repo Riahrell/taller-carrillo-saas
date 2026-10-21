@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.responses import Response
 from fastapi.testclient import TestClient
-from identity_http_fixture import arrange_factor, login_with_factor
+from identity_http_fixture import arrange_factor, login_with_legacy_factor
 from pydantic import SecretStr
 from sqlalchemy import event, func, select, update
 from sqlalchemy.exc import SQLAlchemyError
@@ -51,7 +51,7 @@ def creation_web(new_identity_scope, monkeypatch):
         policy = client.app.state.http_security
         arrange_factor(state, client.app, monkeypatch)
         assert client.get("/auth/csrf", headers=READ).status_code == 204
-        assert login_with_factor(client, state, policy).status_code == 200
+        assert login_with_legacy_factor(client, state, policy).status_code == 200
         yield client, state, policy
 
 

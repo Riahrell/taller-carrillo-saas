@@ -9,7 +9,7 @@ from threading import Event
 
 import pytest
 from fastapi.testclient import TestClient
-from identity_http_fixture import arrange_factor, login_with_factor, next_factor
+from identity_http_fixture import arrange_factor, login_with_legacy_factor, next_factor
 from pydantic import SecretStr
 from sqlalchemy import event, func, select, text
 from sqlalchemy.orm import Session
@@ -54,7 +54,7 @@ def web(new_identity_scope, monkeypatch):
         policy = client.app.state.http_security
         arrange_factor(state, client.app, monkeypatch)
         assert client.get("/auth/csrf", headers=READ).status_code == 204
-        assert login_with_factor(client, state, policy).status_code == 200
+        assert login_with_legacy_factor(client, state, policy).status_code == 200
         state["target_etag"] = client.get(
             f"/auth/memberships/{state['target']}", headers=READ
         ).headers["etag"]

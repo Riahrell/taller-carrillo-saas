@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.modules.access import (
     administration,
     authentication,
+    email_login,
+    email_outbox,
     identity_http,
     login_challenges,
     mfa_consumption,
@@ -46,6 +48,8 @@ def arrange_factor(state, app, monkeypatch):
     state["http_seed"] = seed
     for module in (
         administration,
+        email_login,
+        email_outbox,
         reauthentication,
         authentication,
         identity_http,
@@ -71,19 +75,97 @@ def next_factor(state):
     )
 
 
-def login_with_factor(client, state, policy):
+def begin_legacy_login(client, state, policy):
+    # Explicit legacy adapter setup: authenticate the synthetic password through
+    # the real internal TOTP producer. The production /auth/login now uses mail;
+    # it is exercised separately by email-login HTTP tests.
+    from ipaddress import ip_address
+
+    from starlette.datastructures import Headers
+
+    from app.modules.access.authentication import Credentials, PendingMfaLogin
+    from app.modules.access.identity_http import browser_binding
+
+    binding = browser_binding(
+        policy,
+        Headers(
+            {
+                "cookie": "; ".join(
+                    f"{key}={value}" for key, value in client.cookies.items()
+                )
+            }
+        ),
+    )
+    result = client.app.state.access.authenticator.begin_mfa_login(
+        Credentials(email=state["email"], password=state["password"]),
+        client_ip=ip_address("127.0.0.1"),
+        browser_binding=binding,
+    )
+    if isinstance(result, PendingMfaLogin):
+        client.cookies.pop(policy.challenge_cookie, None)
+        client.cookies.set(
+            policy.challenge_cookie,
+            result.token.get_secret_value(),
+            domain=next(
+                c.domain for c in client.cookies.jar if c.name == policy.csrf_cookie
+            ),
+            path="/",
+        )
+    return result
+
+
+def login_with_legacy_factor(client, state, policy):
     code = next_factor(state)
+    begin_legacy_login(client, state, policy)
+    return client.post(
+        "/auth/mfa/totp",
+        json={"code": code},
+        headers={
+            "Origin": policy.origin,
+            "X-CSRF-Token": client.cookies[policy.csrf_cookie],
+        },
+    )
+
+
+def complete_email_login(client, state, policy, response):
+    """Real public mail flow with capture transport, synthetic test recipients."""
+    if response.status_code != 202 or response.json().get("status") != "email_code":
+        return response
+    code = request_email_code(client, state, policy)
+    return client.post(
+        "/auth/email-login/confirm",
+        json={"code": code},
+        headers={
+            "Origin": policy.origin,
+            "X-CSRF-Token": client.cookies[policy.csrf_cookie],
+            "Sec-Fetch-Site": "same-origin",
+        },
+    )
+
+
+def request_email_code(client, state, policy):
+    """Capture a synthetic code after the real request and worker paths."""
+    import re
+
+    from app.modules.access.mail_delivery import TransportOutcome
+
     headers = {
         "Origin": policy.origin,
         "X-CSRF-Token": client.cookies[policy.csrf_cookie],
+        "Sec-Fetch-Site": "same-origin",
     }
-    response = client.post(
-        "/auth/login",
-        json={
-            "email": state["email"],
-            "password": state["password"].get_secret_value(),
-        },
-        headers=headers,
-    )
-    assert response.status_code == 202 and response.json() == {"status": "mfa_totp"}
-    return client.post("/auth/mfa/totp", json={"code": code}, headers=headers)
+    issued = client.post("/auth/email-login/request", json={}, headers=headers)
+    assert issued.status_code == 204
+    captured = []
+
+    class Capture:
+        def send_message(self, message, **_):
+            assert message.recipient.get_secret_value() == state["email"]
+            captured.append(message.body.get_secret_value())
+            return TransportOutcome.ACCEPTED
+
+    client.app.state.identity.email_login.dispatch_one(Capture())
+    assert len(captured) == 1
+    match = re.search(r"es: ([A-Z0-9]{6})\n", captured[0])
+    assert match
+    return match[1]

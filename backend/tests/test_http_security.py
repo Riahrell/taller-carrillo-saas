@@ -316,7 +316,7 @@ def test_cookie_scope_flags_and_deletion_match(environment, origin, secure):
     assert session["samesite"] == csrf["samesite"] == "lax"
     assert not session["domain"] and not csrf["domain"]
     assert policy.session_cookie.startswith("__Host-") is secure
-    assert 0 < int(session["max-age"]) <= 28800
+    assert not session["max-age"] and not session["expires"]
     assert 0 < int(csrf["max-age"]) <= 900
     deletion = Response()
     policy.clear_cookies(deletion)

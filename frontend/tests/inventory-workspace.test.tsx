@@ -164,7 +164,7 @@ it("no intenta registrar si falta generación segura de claves", async () => {
   fireEvent.click(
     screen.getByRole("button", { name: "Confirmar actualización" }),
   );
-  await screen.findByText(/navegador actualizado en HTTPS o localhost/);
+  await screen.findByText(/Comprueba tu acceso desde un navegador actualizado/);
   expect(inventoryApi.record).not.toHaveBeenCalled();
 });
 it("oculta datos al perder visibilidad y conserva el pendiente para su mismo contexto", async () => {

@@ -261,7 +261,7 @@ def test_empty_schema_downgrade_and_upgrade(databases):
         command.upgrade(config, "head")
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0036_purchase_receipts"
+            == "0038_mailbox_constraint_name"
         )
 
 
@@ -298,7 +298,7 @@ def test_downgrade_refuses_stock_data(databases):
         with owner.connect() as connection:
             assert (
                 MigrationContext.configure(connection).get_current_revision()
-                == "0036_purchase_receipts"
+                == "0038_mailbox_constraint_name"
             )
     finally:
         with owner.begin() as connection:

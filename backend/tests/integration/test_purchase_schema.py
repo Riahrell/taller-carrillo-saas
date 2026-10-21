@@ -306,7 +306,7 @@ def test_downgrade_refuses_even_supplier_without_purchase(databases):
         with owner.connect() as connection:
             assert (
                 MigrationContext.configure(connection).get_current_revision()
-                == "0036_purchase_receipts"
+                == "0038_mailbox_constraint_name"
             )
             assert (
                 connection.scalar(select(Supplier.id).where(Supplier.id == supplier))

@@ -33,7 +33,7 @@ def test_migrations_upgrade_check_downgrade_upgrade(databases) -> None:
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
         assert MigrationContext.configure(connection).get_current_revision() == (
-            "0036_purchase_receipts"
+            "0038_mailbox_constraint_name"
         )
         command.check(config)
         command.downgrade(config, "base")
@@ -121,3 +121,31 @@ def test_invalid_credentials_fail_without_exposing_connection_details(
         assert caught.value.__suppress_context__ is True
     finally:
         engine.dispose()
+
+
+def test_mailbox_constraint_repairs_preexisting_0037_name(databases):
+    _, owner, _ = databases
+    config = Config(str(BACKEND / "alembic.ini"))
+    with owner.connect() as connection, connection.begin() as transaction:
+        config.attributes["connection"] = connection
+        command.downgrade(config, "0037_email_browser_login")
+        connection.execute(
+            text(
+                "ALTER TABLE verified_mailboxes RENAME CONSTRAINT "
+                "ck_verified_mailboxes_one_source TO "
+                "ck_verified_mailboxes_ck_verified_mailboxes_one_source"
+            )
+        )
+        command.upgrade(config, "head")
+        names = connection.scalars(
+            text(
+                "SELECT conname FROM pg_constraint "
+                "WHERE conrelid = 'verified_mailboxes'::regclass AND contype = 'c'"
+            )
+        ).all()
+        assert "ck_verified_mailboxes_one_source" in names
+        assert "ck_verified_mailboxes_ck_verified_mailboxes_one_source" not in names
+        command.downgrade(config, "0036_purchase_receipts")
+        command.upgrade(config, "head")
+        command.check(config)
+        transaction.rollback()

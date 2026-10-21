@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from identity_http_fixture import arrange_factor, login_with_factor, next_factor
+from identity_http_fixture import arrange_factor, login_with_legacy_factor, next_factor
 from pydantic import SecretStr
 from sqlalchemy import event, select, update
 from sqlalchemy.exc import SQLAlchemyError
@@ -53,7 +53,7 @@ def web(http_identity, monkeypatch, request):
         policy = client.app.state.http_security
         arrange_factor(state, client.app, monkeypatch)
         assert client.get("/auth/csrf", headers=READ).status_code == 204
-        assert login_with_factor(client, state, policy).status_code == 200
+        assert login_with_legacy_factor(client, state, policy).status_code == 200
         yield client, state, policy
 
 
@@ -151,7 +151,7 @@ def test_success_rotates_session_and_csrf_after_commit_without_extending_expiry(
     assert bool(cookies[policy.csrf_cookie]["httponly"]) is False
     assert bool(cookies[policy.csrf_cookie]["secure"]) == policy.secure
     assert policy.session_cookie.startswith("__Host-") == policy.secure
-    assert cookie["expires"] == before[4].strftime("%a, %d %b %Y %H:%M:%S GMT")
+    assert not cookie["expires"] and not cookie["max-age"]
     after = snapshot(state)
     assert after[0] == before[0] and after[2] == before[2] and after[4] == before[4]
     assert after[6] is not None and after[7] is not None
@@ -208,7 +208,7 @@ def test_current_unicode_password_is_preserved_without_trimming(web):
     state["password"] = SecretStr(password)
     client.cookies.clear()
     assert client.get("/auth/csrf", headers=READ).status_code == 204
-    assert login_with_factor(client, state, web[2]).status_code == 200
+    assert login_with_legacy_factor(client, state, web[2]).status_code == 200
     denied(post(web, data={"password": password.strip()}), 401, "Access denied")
     assert post(web, data={"password": password}).status_code == 204
 

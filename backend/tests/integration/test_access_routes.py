@@ -7,21 +7,26 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from identity_http_fixture import arrange_factor, next_factor
+from identity_http_fixture import (
+    arrange_factor,
+    complete_email_login,
+    next_factor,
+    request_email_code,
+)
 from pydantic import SecretStr
 from sqlalchemy import event, func, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.main import create_app
-from app.modules.access import mfa_pending
+from app.modules.access.email_login_models import EmailLoginChallenge
 from app.modules.access.models import (
     LoginThrottle,
-    MfaPending,
     SessionRecord,
     TenantMembership,
     User,
 )
+from app.modules.access.sessions import _token_hash
 
 pytestmark = pytest.mark.integration
 READ = {"X-Requested-With": "XMLHttpRequest", "Sec-Fetch-Site": "same-origin"}
@@ -66,7 +71,8 @@ def write(client, policy, path, body, **kwargs):
 
 
 def login(client, state, policy, **extra):
-    code = next_factor(state)
+    next_factor(state)
+    state["http_now"] += timedelta(seconds=60)
     response = write(
         client,
         policy,
@@ -77,9 +83,7 @@ def login(client, state, policy, **extra):
             **extra,
         },
     )
-    if response.status_code == 202 and response.json().get("status") == "mfa_totp":
-        return write(client, policy, "/auth/mfa/totp", {"code": code})
-    return response
+    return complete_email_login(client, state, policy, response)
 
 
 def multi(state):
@@ -131,7 +135,7 @@ def test_login_session_csrf_refresh_logout_and_replay(web):
     old_cookies = "; ".join(f"{key}={value}" for key, value in client.cookies.items())
     old_csrf = client.cookies[policy.csrf_cookie]
     assert write(client, policy, "/auth/logout", {}).status_code == 204
-    assert not list(client.cookies.items())
+    assert set(client.cookies.keys()) == {policy.browser_cookie}
     assert (
         client.get("/auth/session", headers=READ | {"Cookie": old_cookies}).status_code
         == 401
@@ -186,14 +190,7 @@ def test_pending_selection_preserves_binding_during_csrf_refresh(web):
     current = client.get("/auth/session", headers=READ).json()
     assert current["tenant_id"] == str(state["other"]) and current["role"] == "mechanic"
     with Session(state["runtime"]) as session:
-        assert (
-            session.scalar(
-                select(MfaPending.finished_at).where(
-                    MfaPending.purpose == "login_verified"
-                )
-            )
-            is not None
-        )
+        assert session.scalar(select(EmailLoginChallenge.finished_at)) is not None
 
 
 def test_pending_logout_cancels_identity_before_deleting_cookies(web):
@@ -204,7 +201,7 @@ def test_pending_logout_cancels_identity_before_deleting_cookies(web):
     cookies = "; ".join(f"{key}={value}" for key, value in client.cookies.items())
     proof = client.cookies[policy.csrf_cookie]
     assert write(client, policy, "/auth/logout", {}).status_code == 204
-    assert not list(client.cookies.items())
+    assert set(client.cookies.keys()) == {policy.browser_cookie}
     response = client.post(
         "/auth/select-membership",
         json={"membership_id": str(state["membership"])},
@@ -212,14 +209,7 @@ def test_pending_logout_cancels_identity_before_deleting_cookies(web):
     )
     assert response.status_code == 401 and count(state, SessionRecord) == 0
     with Session(state["runtime"]) as session:
-        assert (
-            session.scalar(
-                select(MfaPending.finished_at).where(
-                    MfaPending.purpose == "login_verified"
-                )
-            )
-            is not None
-        )
+        assert session.scalar(select(EmailLoginChallenge.invalidated_at)) is not None
 
 
 @pytest.mark.parametrize("candidate", ["foreign", "unknown", "tenant"])
@@ -410,14 +400,7 @@ def test_failed_commit_does_not_publish_or_clear_authentication_cookies(web, ope
         )
     elif operation == "select":
         with Session(state["runtime"]) as session:
-            assert (
-                session.scalar(
-                    select(MfaPending.finished_at).where(
-                        MfaPending.purpose == "login_verified"
-                    )
-                )
-                is None
-            )
+            assert session.scalar(select(EmailLoginChallenge.finished_at)) is None
         assert (
             write(
                 client,
@@ -487,14 +470,7 @@ def test_other_browser_cannot_use_pending_identity_or_consume_it(web):
             == 401
         )
     with Session(state["runtime"]) as session:
-        assert (
-            session.scalar(
-                select(MfaPending.finished_at).where(
-                    MfaPending.purpose == "login_verified"
-                )
-            )
-            is None
-        )
+        assert session.scalar(select(EmailLoginChallenge.finished_at)) is None
     assert (
         write(
             client,
@@ -522,9 +498,7 @@ def test_mixed_browser_cookies_logout_revokes_session_and_pending_atomically(
     ) as other:
         bootstrap(other)
         assert login(other, state, policy).status_code == 202
-        pending_hash = mfa_pending._hash(
-            SecretStr(other.cookies[policy.challenge_cookie]), "mfa-pending-token-v1:"
-        )
+        pending_hash = _token_hash(SecretStr(other.cookies[policy.challenge_cookie]))
         # Simulate overlapping browser responses: retain the original session CSRF.
         for name in (policy.preauth_cookie, policy.challenge_cookie):
             client.cookies.set(name, other.cookies[name])
@@ -546,9 +520,8 @@ def test_mixed_browser_cookies_logout_revokes_session_and_pending_atomically(
         with Session(state["runtime"]) as session:
             assert (
                 session.scalar(
-                    select(MfaPending.finished_at).where(
-                        MfaPending.purpose == "login_verified",
-                        MfaPending.token_hash == pending_hash,
+                    select(EmailLoginChallenge.invalidated_at).where(
+                        EmailLoginChallenge.token_hash == pending_hash,
                     )
                 )
                 is not None
@@ -558,3 +531,93 @@ def test_mixed_browser_cookies_logout_revokes_session_and_pending_atomically(
             ) is not fail_commit
         if fail_commit:
             assert write(client, policy, "/auth/logout", {}).status_code == 204
+
+
+def test_email_code_is_six_characters_bound_and_single_use(web):
+    client, state, policy = web
+    bootstrap(client)
+    pending = write(
+        client,
+        policy,
+        "/auth/login",
+        {
+            "email": state["email"],
+            "password": state["password"].get_secret_value(),
+        },
+    )
+    assert pending.status_code == 202 and pending.json() == {"status": "email_code"}
+    assert count(state, SessionRecord) == 0
+    code = request_email_code(client, state, policy)
+    assert len(code) == 6 and set(code) <= set("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+    cookies = "; ".join(f"{k}={v}" for k, v in client.cookies.items())
+    csrf = client.cookies[policy.csrf_cookie]
+    result = write(client, policy, "/auth/email-login/confirm", {"code": code.lower()})
+    assert result.status_code == 200
+    assert code not in result.text
+    assert count(state, SessionRecord) == 1
+    replay = client.post(
+        "/auth/email-login/confirm",
+        json={"code": code},
+        headers={
+            "Cookie": cookies,
+            "Origin": policy.origin,
+            "X-CSRF-Token": csrf,
+        },
+    )
+    assert replay.status_code == 401
+    assert count(state, SessionRecord) == 1
+
+
+def test_verified_browser_skips_mail_without_extending_fifteen_days(web):
+    from app.modules.access.email_login_models import VerifiedBrowser
+
+    client, state, policy = web
+    bootstrap(client)
+    assert login(client, state, policy).status_code == 200
+    with Session(state["runtime"]) as session:
+        browser = session.scalar(select(VerifiedBrowser))
+        expiry, created = browser.expires_at, browser.created_at
+        assert expiry - created == timedelta(days=15)
+    assert write(client, policy, "/auth/logout", {}).status_code == 204
+    bootstrap(client)
+    # Direct public password login must complete without requesting another code.
+    result = write(
+        client,
+        policy,
+        "/auth/login",
+        {
+            "email": state["email"],
+            "password": state["password"].get_secret_value(),
+        },
+    )
+    assert result.status_code == 200 and result.json() == {"status": "authenticated"}
+    with Session(state["runtime"]) as session:
+        assert session.scalar(select(VerifiedBrowser.expires_at)) == expiry
+    assert write(client, policy, "/auth/logout", {}).status_code == 204
+    state["http_now"] = expiry + timedelta(seconds=1)
+    bootstrap(client)
+    result = write(
+        client,
+        policy,
+        "/auth/login",
+        {
+            "email": state["email"],
+            "password": state["password"].get_secret_value(),
+        },
+    )
+    assert result.status_code == 202 and result.json() == {"status": "email_code"}
+    assert policy.session_cookie not in client.cookies
+
+
+def test_email_session_confirmation_matches_server_context_and_revocation(web):
+    client, state, policy = web
+    bootstrap(client)
+    assert login(client, state, policy).status_code == 200
+    current = client.get("/auth/session", headers=READ).json()
+    status = client.get("/auth/security", headers=READ)
+    assert status.status_code == 200
+    assert status.json()["confirmation_context"] == current
+    assert 0 < status.json()["confirmation_seconds"] <= 28800
+    with Session(state["runtime"]) as session, session.begin():
+        session.get(User, state["user"]).security_revision += 1
+    assert client.get("/auth/security", headers=READ).status_code == 401

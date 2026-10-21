@@ -7,10 +7,12 @@ from uuid import uuid4
 import pyotp
 import pytest
 from fastapi.testclient import TestClient
+from identity_http_fixture import begin_legacy_login
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.main import create_app
+from app.modules.access.authentication import PendingMfaLogin
 from app.modules.access.mfa_crypto import generate_totp_seed
 from app.modules.access.models import MfaCredential, User
 
@@ -50,13 +52,30 @@ def post(client, app, path, body, *, expected=None):
 
 
 def login(client, state, app):
+    """Historical TOTP/mailbox adapters use the real legacy password producer."""
     assert client.get("/auth/csrf", headers=READ).status_code == 204
-    return post(
-        client,
-        app,
-        "/auth/login",
-        dict(email=state["email"], password=state["password"].get_secret_value()),
-    )
+    result = begin_legacy_login(client, state, app.state.http_security)
+    if not isinstance(result, PendingMfaLogin):
+        # The historical read-only producer returns a genuine issued session.
+        # Apply the same production cookie policy for legacy mailbox isolation.
+        from http.cookies import SimpleCookie
+
+        from starlette.responses import Response
+
+        response = Response()
+        app.state.http_security.set_session(response, result)
+        for header in response.headers.getlist("set-cookie"):
+            cookies = SimpleCookie()
+            cookies.load(header)
+            for name, cookie in cookies.items():
+                domain = next(
+                    c.domain
+                    for c in client.cookies.jar
+                    if c.name == app.state.http_security.csrf_cookie
+                )
+                client.cookies.pop(name, None)
+                client.cookies.set(name, cookie.value, domain=domain, path="/")
+    return result
 
 
 def factor(state, app):
@@ -81,11 +100,17 @@ def factor(state, app):
     return seed
 
 
-def test_admin_without_factor_only_receives_restricted_enrollment(identity_web):
+def test_public_login_requires_email_without_disclosing_company(identity_web):
     client, state, app = identity_web
-    response = login(client, state, app)
+    assert client.get("/auth/csrf", headers=READ).status_code == 204
+    response = post(
+        client,
+        app,
+        "/auth/login",
+        {"email": state["email"], "password": state["password"].get_secret_value()},
+    )
     assert response.status_code == 202
-    assert response.json() == {"status": "mfa_enrollment"}
+    assert response.json() == {"status": "email_code"}
     assert app.state.http_security.session_cookie not in client.cookies
     assert client.get("/auth/session", headers=READ).status_code == 401
     assert "HTTP company" not in response.text
@@ -94,7 +119,7 @@ def test_admin_without_factor_only_receives_restricted_enrollment(identity_web):
 def test_totp_creates_session_but_reused_code_cannot_login_again(identity_web):
     client, state, app = identity_web
     seed = factor(state, app)
-    assert login(client, state, app).json() == {"status": "mfa_totp"}
+    assert isinstance(login(client, state, app), PendingMfaLogin)
     code = pyotp.TOTP(seed.base32().get_secret_value()).now()
     response = post(client, app, "/auth/mfa/totp", {"code": code})
     assert response.status_code == 200
@@ -104,14 +129,14 @@ def test_totp_creates_session_but_reused_code_cannot_login_again(identity_web):
     sessions = client.get("/auth/sessions", headers=READ)
     assert sessions.status_code == 200 and token not in sessions.text
     client.cookies.clear()  # Independent browser context, no authenticated cookie.
-    assert login(client, state, app).json() == {"status": "mfa_totp"}
+    assert isinstance(login(client, state, app), PendingMfaLogin)
     assert post(client, app, "/auth/mfa/totp", {"code": code}).status_code == 401
 
 
 def test_mfa_mutation_requires_csrf_and_rejects_client_authority(identity_web):
     client, state, app = identity_web
     factor(state, app)
-    assert login(client, state, app).status_code == 202
+    assert isinstance(login(client, state, app), PendingMfaLogin)
     assert client.post("/auth/mfa/totp", json={"code": "123456"}).status_code == 403
     assert (
         post(
@@ -128,7 +153,7 @@ def test_mfa_mutation_requires_csrf_and_rejects_client_authority(identity_web):
 def test_rotation_preserves_old_factor_until_atomic_activation(identity_web):
     client, state, app = identity_web
     original = factor(state, app)
-    assert login(client, state, app).json() == {"status": "mfa_totp"}
+    assert isinstance(login(client, state, app), PendingMfaLogin)
     assert (
         post(
             client,
@@ -210,7 +235,7 @@ def test_reauthentication_rotates_cookie_without_extending_absolute_lifetime(
 
     client, state, app = identity_web
     seed = factor(state, app)
-    assert login(client, state, app).json() == {"status": "mfa_totp"}
+    assert isinstance(login(client, state, app), PendingMfaLogin)
     otp = pyotp.TOTP(seed.base32().get_secret_value())
     assert post(client, app, "/auth/mfa/totp", {"code": otp.now()}).status_code == 200
     cookie = client.cookies[app.state.http_security.session_cookie]
@@ -266,7 +291,7 @@ def test_general_mailbox_confirmation_is_bound_to_requesting_session(identity_we
     client, state, app = identity_web
     with Session(state["runtime"]) as session, session.begin():
         session.get(TenantMembership, state["membership"]).role = "read_only"
-    assert login(client, state, app).status_code == 200
+    assert not isinstance(login(client, state, app), PendingMfaLogin)
     assert (
         post(
             client, app, "/auth/mailbox/request", {}, expected=state["membership"]
@@ -290,7 +315,7 @@ def test_general_mailbox_confirmation_is_bound_to_requesting_session(identity_we
         client=("127.0.0.2", 12346),
         headers={"X-Real-IP": "127.0.0.1"},
     ) as other:
-        assert login(other, state, app).status_code == 200
+        assert not isinstance(login(other, state, app), PendingMfaLogin)
         assert (
             post(
                 other, app, "/auth/mailbox/confirm", body, expected=state["membership"]

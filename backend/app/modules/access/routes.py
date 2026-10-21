@@ -211,8 +211,6 @@ def logout(_payload: EmptyInput, request: Request) -> Response:
         cookies.get(policy.session_cookie),
         cookies.get(policy.challenge_cookie),
     )
-    if binding is not None:
-        request.app.state.identity.require().email_login.cancel(binding)
     request.app.state.access.logout(
         session_token=SecretStr(session_token) if session_token else None,
         challenge_token=SecretStr(challenge) if challenge else None,

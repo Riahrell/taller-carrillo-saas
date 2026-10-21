@@ -107,9 +107,9 @@ carrillo_app"""
         "CONSTRAINT uq_verified_mailboxes_email_login_challenge_id UNIQUE REFERENCES "
         "email_login_challenges(id) ON DELETE RESTRICT"
     )
-    op.drop_constraint("ck_verified_mailboxes_one_source", "verified_mailboxes")
+    op.drop_constraint(op.f("ck_verified_mailboxes_one_source"), "verified_mailboxes")
     op.create_check_constraint(
-        "ck_verified_mailboxes_one_source",
+        op.f("ck_verified_mailboxes_one_source"),
         "verified_mailboxes",
         "num_nonnulls(challenge_id, general_challenge_id, "
         "email_login_challenge_id) = 1",
@@ -130,14 +130,14 @@ def downgrade():
         raise RuntimeError(
             "Email login evidence exists; refusing destructive downgrade"
         )
-    op.drop_constraint("ck_verified_mailboxes_one_source", "verified_mailboxes")
+    op.drop_constraint(op.f("ck_verified_mailboxes_one_source"), "verified_mailboxes")
     op.drop_column("verified_mailboxes", "email_login_challenge_id")
     op.create_check_constraint(
-        "ck_verified_mailboxes_one_source",
+        op.f("ck_verified_mailboxes_one_source"),
         "verified_mailboxes",
         "num_nonnulls(challenge_id, general_challenge_id) = 1",
     )
-    op.drop_constraint("ck_sessions_single_login_method", "sessions")
+    op.drop_constraint(op.f("ck_sessions_single_login_method"), "sessions")
     op.drop_column("sessions", "email_login_id")
     op.drop_table("email_login_challenges")
     op.drop_table("verified_browsers")

@@ -8,6 +8,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import MembershipWorkspace from "@/components/membership-workspace";
 import { accessApi, type SessionContext } from "@/lib/access/api";
+import { identityApi } from "@/lib/access/identity";
 import { ApiError } from "@/lib/api/client";
 import { membershipsApi, type Detail } from "@/lib/memberships/api";
 import { confirmIdentity } from "./confirm-identity";
@@ -30,6 +31,13 @@ const created: Detail = {
 const email = "new@example.com";
 const password = " " + "🔧".repeat(15) + " ";
 beforeEach(() => {
+  vi.spyOn(identityApi, "status").mockResolvedValue({
+    mfa_enabled: false,
+    mailbox_verified: true,
+    recent_seconds: 0,
+    confirmation_context: null,
+    confirmation_seconds: 0,
+  });
   vi.stubGlobal("BroadcastChannel", undefined);
   vi.spyOn(accessApi, "session").mockResolvedValue(context);
   vi.spyOn(accessApi, "reauthenticate").mockResolvedValue(undefined);
@@ -256,4 +264,23 @@ describe("alta asistida", () => {
     ).not.toBeInTheDocument();
     expect(membershipsApi.create).toHaveBeenCalledOnce();
   });
+});
+
+it("permite crear el acceso con la confirmación del login sin pedir otra contraseña", async () => {
+  vi.mocked(identityApi.status).mockResolvedValue({
+    mfa_enabled: false,
+    mailbox_verified: true,
+    recent_seconds: 0,
+    confirmation_context: context,
+    confirmation_seconds: 3600,
+  });
+  render(<MembershipWorkspace mode="create" />);
+  expect(
+    await screen.findByLabelText("Correo del nuevo usuario"),
+  ).toBeVisible();
+  expect(
+    screen.queryByLabelText("Tu contraseña actual"),
+  ).not.toBeInTheDocument();
+  expect(accessApi.reauthenticate).not.toHaveBeenCalled();
+  expect(membershipsApi.create).not.toHaveBeenCalled();
 });
