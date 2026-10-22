@@ -180,3 +180,10 @@ Se validan pg_dump/pg_restore, pérdida y recuperación de objetos, corresponden
 repetición, denegación anónima y limpieza. No se accede al bucket de imágenes
 reales ni a la VPS. Sigue preparar despliegue HTTPS revisable y respaldar el
 sistema remoto anterior antes de sustituirlo, además de aceptación manual.
+
+Entrega 3.54 retira las aplicaciones antiguas de la VPS por petición expresa del
+propietario, quien confirmó que eran datos de prueba sin necesidad de respaldo.
+Verificado: cero contenedores, volúmenes, imágenes y caché; directorios retirados;
+SSH y Docker conservados. No se toca Object Storage ni el proyecto local. Ya no
+se requiere conservar ese despliegue anterior; sigue la instalación HTTPS nueva,
+la aceptación manual y el respaldo operativo de la aplicación nueva.

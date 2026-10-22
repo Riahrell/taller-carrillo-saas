@@ -1,6 +1,26 @@
 # Pruebas remotas: Contabo y dominio informado
 
-## Prioridad vigente — 2026-10-18
+## Estado vigente — 22 de octubre de 2026
+
+El propietario pidió expresamente eliminar todas las aplicaciones y datos de
+prueba de la VPS y confirmó que no hay nada que respaldar. Esta instrucción
+sustituye la postergación y la condición de conservar/restaurar el despliegue
+anterior que aparecen en el histórico de este documento.
+
+Entrega 3.54 ejecutada: retirados los tres contenedores antiguos, dos volúmenes,
+dos redes Compose, seis imágenes, caché de compilación y cuatro directorios de
+aplicaciones/copias/herramientas. No se creó un respaldo nuevo. La verificación
+remota confirma cero contenedores, volúmenes, imágenes y caché; 92 GiB libres.
+Sistema operativo, SSH y Docker conservados. Solo puertos TCP 22 y 53 escuchando;
+80/443 disponibles. No se accedió al Object Storage ni se alteró el proyecto local.
+
+Próximo paso: preparar y revisar la instalación HTTPS nueva en
+panel.taller-carrillo.com. No hay aplicación nueva ni certificado publicado.
+Las copias futuras de la aplicación nueva siguen requiriendo política de respaldo
+y recuperación; descartar estos datos de prueba antiguos no elimina ese requisito.
+Ver docs/deliveries/legacy-vps-retirement-3.54.md.
+
+## Histórico — prioridad del 18 de octubre de 2026
 
 El usuario solicita dejar la VPS para después y continuar el desarrollo local
 del catálogo e inventario. Se detienen las tareas remotas de limpieza, despliegue
