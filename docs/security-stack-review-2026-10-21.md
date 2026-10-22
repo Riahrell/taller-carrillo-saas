@@ -73,3 +73,21 @@ Node 24.22.1 y Python 3.13.17; las 15 pruebas nuevas también se repitieron con
 pip 26.2.2 instalado mediante hashes y PostgreSQL con musl corregido.
 
 Comandos reproducibles y resultados finales se registran en la entrega 3.45.
+
+
+## Actualización de VPS — 22 de octubre de 2026, entrega 3.55
+
+Después de la retirada autorizada de los datos antiguos, se instalaron 11
+actualizaciones oficiales revisadas. Verificado por SSH nuevo: Docker 29.9.2,
+Compose 5.6.1, containerd.io 2.4.2-3 y Buildx 0.38.1; dpkg --audit limpio, Docker
+activo/habilitado, sshd -t correcto y sin reinicio pendiente. Cinco actualizaciones
+permanecen aplazadas por phasing. No se cambió el equipo personal.
+
+La página oficial de Canonical consultada el 22 de octubre todavía marca
+[CVE-2026-99999 en Ubuntu Noble](https://ubuntu.com/security/CVE-2026-99999)
+como vulnerable. Kernel activo 6.8.0-147-generic y candidato de linux-virtual
+6.8.0-147.147, igual al instalado; sin livepatch observable. La actualización de
+Docker no demuestra la corrección del kernel ni el parche del host físico de
+Contabo. Se detectó además fallo de la unidad de espera de red, pendiente de
+diagnóstico antes de programar un reinicio. Ver entrega 3.55 para comandos y
+resultados; la aplicación aún no se despliega.

@@ -14,6 +14,12 @@ remota confirma cero contenedores, volúmenes, imágenes y caché; 92 GiB libres
 Sistema operativo, SSH y Docker conservados. Solo puertos TCP 22 y 53 escuchando;
 80/443 disponibles. No se accedió al Object Storage ni se alteró el proyecto local.
 
+Mantenimiento 3.55: Docker actualizado a 29.9.2 y Compose a 5.6.1, dpkg sin
+problemas y sin reinicio requerido. Kernel 6.8.0-147: Canonical todavía marca
+CVE-2026-99999 como vulnerable en Noble y no hay un candidato posterior en APT.
+Cinco actualizaciones quedan aplazadas por phasing. Se conserva el pendiente de
+diagnosticar systemd-networkd-wait-online.service fallido antes de reiniciar.
+
 Próximo paso: preparar y revisar la instalación HTTPS nueva en
 panel.taller-carrillo.com. No hay aplicación nueva ni certificado publicado.
 Las copias futuras de la aplicación nueva siguen requiriendo política de respaldo
