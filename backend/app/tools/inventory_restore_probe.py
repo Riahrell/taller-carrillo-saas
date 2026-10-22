@@ -5,6 +5,11 @@ from uuid import uuid5
 
 from sqlalchemy import select
 
+from app.modules.catalog.image_models import (
+    ProductImage,
+    ProductImageEvent,
+    ProductImageHead,
+)
 from app.modules.catalog.models import Product, ProductChangeRecord
 from app.modules.inventory.models import (
     ManualStockRecord,
@@ -162,10 +167,55 @@ def seed(session, member, now):
     )
     session.flush()
 
+    # Only synthetic database evidence; no object-storage request is made.
+    image_id = _id(user_id, "image")
+    session.add(
+        ProductImage(
+            id=image_id,
+            tenant_id=member.tenant_id,
+            product_id=product_id,
+            actor_membership_id=member.id,
+            operation_key=_id(user_id, "image-key"),
+            previous_image_id=None,
+            object_key=f"product-images/{member.tenant_id}/{product_id}/{image_id}.webp",
+            input_sha256="d" * 64,
+            sha256="e" * 64,
+            size=1024,
+            width=800,
+            height=600,
+            content_type="image/webp",
+            thumbnail_size=128,
+            thumbnail_sha256="f" * 64,
+            thumbnail_width=300,
+            thumbnail_height=225,
+            state="attached",
+            created_at=now,
+        )
+    )
+    session.flush()
+    session.add_all(
+        [
+            ProductImageHead(
+                tenant_id=member.tenant_id, product_id=product_id, image_id=image_id
+            ),
+            ProductImageEvent(
+                tenant_id=member.tenant_id,
+                product_id=product_id,
+                image_id=image_id,
+                previous_image_id=None,
+                actor_membership_id=member.id,
+                created_at=now,
+            ),
+        ]
+    )
+    session.flush()
+
 
 def mutate(session, member):
     # Deliberate synthetic corruption after the snapshot; no operational DB allowed.
     product = session.get(Product, _id(member.user_id, "product"))
+    head = session.get(ProductImageHead, (member.tenant_id, product.id))
+    head.image_id = None
     product.name = "Post-snapshot mutation"
     product.revision = 2
     balance = session.get(StockBalance, (member.tenant_id, product.id))
@@ -208,6 +258,37 @@ def check(session, member):
             ProductChangeRecord.product_id == product_id,
         )
     )
+    image_id = _id(member.user_id, "image")
+    image = session.get(ProductImage, image_id)
+    head = session.get(ProductImageHead, (member.tenant_id, product_id))
+    event = session.scalar(
+        select(ProductImageEvent).where(
+            ProductImageEvent.image_id == image_id,
+            ProductImageEvent.tenant_id == member.tenant_id,
+            ProductImageEvent.product_id == product_id,
+        )
+    )
+    if (
+        image is None
+        or head is None
+        or event is None
+        or head.image_id != image_id
+        or image.state != "attached"
+        or image.content_type != "image/webp"
+        or image.object_key
+        != f"product-images/{member.tenant_id}/{product_id}/{image_id}.webp"
+        or image.input_sha256 != "d" * 64
+        or image.sha256 != "e" * 64
+        or (image.size, image.width, image.height) != (1024, 800, 600)
+        or image.thumbnail_sha256 != "f" * 64
+        or (image.thumbnail_size, image.thumbnail_width, image.thumbnail_height)
+        != (128, 300, 225)
+        or image.actor_membership_id != member.id
+        or event.actor_membership_id != member.id
+        or image.previous_image_id is not None
+        or event.previous_image_id is not None
+    ):
+        raise ValueError("Image metadata snapshot mismatch")
     if (
         product is None
         or product.name != "Restore part"
@@ -243,8 +324,11 @@ def check_mutated(session, member):
         .order_by(StockMinimumRecord.revision.desc())
         .limit(1)
     )
+    head = session.get(ProductImageHead, (member.tenant_id, product.id))
     if (
-        product.name != "Post-snapshot mutation"
+        head is None
+        or head.image_id is not None
+        or product.name != "Post-snapshot mutation"
         or product.revision != 2
         or balance.quantity != D(99)
         or balance.value != D(297)

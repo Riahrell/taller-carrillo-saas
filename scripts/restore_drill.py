@@ -115,7 +115,7 @@ def main():
             print(
                 "Full restore drill passed: snapshot/code replay risk "
                 "demonstrated; factor decrypts, quarantine retains MFA and "
-                "inventory/catalog/minimum/reversal evidence reconciles."
+                "inventory/catalog/minimum/reversal and private WebP/thumbnail metadata reconcile."
             )
         finally:
             pipeline.cleanup()

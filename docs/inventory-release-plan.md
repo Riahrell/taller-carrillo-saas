@@ -21,7 +21,7 @@ referencia de requisitos; no autorizan accesos externos ni despliegues por sí s
 | Salida por venta u orden | No integrada | Necesita origen real y su módulo; no basta un campo de texto que diga venta |
 | Historial | Historial unificado de ajustes, entradas/salidas manuales y recepciones, con origen, responsable y paginación | Validación manual del propietario; ventas/órdenes dependen de sus módulos |
 | Stock bajo | Mínimo configurable, aviso en ficha y lista global privada de productos por reponer | Validación manual; consulta a demanda |
-| Acceso | Email de seis caracteres, navegador 15 días y sesión opaca; regresión de CI cerrada en 3.28 | Registro/aprobación y concesión de consulta implementados; permisos de escritura pendientes |
+| Acceso | Email de seis caracteres, navegador 15 días y sesión opaca; regresión de CI cerrada en 3.28 | Registro/aprobación, consulta autorizada y salidas manuales de Cajero implementados; aceptación manual pendiente |
 | Operación | Compose local, configuración externa de S3/correo | Preparar entorno de pruebas separado, HTTPS, backup/restauración y despliegue revisable |
 
 No se declara el conjunto listo para producción. La revisión estática y una
@@ -151,3 +151,13 @@ Entrega 3.48 optimiza fotos nuevas/reemplazadas a WebP con miniatura privada de
 publicación de ambas variantes y su limpieza mantienen reserva/evidencia y
 reintentos. El catálogo conserva páginas de 25 productos, máximo API 100 por
 solicitud. Sin conversión masiva, CDN pública o ampliación de permisos.
+
+
+Entrega 3.49 conserva la pantalla y las miniaturas al recuperar el foco mientras
+se revalida el acceso. El propietario confirmó que dejó de aparecer el blanco
+tras recargar la versión publicada localmente.
+
+Entrega 3.50 amplía el ensayo aislado de restauración a los metadatos de fotos
+WebP y miniaturas: enlace vigente del producto, claves, tamaños, dimensiones,
+hashes y evidencia del responsable. No respalda ni restaura los objetos de Contabo;
+esa recuperación, la aceptación manual y el entorno HTTPS siguen pendientes.
