@@ -56,6 +56,32 @@ lectura íntegra. Si falla a mitad, conservar el archivo y repetir: no hay borra
 ni rollback destructivo de los objetos ya recuperados. No arrancar la aplicación
 hasta completar la restauración de DB y objetos y comprobar sus referencias.
 
+## Correspondencia con la base recuperada
+
+Antes de reabrir la aplicación, con el entorno de base apuntando a la copia
+restaurada aislada, ejecutar:
+
+```sh
+PYTHONPATH=backend .venv/bin/python -m app.tools.image_archive check-database \
+  --directory .local/backups/release-images
+```
+
+Este comando verifica primero los archivos y luego compara exactamente todas las
+referencias vigentes: claves, hashes, tamaños, formato y dimensiones, incluyendo
+miniaturas. No requiere credenciales S3 ni escribe en la base. Falla si faltan o
+sobran referencias o si difieren sus metadatos. Que coincidan las imágenes no
+prueba la conciliación de existencias: esa comprobación sigue en el ensayo de
+restauración del inventario. Mantener la ventana de mantenimiento hasta finalizar
+las verificaciones y evitar tomar una coincidencia puntual como autorización para
+abrir servicios mientras otros productores siguen escribiendo.
+
+Estado operativo del 22 de octubre de 2026: el propietario confirmó que todavía
+no dispone de un bucket de recuperación separado. No se ha creado uno ni se ha
+restaurado nada en Contabo. Nombre propuesto, sujeto a disponibilidad:
+`taller-carrillo-restauracion-pruebas`, privado. La configuración de destino debe
+guardarse fuera de Git; verificar el destino antes de usar --apply y no reutilizar
+por error la configuración que apunta a taller-carrillo-imagenes.
+
 ## Protección y alcance
 
 Carpeta 0700, archivos 0600, sin enlaces simbólicos, propietarios del operador.

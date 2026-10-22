@@ -167,3 +167,9 @@ offline y restauración condicional sin sobrescritura. PostgreSQL temporal y
 transporte simulado validan el recorrido; no se ejecuta contra Contabo. Sigue
 pendiente ensayar un conjunto coordinado de dump y objetos con destino privado
 independiente, además de HTTPS y aceptación manual para el despliegue.
+
+Entrega 3.52 añade check-database para exigir correspondencia exacta entre el
+archivo privado de fotos/miniaturas y las referencias de la base recuperada, sin
+escrituras ni acceso S3. El propietario confirmó que aún no tiene segundo bucket;
+el ensayo real sigue pendiente de ese destino separado. La validación aislada
+seleccionada pasó 16 pruebas. No se cambia Contabo ni la VPS.

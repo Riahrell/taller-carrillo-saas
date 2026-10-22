@@ -247,3 +247,51 @@ def test_archive_round_trip_only_current_variants(images_state, tmp_path):
         )
         with Image.open(BytesIO(restored.read(entry.reference()))) as image:
             assert image.size == (entry.width, entry.height)
+
+
+def test_archive_requires_exact_database_image_references(images_state, tmp_path):
+    from app.tools.image_archive import check_database, export_archive, references
+
+    state = images_state
+    replace(state)
+    folder = tmp_path / "archive"
+    with state["runtime"].connect() as connection:
+        refs = list(references(connection))
+    export_archive(folder, refs, state["storage"])
+    with state["runtime"].connect() as connection:
+        assert check_database(folder, connection) == 2
+    replace(state, content=png("blue"))
+    with (
+        state["runtime"].connect() as connection,
+        pytest.raises(ValueError, match="references differ"),
+    ):
+        check_database(folder, connection)
+
+
+def test_archive_rejects_metadata_mismatch_and_empty_archive(images_state, tmp_path):
+    import json
+
+    from app.tools.image_archive import check_database, export_archive, references
+
+    state = images_state
+    replace(state)
+    folder = tmp_path / "archive"
+    with state["runtime"].connect() as connection:
+        refs = list(references(connection))
+    export_archive(folder, refs, state["storage"])
+    manifest_path = folder / "manifest.json"
+    data = json.loads(manifest_path.read_text())
+    data["entries"][0]["width"] += 1
+    manifest_path.write_text(json.dumps(data))
+    with (
+        state["runtime"].connect() as connection,
+        pytest.raises(ValueError, match="references differ"),
+    ):
+        check_database(folder, connection)
+    data["entries"] = []
+    manifest_path.write_text(json.dumps(data))
+    with (
+        state["runtime"].connect() as connection,
+        pytest.raises(ValueError, match="references differ"),
+    ):
+        check_database(folder, connection)

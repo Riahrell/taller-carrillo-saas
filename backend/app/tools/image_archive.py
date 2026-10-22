@@ -153,6 +153,16 @@ def verify_archive(folder):
     return manifest
 
 
+def check_database(folder, connection):
+    """Require exact current image references before reopening service."""
+    manifest = verify_archive(folder)
+    archived = {entry.key: entry for entry in manifest.entries}
+    current = {entry.key: entry for entry in references(connection)}
+    if current != archived:
+        raise ValueError("Archive and database image references differ")
+    return len(current)
+
+
 def restore_archive(folder, storage):
     manifest = verify_archive(folder)  # Validate every file before the first write.
     for index, entry in enumerate(manifest.entries):
@@ -175,7 +185,9 @@ def restore_archive(folder, storage):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("operation", choices=["export", "verify", "restore"])
+    parser.add_argument(
+        "operation", choices=["export", "verify", "check-database", "restore"]
+    )
     parser.add_argument("--directory", type=Path, required=True)
     parser.add_argument("--storage-config", type=Path)
     parser.add_argument("--maintenance-confirmed", action="store_true")
@@ -185,6 +197,16 @@ def main():
     try:
         if args.operation == "verify":
             count = len(verify_archive(args.directory).entries)
+        elif args.operation == "check-database":
+            engine = build_engine(load_settings())
+            with (
+                engine.connect().execution_options(
+                    isolation_level="REPEATABLE READ"
+                ) as connection,
+                connection.begin(),
+            ):
+                connection.exec_driver_sql("SET TRANSACTION READ ONLY")
+                count = check_database(args.directory, connection)
         else:
             if not args.maintenance_confirmed or not args.storage_config:
                 raise ValueError("Maintenance and explicit storage config required")
