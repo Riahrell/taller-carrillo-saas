@@ -215,3 +215,35 @@ def test_legacy_uncertain_png_reservation_can_finish_after_upgrade(images_state)
         == prepared.content
     )
     assert len(state["storage"].objects) == 1
+
+
+def test_archive_round_trip_only_current_variants(images_state, tmp_path):
+    from test_product_image_service import Storage
+
+    from app.tools.image_archive import (
+        export_archive,
+        references,
+        restore_archive,
+        verify_archive,
+    )
+
+    state = images_state
+    old = replace(state)
+    current = replace(state, content=png("blue"))
+    folder = tmp_path / "archive"
+    with state["runtime"].connect() as connection:
+        refs = list(references(connection))
+    assert len(refs) == 2
+    assert all(str(current.id) in entry.key for entry in refs)
+    assert all(str(old.id) not in entry.key for entry in refs)
+    assert export_archive(folder, refs, state["storage"]) == 2
+    manifest = verify_archive(folder)
+    restored = Storage()
+    assert restore_archive(folder, restored) == 2
+    assert restore_archive(folder, restored) == 2
+    for entry in manifest.entries:
+        assert restored.read(entry.reference()) == state["storage"].read(
+            entry.reference()
+        )
+        with Image.open(BytesIO(restored.read(entry.reference()))) as image:
+            assert image.size == (entry.width, entry.height)

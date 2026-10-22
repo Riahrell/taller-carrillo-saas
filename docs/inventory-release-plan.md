@@ -161,3 +161,9 @@ Entrega 3.50 amplía el ensayo aislado de restauración a los metadatos de fotos
 WebP y miniaturas: enlace vigente del producto, claves, tamaños, dimensiones,
 hashes y evidencia del responsable. No respalda ni restaura los objetos de Contabo;
 esa recuperación, la aceptación manual y el entorno HTTPS siguen pendientes.
+
+Entrega 3.51 añade exportación privada de fotos vigentes/miniaturas, verificación
+offline y restauración condicional sin sobrescritura. PostgreSQL temporal y
+transporte simulado validan el recorrido; no se ejecuta contra Contabo. Sigue
+pendiente ensayar un conjunto coordinado de dump y objetos con destino privado
+independiente, además de HTTPS y aceptación manual para el despliegue.
