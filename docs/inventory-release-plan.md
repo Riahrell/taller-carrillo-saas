@@ -173,3 +173,10 @@ archivo privado de fotos/miniaturas y las referencias de la base recuperada, sin
 escrituras ni acceso S3. El propietario confirmó que aún no tiene segundo bucket;
 el ensayo real sigue pendiente de ese destino separado. La validación aislada
 seleccionada pasó 16 pruebas. No se cambia Contabo ni la VPS.
+
+Entrega 3.53 completa el ensayo real en el bucket privado separado
+`taller-carrillo-restauracion`, con PostgreSQL temporal e imágenes sintéticas.
+Se validan pg_dump/pg_restore, pérdida y recuperación de objetos, correspondencia,
+repetición, denegación anónima y limpieza. No se accede al bucket de imágenes
+reales ni a la VPS. Sigue preparar despliegue HTTPS revisable y respaldar el
+sistema remoto anterior antes de sustituirlo, además de aceptación manual.

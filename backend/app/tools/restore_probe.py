@@ -66,6 +66,11 @@ def main():
     keyring = SeedKeyring(
         {"drill": SecretBytes(bytes.fromhex(data["key"]))}, active_key_id="drill"
     )
+    prepared = None
+    if data.get("real_image_fixture") is True:
+        from app.tools.storage_restore_probe import synthetic_image
+
+        prepared = synthetic_image()
     engine = build_engine(config)
     try:
         if args.phase == "quarantine":
@@ -91,7 +96,7 @@ def main():
                     )
                     session.add(member)
                     session.flush()
-                    inventory_probe.seed(session, member, now)
+                    inventory_probe.seed(session, member, now, prepared=prepared)
                     seed = generate_totp_seed()
                     envelope = keyring.encrypt(
                         seed, user_id=user_id, credential_id=credential_id
@@ -164,7 +169,7 @@ def main():
                             TenantMembership.user_id == user_id
                         )
                     )
-                    inventory_probe.check(session, member)
+                    inventory_probe.check(session, member, prepared=prepared)
                     record = session.get(MfaCredential, credential_id)
                     if record is None or record.revoked_at is not None:
                         raise ValueError("Factor missing")

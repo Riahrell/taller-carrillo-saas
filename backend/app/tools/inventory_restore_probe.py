@@ -27,7 +27,36 @@ def _id(user_id, label):
     return uuid5(user_id, "carrillo-restore-" + label)
 
 
-def seed(session, member, now):
+def image_metadata(prepared=None):
+    if prepared is None:
+        return dict(
+            input_sha256="d" * 64,
+            sha256="e" * 64,
+            size=1024,
+            width=800,
+            height=600,
+            content_type="image/webp",
+            thumbnail_size=128,
+            thumbnail_sha256="f" * 64,
+            thumbnail_width=300,
+            thumbnail_height=225,
+        )
+    thumbnail = prepared.thumbnail
+    return dict(
+        input_sha256=prepared.sha256,
+        sha256=prepared.sha256,
+        size=len(prepared.content),
+        width=prepared.width,
+        height=prepared.height,
+        content_type=prepared.content_type,
+        thumbnail_size=len(thumbnail.content),
+        thumbnail_sha256=thumbnail.sha256,
+        thumbnail_width=thumbnail.width,
+        thumbnail_height=thumbnail.height,
+    )
+
+
+def seed(session, member, now, *, prepared=None):
     user_id = member.user_id
     product_id = _id(user_id, "product")
     product = Product(
@@ -178,16 +207,7 @@ def seed(session, member, now):
             operation_key=_id(user_id, "image-key"),
             previous_image_id=None,
             object_key=f"product-images/{member.tenant_id}/{product_id}/{image_id}.webp",
-            input_sha256="d" * 64,
-            sha256="e" * 64,
-            size=1024,
-            width=800,
-            height=600,
-            content_type="image/webp",
-            thumbnail_size=128,
-            thumbnail_sha256="f" * 64,
-            thumbnail_width=300,
-            thumbnail_height=225,
+            **image_metadata(prepared),
             state="attached",
             created_at=now,
         )
@@ -232,7 +252,7 @@ def mutate(session, member):
     )
 
 
-def check(session, member):
+def check(session, member, *, prepared=None):
     product_id = _id(member.user_id, "product")
     product = session.get(Product, product_id)
     balance = session.get(StockBalance, (member.tenant_id, product_id))
@@ -277,12 +297,10 @@ def check(session, member):
         or image.content_type != "image/webp"
         or image.object_key
         != f"product-images/{member.tenant_id}/{product_id}/{image_id}.webp"
-        or image.input_sha256 != "d" * 64
-        or image.sha256 != "e" * 64
-        or (image.size, image.width, image.height) != (1024, 800, 600)
-        or image.thumbnail_sha256 != "f" * 64
-        or (image.thumbnail_size, image.thumbnail_width, image.thumbnail_height)
-        != (128, 300, 225)
+        or any(
+            getattr(image, name) != value
+            for name, value in image_metadata(prepared).items()
+        )
         or image.actor_membership_id != member.id
         or event.actor_membership_id != member.id
         or image.previous_image_id is not None

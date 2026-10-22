@@ -96,3 +96,13 @@ Una exportación real, una recuperación en un bucket privado independiente y la
 coordinación con el dump de producción todavía requieren ensayo operativo. Las
 pruebas automatizadas usan PostgreSQL temporal, imágenes reales sintéticas y un
 transporte simulado; no demuestran disponibilidad, permisos o cuotas de Contabo.
+
+## Ensayo ejecutado — entrega 3.53
+
+El propietario creó taller-carrillo-restauracion y aportó su configuración privada
+separada. Se completó el ensayo con PostgreSQL temporal y Contabo real: subida,
+archivo, pérdida confirmada, pg_restore, recuperación, correspondencia SQL,
+repetición y limpieza de las dos imágenes sintéticas. Acceso anónimo denegado.
+No se accedió al bucket de imágenes reales. Esto sustituye el pendiente de contar
+con segundo bucket y ensayar el proveedor; no equivale a recuperar datos reales
+o el despliegue anterior. Ver docs/deliveries/contabo-recovery-drill-3.53.md.
