@@ -13,6 +13,37 @@ const item = {
   quantity: "1.000",
   price: "2.00",
 };
+it("envía la membresía esperada en todas las consultas protegidas", async () => {
+  const etag = `"inventory-read-v1-${target}-0"`;
+  const fetch = vi
+    .fn()
+    .mockImplementation(async (url: string, init: RequestInit) => {
+      const headers = new Headers(init.headers);
+      expect(headers.get("X-Expected-Membership")).toBe(actor);
+      return new Response(
+        JSON.stringify(
+          url.includes("inventory-read")
+            ? {
+                membership_id: target,
+                granted: false,
+                eligible: true,
+                effective: false,
+                revision: "0",
+              }
+            : { items: [], next_after: null },
+        ),
+        {
+          status: headers.get("X-Expected-Membership") ? 200 : 428,
+          headers: { "X-Access-Membership": actor, ETag: etag },
+        },
+      );
+    });
+  vi.stubGlobal("fetch", fetch);
+  await permissionsApi.current(actor, target);
+  await availabilityApi.products(actor, { q: "", category: null });
+  await availabilityApi.categories(actor);
+  expect(fetch).toHaveBeenCalledTimes(3);
+});
 it("rechaza costos inesperados o actor distinto incluso con respuesta HTTP exitosa", async () => {
   for (const [data, headers] of [
     [{ ...item, value: "3.000000" }, { "X-Access-Membership": actor }],

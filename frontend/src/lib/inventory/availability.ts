@@ -107,6 +107,7 @@ export const availabilityApi = {
         return page(v, product, query.after);
       },
       options,
+      id(actor),
     );
   },
   categories(
@@ -128,6 +129,7 @@ export const availabilityApi = {
         );
       },
       options,
+      id(actor),
     );
   },
 };

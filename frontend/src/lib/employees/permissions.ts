@@ -60,6 +60,7 @@ export const permissionsApi = {
       `/auth/memberships/${id(target)}/inventory-read`,
       (v, s, h) => decode(v, s, h, actor, target),
       options,
+      id(actor),
     ),
   async change(
     actor: string,

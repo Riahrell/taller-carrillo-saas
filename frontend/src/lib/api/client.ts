@@ -39,6 +39,7 @@ async function request<T>(
     actor?: string;
     operationKey?: string;
   },
+  readActor?: string,
 ): Promise<T> {
   const url = apiPath(path);
   const controller = new AbortController();
@@ -56,6 +57,7 @@ async function request<T>(
         headers: {
           Accept: "application/json",
           "X-Requested-With": "XMLHttpRequest",
+          ...(readActor ? { "X-Expected-Membership": readActor } : {}),
           ...(mutation
             ? {
                 "Content-Type": "application/json",
@@ -118,8 +120,9 @@ export function getJson<T>(
   path: string,
   decode: (value: unknown, status: number, headers: Headers) => T,
   options: RequestOptions = {},
+  actor?: string,
 ): Promise<T> {
-  return request(path, decode, options);
+  return request(path, decode, options, undefined, actor);
 }
 
 export function sendJson<T>(
