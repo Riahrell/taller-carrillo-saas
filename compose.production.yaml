@@ -9,6 +9,8 @@ services:
     image: ${FRONTEND_IMAGE:?Configure the validated frontend release image}
     restart: unless-stopped
   proxy:
+    volumes:
+      - ${ACME_WEBROOT_DIR:?Configure the certificate renewal webroot}:/var/lib/acme:ro
     image: ${PROXY_IMAGE:?Configure the validated proxy release image}
     ports:
       - "80:8080"

@@ -6,8 +6,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Taller Carrillo",
-  description: "El espacio de gestión de Taller Carrillo.",
+  title: "Gestión de inventario",
+  description: "Herramienta de gestión de inventario para tu empresa.",
   robots: { index: false, follow: false },
 };
 
@@ -19,21 +19,25 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           Ir al contenido
         </a>
         <header className="site-header">
-          <Link className="brand" href="/" aria-label="Taller Carrillo, inicio">
+          <Link
+            className="brand"
+            href="/"
+            aria-label="Gestión de inventario, inicio"
+          >
             <span className="brand-mark" aria-hidden="true">
-              TC
+              GI
             </span>
             <span>
-              <strong>Taller Carrillo</strong>
-              <span className="brand-caption">Cuidado en cada detalle</span>
+              <strong>Gestión de inventario</strong>
+              <span className="brand-caption">Tu empresa, bien organizada</span>
             </span>
           </Link>
-          <span className="header-label">Gestión del taller</span>
+          <span className="header-label">Productos y existencias</span>
         </header>
         {children}
         <footer className="site-footer">
-          <span>Taller Carrillo</span>
-          <span>Un espacio para trabajar mejor.</span>
+          <span>Gestión de inventario</span>
+          <span>Desarrollado por Riahrell</span>
         </footer>
       </body>
     </html>

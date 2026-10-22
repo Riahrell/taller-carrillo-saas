@@ -4,17 +4,17 @@ export default function HomePage() {
   return (
     <main id="contenido" className="welcome" tabIndex={-1}>
       <div className="welcome-copy">
-        <p className="eyebrow">BIENVENIDO A TALLER CARRILLO</p>
+        <p className="eyebrow">TU HERRAMIENTA DE GESTIÓN</p>
         <h1>
-          Cada trabajo,
+          Tu inventario,
           <br />
           <span>bien organizado.</span>
         </h1>
         <p className="intro">
-          Accede a tu espacio de trabajo, con la atención que cada tarea merece.
+          Gestiona tus productos, existencias y equipo desde un mismo lugar.
         </p>
         <p className="welcome-detail">
-          TALLER CARRILLO <span aria-hidden="true">/</span> GESTIÓN DEL TALLER
+          PRODUCTOS <span aria-hidden="true">/</span> EXISTENCIAS Y EQUIPO
         </p>
       </div>
       <AccessPanel />

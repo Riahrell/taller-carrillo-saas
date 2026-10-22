@@ -41,7 +41,7 @@ def validate(pipeline, folder):
         stderr=subprocess.DEVNULL,
     )
     proxy = folder / "nginx.conf"
-    proxy.write_text(render("tls-probe.example.com"))
+    proxy.write_text(render("tls-probe.example.com", acme_webroot=True))
     arguments = [
         "docker",
         "run",

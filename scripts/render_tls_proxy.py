@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 
-def render(hostname: str) -> str:
+def render(hostname: str, *, acme_webroot: bool = False) -> str:
     if len(hostname) > 253 or not all(
         re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
         for label in hostname.split(".")
@@ -44,7 +44,18 @@ def render(hostname: str) -> str:
         if ($host != """
         + hostname
         + """) { return 444; }
-        location / { return 308 https://"""
+"""
+        + (
+            """        location ^~ /.well-known/acme-challenge/ {
+            root /var/lib/acme;
+            default_type text/plain;
+            try_files $uri =404;
+        }
+"""
+            if acme_webroot
+            else ""
+        )
+        + """        location / { return 308 https://"""
         + hostname
         + """$request_uri; }
     }
@@ -59,9 +70,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--hostname", required=True)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--acme-webroot", action="store_true")
     args = parser.parse_args()
     try:
-        value = render(args.hostname)
+        value = render(args.hostname, acme_webroot=args.acme_webroot)
         with os.fdopen(
             os.open(args.output, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o444), "w"
         ) as output:

@@ -16,7 +16,7 @@ describe("pantallas iniciales", () => {
     render(<HomePage />);
     expect(screen.getByRole("main")).toHaveAttribute("id", "contenido");
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "Cada trabajo,",
+      "Tu inventario,",
     );
     expect(await screen.findByLabelText("Correo electrónico")).toBeVisible();
     expect(
