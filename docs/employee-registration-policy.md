@@ -48,3 +48,7 @@ Entrega 3.41 conecta `/empleados` y `/registro`: el empleado elige su contraseñ
 verifica el código de correo y espera aprobación. Se crea la membresía read_only
 únicamente al aprobar; no se conceden módulos o inventario automáticamente.
 Contrato y límites: `employee-registration-contract.md`.
+
+Entrega 3.43 implementa la concesión explícita de consulta para Solo lectura.
+Aprobar una cuenta sigue sin otorgarla automáticamente. Escrituras de inventario
+permanecen pendientes; no se debe cambiar al empleado a administrador para suplirlas.

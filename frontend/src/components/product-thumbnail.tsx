@@ -16,16 +16,18 @@ export default function ProductThumbnail({
   productId,
   name,
   onProblem,
+  availability = false,
 }: {
   actor: string;
   productId: string;
   name: string;
   onProblem: (message: string) => void;
+  availability?: boolean;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const retry = useRef<() => void>(() => {});
   const [photo, setPhoto] = useState<Photo | null>(null);
-  const scope = actor + ":" + productId;
+  const scope = actor + ":" + productId + ":" + availability;
   useEffect(() => {
     const abort = new AbortController();
     let objectUrl: string | null = null;
@@ -49,7 +51,9 @@ export default function ProductThumbnail({
       running = true;
       setPhoto({ scope, state: "loading", url: null });
       try {
-        const blob = await productImages.read(actor, productId, abort.signal);
+        const blob = availability
+          ? await productImages.read(actor, productId, abort.signal, true)
+          : await productImages.read(actor, productId, abort.signal);
         if (abort.signal.aborted) return;
         const next = blob ? URL.createObjectURL(blob) : null;
         const previous = objectUrl;
@@ -112,7 +116,7 @@ export default function ProductThumbnail({
       window.removeEventListener("carrillo_product_photo_changed", changed);
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [actor, productId, scope, onProblem]);
+  }, [actor, productId, scope, onProblem, availability]);
   const current = photo?.scope === scope ? photo : null;
   return (
     <div

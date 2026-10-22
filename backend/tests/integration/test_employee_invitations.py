@@ -355,7 +355,7 @@ def test_runtime_cannot_rewrite_invitation_identity_and_downgrade_keeps_evidence
             command.downgrade(config, "0042_stock_reversals")
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0044_employee_registration"
+            == "0045_inventory_read_grants"
         )
 
 

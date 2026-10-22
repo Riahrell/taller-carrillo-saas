@@ -1199,3 +1199,6 @@ from app.modules.access import employee_invitation_models as employee_invitation
 from app.modules.access import (  # noqa: E402
     employee_registration_models as _employee_registration_models,  # noqa: F401
 )
+from app.modules.access import (  # noqa: E402
+    inventory_permission_models as _inventory_permission_models,  # noqa: F401
+)

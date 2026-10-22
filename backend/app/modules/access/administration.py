@@ -429,6 +429,34 @@ class MembershipAdministrator:
         self._retain_admin(session, target, change)
         before_role, before_active = target.role, target.is_active
         target.role, target.is_active = change.role, change.is_active
+        if change.role != MembershipRole.READ_ONLY or not change.is_active:
+            # A disabled/reprofiled membership must not regain a latent grant
+            # when it is reactivated later. Same tenant lock/transaction.
+            from app.modules.access.inventory_permission_models import (
+                InventoryReadGrant,
+            )
+
+            grant = session.scalar(
+                select(InventoryReadGrant)
+                .where(
+                    InventoryReadGrant.tenant_id == actor.tenant_id,
+                    InventoryReadGrant.membership_id == target.id,
+                )
+                .order_by(InventoryReadGrant.revision.desc())
+                .limit(1)
+            )
+            if grant is not None and grant.granted:
+                session.add(
+                    InventoryReadGrant(
+                        tenant_id=actor.tenant_id,
+                        membership_id=target.id,
+                        actor_membership_id=actor.membership_id,
+                        revision=grant.revision + 1,
+                        before_granted=True,
+                        granted=False,
+                        created_at=_database_now(session),
+                    )
+                )
         # Pending identities are global: cancel all of this target user's
         # challenges, but revoke sessions only in the affected membership.
         from app.modules.access.security_state import (

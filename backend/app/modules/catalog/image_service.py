@@ -11,8 +11,10 @@ from sqlalchemy import Engine, func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import create_session_factory
+from app.modules.access.administration import AdministrationDenied
 from app.modules.access.administrator_guard import authorize_administrator
 from app.modules.access.authentication import _limit_transaction
+from app.modules.access.inventory_permissions import authorize_inventory_read
 from app.modules.access.membership import AccessDenied
 from app.modules.access.models import Tenant
 from app.modules.access.sessions import _database_now
@@ -100,13 +102,18 @@ class ProductImageAdministrator:
             pass
 
     @contextmanager
-    def _authorized(self, token, expected_actor, product_id, *, recent=True):
+    def _authorized(
+        self, token, expected_actor, product_id, *, recent=True, operational=False
+    ):
         try:
             with self._factory.begin() as session:
                 _limit_transaction(session)
-                actor = authorize_administrator(
-                    session, token, expected_actor, recent=recent
-                )
+                if operational:
+                    actor = authorize_inventory_read(session, token, expected_actor)
+                else:
+                    actor = authorize_administrator(
+                        session, token, expected_actor, recent=recent
+                    )
                 product = session.scalar(
                     select(Product)
                     .where(
@@ -114,10 +121,17 @@ class ProductImageAdministrator:
                     )
                     .with_for_update()
                 )
-                if product is None or recent and not product.is_active:
+                if product is None or (recent or operational) and not product.is_active:
+                    if operational:
+                        raise AdministrationDenied("Access denied")
                     raise AccessDenied("Access denied")
                 yield session, actor
-                authorize_administrator(session, token, expected_actor, recent=recent)
+                if operational:
+                    authorize_inventory_read(session, token, expected_actor)
+                else:
+                    authorize_administrator(
+                        session, token, expected_actor, recent=recent
+                    )
         except SQLAlchemyError:
             raise ProductImagesUnavailable("Images unavailable") from None
 
@@ -322,11 +336,18 @@ class ProductImageAdministrator:
             return result
 
     def read(
-        self, token: SecretStr, *, expected_actor: UUID, product_id: UUID
+        self,
+        token: SecretStr,
+        *,
+        expected_actor: UUID,
+        product_id: UUID,
+        operational: bool = False,
     ) -> tuple[ProductImageView, bytes] | None:
         if not isinstance(expected_actor, UUID) or not isinstance(product_id, UUID):
             raise AccessDenied("Access denied")
-        with self._authorized(token, expected_actor, product_id, recent=False) as (
+        with self._authorized(
+            token, expected_actor, product_id, recent=False, operational=operational
+        ) as (
             session,
             actor,
         ):
@@ -337,7 +358,9 @@ class ProductImageAdministrator:
             image = session.get(ProductImage, image_id)
             reference = _reference(image)
         content = self._storage.read(reference)
-        with self._authorized(token, expected_actor, product_id, recent=False) as (
+        with self._authorized(
+            token, expected_actor, product_id, recent=False, operational=operational
+        ) as (
             session,
             actor,
         ):

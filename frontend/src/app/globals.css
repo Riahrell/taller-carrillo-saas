@@ -1311,3 +1311,66 @@ h1 span {
 .email-login-flow .form-actions > .action {
   flex-basis: 10rem;
 }
+
+.availability-list {
+  list-style: none;
+  display: grid;
+  gap: 18px;
+  padding: 0;
+}
+.availability-list > li {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+.availability-list > li > div:not(.catalog-thumbnail) {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.availability-list h2 {
+  font-size: 20px;
+  margin: 0 0 12px;
+}
+.availability-list p {
+  margin: 8px 0;
+}
+.availability-list dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 32px;
+  margin: 18px 0 0;
+}
+.availability-list dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+.availability-list dd {
+  margin: 6px 0 0;
+  font-weight: 700;
+}
+@media (max-width: 480px) {
+  .availability-list > li {
+    flex-wrap: wrap;
+  }
+}
+
+.inventory-permission-edit .permission-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  line-height: 1.5;
+}
+.inventory-permission-edit input[type="checkbox"] {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+  padding: 0;
+  accent-color: var(--ink);
+}

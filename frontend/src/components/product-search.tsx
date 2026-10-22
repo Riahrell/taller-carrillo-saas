@@ -7,7 +7,10 @@ import {
   type Category,
 } from "@/lib/catalog/api";
 
+import { availabilityApi } from "@/lib/inventory/availability";
+
 type Props = {
+  operational?: boolean;
   actor: string;
   value: string;
   category: string | null;
@@ -18,6 +21,7 @@ type Categories =
   | { actor: string; kind: "ready"; items: Category[] }
   | { actor: string; kind: "error" };
 export default function ProductSearch({
+  operational = false,
   actor,
   value,
   category,
@@ -42,7 +46,9 @@ export default function ProductSearch({
       const items: Category[] = [];
       let after: string | undefined;
       do {
-        const page = await catalogApi.categories(actor, after, {
+        const page = await (
+          operational ? availabilityApi : catalogApi
+        ).categories(actor, after, {
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
@@ -69,7 +75,7 @@ export default function ProductSearch({
       controller.abort();
       clearTimeout(timer);
     };
-  }, [actor, attempt]);
+  }, [actor, attempt, operational]);
   function apply(nextCategory: string | null) {
     if (disabled) return;
     try {

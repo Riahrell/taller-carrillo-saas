@@ -60,6 +60,7 @@ async function transfer<T>(
   decode: (response: Response) => Promise<T>,
   signal?: AbortSignal,
   command?: ImageCommand,
+  operational = false,
 ): Promise<T> {
   if (!validId(actor) || !validId(product)) throw new Error("Invalid context");
   if (
@@ -85,26 +86,31 @@ async function transfer<T>(
       );
     }
     const perform = async () => {
-      const response = await fetch(`/api/catalog/products/${product}/image`, {
-        method: command ? "POST" : "GET",
-        credentials: "same-origin",
-        cache: "no-store",
-        redirect: "error",
-        signal: controller.signal,
-        headers: {
-          Accept: command ? "application/json" : "image/png",
-          "X-Requested-With": "XMLHttpRequest",
-          "X-Expected-Membership": actor,
-          ...(command
-            ? {
-                "Content-Type": "application/octet-stream",
-                "X-CSRF-Token": csrf!,
-                "Idempotency-Key": command.key,
-              }
-            : {}),
+      const response = await fetch(
+        operational && !command
+          ? `/api/inventory/availability/products/${product}/image`
+          : `/api/catalog/products/${product}/image`,
+        {
+          method: command ? "POST" : "GET",
+          credentials: "same-origin",
+          cache: "no-store",
+          redirect: "error",
+          signal: controller.signal,
+          headers: {
+            Accept: command ? "application/json" : "image/png",
+            "X-Requested-With": "XMLHttpRequest",
+            "X-Expected-Membership": actor,
+            ...(command
+              ? {
+                  "Content-Type": "application/octet-stream",
+                  "X-CSRF-Token": csrf!,
+                  "Idempotency-Key": command.key,
+                }
+              : {}),
+          },
+          body: command?.file,
         },
-        body: command?.file,
-      });
+      );
       if (!response.ok)
         throw new ApiError(
           "http",
@@ -160,7 +166,12 @@ export const productImages = {
       command,
     );
   },
-  read(actor: string, product: string, signal?: AbortSignal) {
+  read(
+    actor: string,
+    product: string,
+    signal?: AbortSignal,
+    operational = false,
+  ) {
     return transfer(
       actor,
       product,
@@ -201,6 +212,8 @@ export const productImages = {
         return new Blob([buffer.subarray(0, size)], { type: "image/png" });
       },
       signal,
+      undefined,
+      operational,
     );
   },
 };

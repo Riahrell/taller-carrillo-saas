@@ -21,7 +21,7 @@ referencia de requisitos; no autorizan accesos externos ni despliegues por sí s
 | Salida por venta u orden | No integrada | Necesita origen real y su módulo; no basta un campo de texto que diga venta |
 | Historial | Historial unificado de ajustes, entradas/salidas manuales y recepciones, con origen, responsable y paginación | Validación manual del propietario; ventas/órdenes dependen de sus módulos |
 | Stock bajo | Mínimo configurable, aviso en ficha y lista global privada de productos por reponer | Validación manual; consulta a demanda |
-| Acceso | Email de seis caracteres, navegador 15 días y sesión opaca; regresión de CI cerrada en 3.28 | Registro por invitación y aprobación implementados; concesiones de inventario pendientes |
+| Acceso | Email de seis caracteres, navegador 15 días y sesión opaca; regresión de CI cerrada en 3.28 | Registro/aprobación y concesión de consulta implementados; permisos de escritura pendientes |
 | Operación | Compose local, configuración externa de S3/correo | Preparar entorno de pruebas separado, HTTPS, backup/restauración y despliegue revisable |
 
 No se declara el conjunto listo para producción. La revisión estática y una
@@ -133,3 +133,9 @@ de correo y aprobación administrativa desde UI. Aprobar crea read_only sin mód
 Continúan pendientes permisos de inventario para empleados, cuentas existentes,
 retención de intentos y recuperación antes del primer login, además de aceptación
 manual y operación remota. No hay cambios de stock ni despliegue en Contabo.
+
+Entrega 3.43 permite conceder/revocar consulta privada a Solo lectura, con auditoría
+y versión. La pantalla operativa excluye costos/valoración y usa fotos reautorizadas.
+Desactivar/reperfilar retira la concesión; reactivar no la restaura. Sigue la
+autorización de escrituras de empleados, además de los cierres operativos y de
+registro ya enumerados. No se despliega en Contabo ni cambia inventario.

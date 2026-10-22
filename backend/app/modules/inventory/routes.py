@@ -11,6 +11,7 @@ from pydantic import BaseModel, SecretStr
 from app.modules.access.http_context import expected_membership
 from app.modules.access.http_security import RequestRejected
 from app.modules.access.membership import AccessDenied
+from app.modules.catalog.inputs import CatalogPageQuery, ProductSearchQuery
 from app.modules.inventory.inputs import (
     CountPageQuery,
     HistoryPageQuery,
@@ -213,4 +214,63 @@ def reverse_stock(payload: StockReversalInput, request: Request):
             operation_key=_operation_key(request),
             expected_actor=expected,
         )
+    )
+
+
+@router.get("/availability")
+def available_products(request: Request, query: Annotated[ProductSearchQuery, Query()]):
+    request.app.state.http_security.verify_browser_read(request.headers)
+    expected = expected_membership(request)
+    if expected is None:
+        raise HTTPException(428, "Precondition required", headers=NO_STORE)
+    return _response(
+        request.app.state.inventory_availability.products(
+            _token(request, pagination=True), expected_actor=expected, query=query
+        )
+    )
+
+
+@router.get("/availability/categories")
+def available_categories(request: Request, query: Annotated[CatalogPageQuery, Query()]):
+    request.app.state.http_security.verify_browser_read(request.headers)
+    expected = expected_membership(request)
+    if expected is None:
+        raise HTTPException(428, "Precondition required", headers=NO_STORE)
+    return _response(
+        request.app.state.inventory_availability.categories(
+            _token(request, pagination=True), expected_actor=expected, query=query
+        )
+    )
+
+
+@router.get("/availability/products/{product_id}/image")
+def available_image(product_id: UUID, request: Request):
+    from fastapi.responses import Response
+
+    request.app.state.http_security.verify_browser_read(request.headers)
+    token, expected = _token(request), expected_membership(request)
+    if expected is None:
+        raise HTTPException(428, "Precondition required", headers=NO_STORE)
+    service = request.app.state.product_images
+    if service is None:
+        raise HTTPException(503, "Images unavailable", headers=NO_STORE)
+    result = service.read(
+        token, expected_actor=expected, product_id=product_id, operational=True
+    )
+    headers = NO_STORE | {
+        "X-Access-Membership": str(expected),
+        "X-Content-Type-Options": "nosniff",
+    }
+    if result is None:
+        return Response(status_code=204, headers=headers)
+    image, content = result
+    return Response(
+        content,
+        media_type="image/png",
+        headers=headers
+        | {
+            "X-Image-Id": str(image.id),
+            "Content-Disposition": 'inline; filename="product.png"',
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
     )

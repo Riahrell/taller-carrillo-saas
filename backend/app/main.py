@@ -29,6 +29,10 @@ from app.modules.access.http_security import HttpSecurity, RequestRejected
 from app.modules.access.http_service import HttpAccess
 from app.modules.access.identity_http import IdentityAccess
 from app.modules.access.identity_routes import router as identity_router
+from app.modules.access.inventory_permission_routes import (
+    router as inventory_permission_router,
+)
+from app.modules.access.inventory_permissions import InventoryPermissions
 from app.modules.access.invitation_routes import router as invitation_router
 from app.modules.access.membership import AccessDenied
 from app.modules.access.reauthentication import RecentAuthenticationRequired
@@ -57,6 +61,7 @@ from app.modules.catalog.service import (
     CatalogDenied,
     CatalogUnavailable,
 )
+from app.modules.inventory.availability import InventoryAvailability
 from app.modules.inventory.manual import ManualMovementInvalid
 from app.modules.inventory.routes import router as inventory_router
 from app.modules.inventory.service import (
@@ -102,6 +107,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.employee_registrations = EmployeeRegistrations(engine)
             app.state.catalog = CatalogAdministrator(engine)
             app.state.inventory = InventoryAdministrator(engine)
+            app.state.inventory_availability = InventoryAvailability(engine)
+            app.state.inventory_permissions = InventoryPermissions(engine)
             app.state.purchases = PurchasesAdministrator(engine)
             app.state.purchase_receiver = PurchaseReceiver(engine)
             app.state.product_images = None
@@ -144,6 +151,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(catalog_router)
     application.include_router(image_router)
     application.include_router(inventory_router)
+    application.include_router(inventory_permission_router)
     application.include_router(purchases_router)
     application.add_middleware(HttpSecurityMiddleware, policy=http_security)
 

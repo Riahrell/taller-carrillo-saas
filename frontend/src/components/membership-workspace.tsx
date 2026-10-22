@@ -5,6 +5,7 @@ import { sameContext } from "@/lib/access/same-context";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { accessApi, type SessionContext } from "@/lib/access/api";
 import { ApiError } from "@/lib/api/client";
+import InventoryPermissionManager from "@/components/inventory-permission-manager";
 import EmployeeManager from "@/components/employee-manager";
 import MembershipManager from "@/components/membership-manager";
 import MembershipCreation from "@/components/membership-creation";
@@ -39,7 +40,7 @@ async function load(signal: AbortSignal): Promise<View> {
 export default function MembershipWorkspace({
   mode = "manage",
 }: {
-  mode?: "manage" | "create" | "employees";
+  mode?: "manage" | "create" | "employees" | "permissions";
 }) {
   const [view, setView] = useState<View>({ kind: "checking" });
   const [paused, setPaused] = useState(true);
@@ -173,9 +174,11 @@ export default function MembershipWorkspace({
       <h1>
         {mode === "create"
           ? "Nuevo acceso"
-          : mode === "employees"
-            ? "Empleados"
-            : "Membresías"}
+          : mode === "permissions"
+            ? "Permisos de inventario"
+            : mode === "employees"
+              ? "Empleados"
+              : "Membresías"}
       </h1>
       {view.kind === "checking" && <p role="status">Comprobando acceso…</p>}
       {view.kind === "blocked" && (
@@ -207,6 +210,13 @@ export default function MembershipWorkspace({
               </Link>
             </p>
           )}
+          {view.kind === "active" && (
+            <p>
+              <Link href="/permisos" className="text-action">
+                Permisos de consulta de inventario
+              </Link>
+            </p>
+          )}
           {view.kind === "confirm" ? (
             <IdentityConfirmation
               session={view.session}
@@ -216,6 +226,14 @@ export default function MembershipWorkspace({
               onConfirmed={(remaining) =>
                 setView({ kind: "active", session: view.session, remaining })
               }
+            />
+          ) : mode === "permissions" ? (
+            <InventoryPermissionManager
+              key={`${view.session.user_id}:${view.session.tenant_id}:${view.session.membership_id}`}
+              session={view.session}
+              onProblem={problem}
+              onWriting={onWriting}
+              onChanged={announce}
             />
           ) : mode === "employees" ? (
             <EmployeeManager

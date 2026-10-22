@@ -260,3 +260,12 @@ empresa puede aprobarla, creando role=read_only fijado por servidor. No concede
 módulos ni inventario. La próxima entrega debe aplicar concesiones específicas
 y DTO operativos antes de abrir esas rutas a empleados. Cuentas existentes no
 se vinculan por conocer su correo. Ver `employee-registration-contract.md`.
+
+## Concesión operativa de inventario 3.43
+
+El administrador puede conceder a Solo lectura la consulta de productos activos,
+fotos, precio de venta y existencias mediante `/permisos`. Sin concesión no hay
+acceso. Guardias DB vigentes en `/inventory/availability` y en su ruta de fotos.
+No abre costos, valoración ni endpoints administrativos. Revocación en la siguiente
+petición; desactivar/reperfilar también retira la concesión sin restaurarla al
+reactivar. Escrituras siguen pendientes. Contrato: `inventory-read-permissions-contract.md`.
