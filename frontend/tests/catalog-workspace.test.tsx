@@ -263,7 +263,7 @@ it("conserva el borrador al volver y lo retira si cambia la empresa", async () =
     value: "hidden",
   });
   fireEvent(document, new Event("visibilitychange"));
-  expect(input).not.toBeVisible();
+  expect(input).toBeVisible();
   Object.defineProperty(document, "visibilityState", {
     configurable: true,
     value: "visible",

@@ -174,7 +174,9 @@ export default function InventoryWorkspace() {
         </section>
       )}
       {view.kind === "active" && paused && (
-        <p role="status">Comprobando acceso…</p>
+        <p role="status" className="sr-only">
+          Comprobando acceso…
+        </p>
       )}
       {view.kind === "active" && (
         <div
@@ -183,7 +185,6 @@ export default function InventoryWorkspace() {
             if (event.target instanceof HTMLElement)
               resumeFocus.current = event.target;
           }}
-          style={{ visibility: paused ? "hidden" : undefined }}
           aria-hidden={paused || undefined}
           inert={paused}
         >

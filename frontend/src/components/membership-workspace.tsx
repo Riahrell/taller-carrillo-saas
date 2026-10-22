@@ -192,14 +192,12 @@ export default function MembershipWorkspace({
         </section>
       )}
       {paused && (view.kind === "active" || view.kind === "confirm") && (
-        <p role="status">Comprobando acceso…</p>
+        <p role="status" className="sr-only">
+          Comprobando acceso…
+        </p>
       )}
       {(view.kind === "active" || view.kind === "confirm") && (
-        <div
-          style={{ visibility: paused ? "hidden" : undefined }}
-          aria-hidden={paused || undefined}
-          inert={paused}
-        >
+        <div aria-hidden={paused || undefined} inert={paused}>
           <p className="membership-company">
             {view.session.tenant_name} <span>· Administrador</span>
           </p>

@@ -148,12 +148,13 @@ export default function InventoryAvailability() {
         </button>
       </div>
       {(busy || paused) && (
-        <p role="status">Comprobando acceso y existencias…</p>
+        <p role="status" className="sr-only">
+          Comprobando acceso y existencias…
+        </p>
       )}
       {session && page && (
         <div
           ref={content}
-          style={{ visibility: paused ? "hidden" : undefined }}
           aria-hidden={paused || undefined}
           inert={paused || busy}
           onFocusCapture={(event) => {

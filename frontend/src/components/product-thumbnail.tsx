@@ -81,7 +81,7 @@ export default function ProductThumbnail({
       }
     };
     const refresh = () => {
-      if (visible()) void load(true);
+      if (visible()) void load();
     };
     const changed = (event: Event) => {
       if (!(event instanceof CustomEvent)) return;

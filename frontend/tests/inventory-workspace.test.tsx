@@ -183,7 +183,7 @@ it("no intenta registrar si falta generación segura de claves", async () => {
   await screen.findByText(/Comprueba tu acceso desde un navegador actualizado/);
   expect(inventoryApi.record).not.toHaveBeenCalled();
 });
-it("oculta datos al perder visibilidad y conserva el pendiente para su mismo contexto", async () => {
+it("conserva la pantalla sin habilitar acciones mientras comprueba el contexto", async () => {
   vi.mocked(inventoryApi.record).mockRejectedValueOnce(
     new ApiError("network", "Disconnected"),
   );
@@ -202,7 +202,7 @@ it("oculta datos al perder visibilidad y conserva el pendiente para su mismo con
     value: "hidden",
   });
   fireEvent(document, new Event("visibilitychange"));
-  expect(content).toHaveStyle({ visibility: "hidden" });
+  expect(content).toBeVisible();
   expect(content).not.toHaveAttribute("hidden");
   expect(content).toHaveAttribute("aria-hidden", "true");
   expect(content).toHaveAttribute("inert");

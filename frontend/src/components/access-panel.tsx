@@ -292,11 +292,7 @@ export default function AccessPanel() {
       <h2 id="access-title" ref={title} tabIndex={-1}>
         {heading}
       </h2>
-      <div
-        style={{ visibility: suspended ? "hidden" : undefined }}
-        aria-hidden={suspended || undefined}
-        inert={suspended}
-      >
+      <div aria-hidden={suspended || undefined} inert={suspended}>
         {message && (
           <p
             className="access-message"
