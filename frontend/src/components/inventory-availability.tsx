@@ -18,6 +18,7 @@ import {
 import type { Page } from "@/lib/catalog/api";
 import { displayPrice } from "@/lib/catalog/api";
 import { displayDecimal } from "@/lib/inventory/api";
+import InventoryWithdrawalForm from "@/components/inventory-withdrawal-form";
 import ProductSearch from "@/components/product-search";
 import ProductThumbnail from "@/components/product-thumbnail";
 
@@ -59,7 +60,7 @@ export default function InventoryAvailability() {
           block("La sesión cambió. Vuelve al inicio y comprueba el acceso.");
           return;
         }
-        if (!["read_only", "admin"].includes(actor.role)) {
+        if (!["read_only", "admin", "cashier"].includes(actor.role)) {
           block("Tu perfil no permite esta consulta de inventario.");
           return;
         }
@@ -161,8 +162,9 @@ export default function InventoryAvailability() {
         >
           <p>{session.tenant_name} · Consulta de productos activos</p>
           <p>
-            Los permisos de esta pantalla permiten consultar. Para registrar
-            cambios solicita el permiso correspondiente al administrador.
+            {session.role === "cashier"
+              ? "Puedes registrar salidas manuales autorizadas. Esta acción no registra ventas ni cobros."
+              : "Consulta de existencias sin acceso a costos ni cambios de inventario."}
           </p>
           <ProductSearch
             actor={session.membership_id}
@@ -202,6 +204,14 @@ export default function InventoryAvailability() {
                       <dd>{displayPrice(product.price)}</dd>
                     </div>
                   </dl>
+                  {session.role === "cashier" && (
+                    <InventoryWithdrawalForm
+                      actor={session.membership_id}
+                      product={product}
+                      onProblem={block}
+                      onSaved={() => void load(query.current)}
+                    />
+                  )}
                 </div>
               </li>
             ))}

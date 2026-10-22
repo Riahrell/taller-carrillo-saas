@@ -269,3 +269,12 @@ acceso. Guardias DB vigentes en `/inventory/availability` y en su ruta de fotos.
 No abre costos, valoración ni endpoints administrativos. Revocación en la siguiente
 petición; desactivar/reperfilar también retira la concesión sin restaurarla al
 reactivar. Escrituras siguen pendientes. Contrato: `inventory-read-permissions-contract.md`.
+
+## Salidas operativas 3.45
+
+Cajero activo puede recibir una concesión explícita de consulta y salidas manuales
+por `/permisos`. No concede costos, entradas, ajustes, compras, ventas/cobros,
+anulaciones o administración. Solo lectura nunca escribe; Mecánico conserva sus
+restricciones de órdenes asignadas. Amplía la matriz objetivo anterior únicamente
+para esta capacidad concedida. Revocación, cambio de perfil y desactivación se
+comprueban en servidor. Ver `inventory-withdrawal-permissions-contract.md`.

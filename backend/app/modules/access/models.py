@@ -1202,3 +1202,4 @@ from app.modules.access import (  # noqa: E402
 from app.modules.access import (  # noqa: E402
     inventory_permission_models as _inventory_permission_models,  # noqa: F401
 )
+from app.modules.access.inventory_permission_models import InventoryWithdrawalGrant  # noqa: E402, F401

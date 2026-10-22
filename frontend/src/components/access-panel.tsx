@@ -462,7 +462,7 @@ export default function AccessPanel() {
                 <dd>{roles[view.session.role]}</dd>
               </div>
             </dl>
-            {view.session.role === "read_only" && (
+            {["read_only", "cashier"].includes(view.session.role) && (
               <Link
                 className="action membership-link"
                 href="/inventario/consulta"

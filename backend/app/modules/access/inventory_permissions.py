@@ -14,7 +14,10 @@ from app.modules.access.administration import (
 )
 from app.modules.access.authentication import _limit_transaction
 from app.modules.access.employee_invitations import _authorize
-from app.modules.access.inventory_permission_models import InventoryReadGrant
+from app.modules.access.inventory_permission_models import (
+    InventoryReadGrant,
+    InventoryWithdrawalGrant,
+)
 from app.modules.access.membership import AccessDenied
 from app.modules.access.models import SessionRecord, Tenant, TenantMembership, User
 from app.modules.access.sessions import _database_now, _token_hash, resolve_session
@@ -39,14 +42,14 @@ class InventoryReadPermission(BaseModel):
         return f'"inventory-read-v1-{self.membership_id}-{self.revision}"'
 
 
-def latest(session, tenant_id, membership_id):
+def latest(session, tenant_id, membership_id, model=InventoryReadGrant):
     return session.scalar(
-        select(InventoryReadGrant)
+        select(model)
         .where(
-            InventoryReadGrant.tenant_id == tenant_id,
-            InventoryReadGrant.membership_id == membership_id,
+            model.tenant_id == tenant_id,
+            model.membership_id == membership_id,
         )
-        .order_by(InventoryReadGrant.revision.desc())
+        .order_by(model.revision.desc())
         .limit(1)
     )
 
@@ -74,6 +77,12 @@ def authorize_inventory_read(session, token, expected_actor):
         raise AdministrationDenied("Access denied")
     if actor.role == "admin":
         return actor
+    if actor.role == "cashier":
+        grant = latest(
+            session, actor.tenant_id, actor.membership_id, InventoryWithdrawalGrant
+        )
+        if grant is not None and grant.granted:
+            return actor
     grant = latest(session, actor.tenant_id, actor.membership_id)
     if actor.role != "read_only" or grant is None or not grant.granted:
         raise AdministrationDenied("Access denied")
@@ -81,6 +90,10 @@ def authorize_inventory_read(session, token, expected_actor):
 
 
 class InventoryPermissions:
+    grant_model = InventoryReadGrant
+    eligible_role = "read_only"
+    view_model = InventoryReadPermission
+
     def __init__(self, engine):
         self.factory = create_session_factory(engine)
 
@@ -96,10 +109,12 @@ class InventoryPermissions:
         if row is None:
             raise AdministrationDenied("Access denied")
         member, user_active = row
-        current = latest(session, actor.tenant_id, member.id)
+        current = latest(session, actor.tenant_id, member.id, self.grant_model)
         granted = current.granted if current else False
-        eligible = member.role == "read_only" and member.is_active and user_active
-        return InventoryReadPermission(
+        eligible = (
+            member.role == self.eligible_role and member.is_active and user_active
+        )
+        return self.view_model(
             membership_id=member.id,
             granted=granted,
             eligible=eligible,
@@ -130,7 +145,7 @@ class InventoryPermissions:
                     raise AdministrationDenied("Access denied")
                 if data.granted != before.granted:
                     session.add(
-                        InventoryReadGrant(
+                        self.grant_model(
                             tenant_id=actor.tenant_id,
                             membership_id=membership_id,
                             actor_membership_id=actor.membership_id,
@@ -145,3 +160,23 @@ class InventoryPermissions:
                 return self.view(session, actor, membership_id)
         except SQLAlchemyError:
             raise AdministrationUnavailable("Permissions unavailable") from None
+
+
+class InventoryWithdrawalPermission(InventoryReadPermission):
+    @property
+    def etag(self):
+        return f'"inventory-withdrawal-v1-{self.membership_id}-{self.revision}"'
+
+
+class InventoryWithdrawalPermissions(InventoryPermissions):
+    grant_model = InventoryWithdrawalGrant
+    eligible_role = "cashier"
+    view_model = InventoryWithdrawalPermission
+
+
+def authorize_inventory_withdrawal(session, token, expected_actor):
+    actor = authorize_inventory_read(session, token, expected_actor)
+    if actor.role != "cashier":
+        raise AdministrationDenied("Access denied")
+    # The read guard already checked the current withdrawal grant for cashiers.
+    return actor

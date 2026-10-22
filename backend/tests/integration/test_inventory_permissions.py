@@ -481,7 +481,7 @@ def test_schema_downgrade_refuses_permission_evidence(readers):
             command.downgrade(config, "0044_employee_registration")
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0045_inventory_read_grants"
+            == "0046_inventory_withdrawal_grants"
         )
 
 

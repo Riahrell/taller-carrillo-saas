@@ -429,25 +429,25 @@ class MembershipAdministrator:
         self._retain_admin(session, target, change)
         before_role, before_active = target.role, target.is_active
         target.role, target.is_active = change.role, change.is_active
-        if change.role != MembershipRole.READ_ONLY or not change.is_active:
-            # A disabled/reprofiled membership must not regain a latent grant
-            # when it is reactivated later. Same tenant lock/transaction.
-            from app.modules.access.inventory_permission_models import (
-                InventoryReadGrant,
-            )
+        # Explicit grants never survive a disable or a profile change.
+        from app.modules.access.inventory_permission_models import (
+            InventoryReadGrant,
+            InventoryWithdrawalGrant,
+        )
 
+        for model in (InventoryReadGrant, InventoryWithdrawalGrant):
             grant = session.scalar(
-                select(InventoryReadGrant)
+                select(model)
                 .where(
-                    InventoryReadGrant.tenant_id == actor.tenant_id,
-                    InventoryReadGrant.membership_id == target.id,
+                    model.tenant_id == actor.tenant_id,
+                    model.membership_id == target.id,
                 )
-                .order_by(InventoryReadGrant.revision.desc())
+                .order_by(model.revision.desc())
                 .limit(1)
             )
             if grant is not None and grant.granted:
                 session.add(
-                    InventoryReadGrant(
+                    model(
                         tenant_id=actor.tenant_id,
                         membership_id=target.id,
                         actor_membership_id=actor.membership_id,

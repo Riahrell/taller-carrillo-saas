@@ -20,6 +20,7 @@ from app.modules.inventory.inputs import (
     StockMinimumChange,
     StockReversalInput,
 )
+from app.modules.inventory.withdrawals import WithdrawalInput
 
 router = APIRouter(prefix="/inventory", tags=["inventory administration"])
 NO_STORE = {"Cache-Control": "no-store"}
@@ -273,4 +274,19 @@ def available_image(product_id: UUID, request: Request):
             "Content-Disposition": 'inline; filename="product.png"',
             "Content-Security-Policy": "default-src 'none'; sandbox",
         },
+    )
+
+
+@router.post("/availability/withdrawals")
+def operational_withdrawal(payload: WithdrawalInput, request: Request):
+    expected = expected_membership(request)
+    if expected is None:
+        raise HTTPException(428, "Precondition required", headers=NO_STORE)
+    return _response(
+        request.app.state.inventory_withdrawals.record(
+            _token(request),
+            data=payload,
+            operation_key=_operation_key(request),
+            expected_actor=expected,
+        )
     )

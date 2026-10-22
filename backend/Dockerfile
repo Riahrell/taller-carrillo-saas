@@ -1,4 +1,4 @@
-FROM python:3.13-alpine@sha256:2d9aefe2fef018a7eb2c13064c89c71929800fd2e5dccdbf52ea5da5bb8d929a AS base
+FROM python:3.13.17-alpine@sha256:8f72324dfc4b4c94f1599faf1c037c8e74755d5dbbea63f1f51a89fa52f3ad07 AS base
 RUN apk add --no-cache 'zlib=1.3.2-r1'
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

@@ -524,7 +524,7 @@ def test_downgrade_refuses_to_discard_creation_evidence(provisioning):
     with state["owner"].connect() as connection:
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0045_inventory_read_grants"
+            == "0046_inventory_withdrawal_grants"
         )
     assert counts(state) == before
 

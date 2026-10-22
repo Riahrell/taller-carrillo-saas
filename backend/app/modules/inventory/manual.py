@@ -67,6 +67,7 @@ def record_manual(
     data: ManualStockInput,
     operation_key: UUID,
     expected_actor: UUID,
+    actor_bound: bool = False,
 ) -> ManualMovementView:
     if type(data) is not ManualStockInput or not isinstance(operation_key, UUID):
         raise AccessDenied("Access denied")
@@ -85,6 +86,8 @@ def record_manual(
                 )
             )
             if previous is not None:
+                if actor_bound and previous.actor_membership_id != actor.membership_id:
+                    raise InventoryDenied("Access denied")
                 if previous.request_fingerprint != fingerprint:
                     raise InventoryConflict("Operation key conflict")
                 service._authorize(session, token, expected_actor)

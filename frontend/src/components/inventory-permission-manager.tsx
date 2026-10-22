@@ -12,6 +12,7 @@ import {
 } from "@/lib/memberships/api";
 import {
   permissionsApi,
+  withdrawalPermissionsApi,
   type ReadPermission,
 } from "@/lib/employees/permissions";
 import { ApiError } from "@/lib/api/client";
@@ -73,11 +74,11 @@ export default function InventoryPermissionManager({
     const current = new AbortController();
     controller.current = current;
     try {
-      const permission = await permissionsApi.current(
-        actor,
-        member.membership_id,
-        { signal: current.signal },
-      );
+      const api =
+        member.role === "cashier" ? withdrawalPermissionsApi : permissionsApi;
+      const permission = await api.current(actor, member.membership_id, {
+        signal: current.signal,
+      });
       if (!current.signal.aborted)
         setSelection({
           member,
@@ -105,7 +106,11 @@ export default function InventoryPermissionManager({
     const current = new AbortController();
     controller.current = current;
     try {
-      const result = await permissionsApi.change(
+      const api =
+        chosen.member.role === "cashier"
+          ? withdrawalPermissionsApi
+          : permissionsApi;
+      const result = await api.change(
         actor,
         chosen.member.membership_id,
         chosen.granted,
@@ -125,9 +130,13 @@ export default function InventoryPermissionManager({
         review: false,
       });
       setMessage(
-        result.effective
-          ? "Consulta de inventario autorizada. El empleado puede abrir Consultar existencias desde su inicio."
-          : "Permiso de consulta retirado. Se rechazará la siguiente petición del empleado.",
+        chosen.member.role === "cashier"
+          ? result.effective
+            ? "Salidas manuales autorizadas. El cajero puede consultar existencias y registrar salidas."
+            : "Permiso de salidas retirado. Se rechazará la siguiente petición."
+          : result.effective
+            ? "Consulta de inventario autorizada. El empleado puede abrir Consultar existencias desde su inicio."
+            : "Permiso de consulta retirado. Se rechazará la siguiente petición del empleado.",
       );
       onChanged();
     } catch (error) {
@@ -171,12 +180,14 @@ export default function InventoryPermissionManager({
     <section aria-label="Permisos de consulta de inventario">
       <p>
         Autoriza la consulta de productos activos, fotos, precio de venta y
-        existencias. Los costos, la valoración y los cambios de inventario
-        siguen reservados al administrador.
+        existencias para Solo lectura, o consulta y salidas manuales para
+        Cajero. Los costos, las entradas, los ajustes y las anulaciones siguen
+        reservados al administrador.
       </p>
       <p>
-        Esta primera concesión se aplica al perfil Solo lectura. Los
-        administradores conservan su acceso propio.
+        Solo lectura nunca puede modificar existencias. Cajero necesita
+        autorización explícita para registrar salidas; no registra ventas ni
+        cobros. Los administradores conservan su acceso propio.
       </p>
       <Link className="text-action" href="/inventario/consulta">
         Ver pantalla de consulta
@@ -192,7 +203,9 @@ export default function InventoryPermissionManager({
           <h2 tabIndex={-1} ref={heading}>
             {selection.review
               ? "Revisar cambio de permiso"
-              : "Permiso de consulta"}
+              : selection.member.role === "cashier"
+                ? "Permiso de salidas manuales"
+                : "Permiso de consulta"}
           </h2>
           <p>
             <strong>{selection.member.email}</strong> ·{" "}
@@ -200,14 +213,16 @@ export default function InventoryPermissionManager({
           </p>
           {!selection.permission.eligible && (
             <p>
-              Este acceso no está activo con perfil Solo lectura. Puedes retirar
+              Este acceso no está activo con el perfil requerido. Puedes retirar
               una concesión anterior; no conceder una nueva desde aquí.
             </p>
           )}
           {selection.review ? (
             <p>
               {selection.granted
-                ? "Podrá consultar fotos, productos y existencias de esta empresa. No podrá ver costos ni registrar cambios."
+                ? selection.member.role === "cashier"
+                  ? "Podrá consultar existencias y registrar salidas manuales de esta empresa. Sin costos, entradas, ajustes, ventas ni cobros."
+                  : "Podrá consultar fotos, productos y existencias de esta empresa. No podrá ver costos ni registrar cambios."
                 : "Dejará de poder consultar productos, existencias y fotos mediante este permiso. El servidor rechazará la siguiente petición."}
             </p>
           ) : (
@@ -224,7 +239,9 @@ export default function InventoryPermissionManager({
                   setSelection({ ...selection, granted: event.target.checked })
                 }
               />{" "}
-              Permitir consultar existencias
+              {selection.member.role === "cashier"
+                ? "Permitir consultar y registrar salidas"
+                : "Permitir consultar existencias"}
             </label>
           )}
           <div className="form-actions">

@@ -19,6 +19,7 @@ function decode(
   headers: Headers,
   actor: string,
   target: string,
+  capability = "inventory-read",
 ): ReadPermission {
   if (
     status !== 200 ||
@@ -43,7 +44,7 @@ function decode(
     !/^(0|[1-9][0-9]{0,18})$/.test(row.revision)
   )
     throw new Error("Invalid permission");
-  const etag = `"inventory-read-v1-${target}-${row.revision}"`;
+  const etag = `"${capability}-v1-${target}-${row.revision}"`;
   if (headers.get("ETag") !== etag) throw new Error("Invalid revision");
   return {
     membership_id: target,
@@ -81,6 +82,38 @@ export const permissionsApi = {
       etag,
       id(actor),
       (v, s, h) => decode(v, s, h, actor, target),
+      options,
+    );
+  },
+};
+
+export const withdrawalPermissionsApi = {
+  current: (actor: string, target: string, options: RequestOptions = {}) =>
+    getJson(
+      `/auth/memberships/${id(target)}/inventory-withdrawal`,
+      (v, s, h) => decode(v, s, h, actor, target, "inventory-withdrawal"),
+      options,
+      id(actor),
+    ),
+  async change(
+    actor: string,
+    target: string,
+    granted: boolean,
+    etag: string,
+    options: RequestOptions = {},
+  ) {
+    await accessApi.prepare(options);
+    const csrf = readCsrfCookie(
+      document.cookie,
+      location.protocol === "https:",
+    );
+    return patchJson(
+      `/auth/memberships/${id(target)}/inventory-withdrawal`,
+      { granted },
+      csrf,
+      etag,
+      id(actor),
+      (v, s, h) => decode(v, s, h, actor, target, "inventory-withdrawal"),
       options,
     );
   },

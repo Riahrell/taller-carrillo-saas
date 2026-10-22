@@ -32,7 +32,10 @@ from app.modules.access.identity_routes import router as identity_router
 from app.modules.access.inventory_permission_routes import (
     router as inventory_permission_router,
 )
-from app.modules.access.inventory_permissions import InventoryPermissions
+from app.modules.access.inventory_permissions import (
+    InventoryPermissions,
+    InventoryWithdrawalPermissions,
+)
 from app.modules.access.invitation_routes import router as invitation_router
 from app.modules.access.membership import AccessDenied
 from app.modules.access.reauthentication import RecentAuthenticationRequired
@@ -72,6 +75,7 @@ from app.modules.inventory.service import (
     InventoryStale,
     InventoryUnavailable,
 )
+from app.modules.inventory.withdrawals import InventoryWithdrawals
 from app.modules.purchases.receipts import PurchaseReceiver
 from app.modules.purchases.routes import router as purchases_router
 from app.modules.purchases.service import (
@@ -109,6 +113,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.inventory = InventoryAdministrator(engine)
             app.state.inventory_availability = InventoryAvailability(engine)
             app.state.inventory_permissions = InventoryPermissions(engine)
+            app.state.inventory_withdrawal_permissions = InventoryWithdrawalPermissions(
+                engine
+            )
+            app.state.inventory_withdrawals = InventoryWithdrawals(engine)
             app.state.purchases = PurchasesAdministrator(engine)
             app.state.purchase_receiver = PurchaseReceiver(engine)
             app.state.product_images = None

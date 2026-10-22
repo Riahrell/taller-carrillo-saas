@@ -139,3 +139,9 @@ y versión. La pantalla operativa excluye costos/valoración y usa fotos reautor
 Desactivar/reperfilar retira la concesión; reactivar no la restaura. Sigue la
 autorización de escrituras de empleados, además de los cierres operativos y de
 registro ya enumerados. No se despliega en Contabo ni cambia inventario.
+
+Entrega 3.45 añade concesión explícita para Cajero: consulta y salidas manuales
+con valoración de servidor e idempotencia, sin costos en el DTO. Solo lectura no
+escribe y Mecánico no recibe operaciones fuera de órdenes asignadas. Entradas,
+ajustes y anulaciones de empleados no se abren en esta entrega. Sigue el cierre
+operativo y de aceptación manual para VPS.
