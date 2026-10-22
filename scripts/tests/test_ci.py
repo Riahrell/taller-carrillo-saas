@@ -1,10 +1,12 @@
 """Safety regressions for CI orchestration; these tests never invoke Docker."""
 
+import io
 import json
 import os
 import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest.mock import patch
 
@@ -22,6 +24,20 @@ class PipelineTests(unittest.TestCase):
 
     def pipeline(self) -> Pipeline:
         return Pipeline(self.root, self.workspace, "carrillo-ci-012345abcdef")
+
+    def test_timeout_reports_limit_without_disclosing_command_or_output(self):
+        pipeline = self.pipeline()
+        error = subprocess.TimeoutExpired(["private-command"], 17, "private-output")
+        diagnostic = io.StringIO()
+        with (
+            patch("scripts.ci.subprocess.run", side_effect=error),
+            redirect_stderr(diagnostic),
+            self.assertRaises(subprocess.TimeoutExpired),
+        ):
+            pipeline.run(["private-command"], timeout=17)
+        self.assertEqual(
+            diagnostic.getvalue(), "CI command exceeded its 17-second limit.\n"
+        )
 
     def test_development_project_is_rejected_before_creating_credentials(self) -> None:
         with self.assertRaises(ValueError):

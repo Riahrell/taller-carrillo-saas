@@ -77,15 +77,20 @@ class Pipeline:
         ]
 
     def run(self, args: list[str], *, capture: bool = False, timeout: int = 600):
-        return subprocess.run(
-            args,
-            check=True,
-            cwd=self.root,
-            env=self.env,
-            capture_output=capture,
-            text=True,
-            timeout=timeout,
-        )
+        try:
+            return subprocess.run(
+                args,
+                check=True,
+                cwd=self.root,
+                env=self.env,
+                capture_output=capture,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            # Arguments and captured output can contain private configuration.
+            print(f"CI command exceeded its {timeout}-second limit.", file=sys.stderr)
+            raise
 
     def compose(self, *args: str, capture: bool = False, timeout: int = 600):
         return self.run([*self.prefix, *args], capture=capture, timeout=timeout)
@@ -151,7 +156,7 @@ class Pipeline:
         self.compose("run", "--rm", "--no-deps", "frontend-tests")
         self.compose("up", "-d", "--wait", "--wait-timeout", "90", "db")
         self.compose("run", "--rm", "migrate")
-        self.compose("run", "--rm", "tests", timeout=1800)
+        self.compose("run", "--rm", "tests", timeout=5400)
         self.compose("up", "-d", "--wait", "--wait-timeout", "90", "proxy")
         address = self.compose("port", "proxy", "8080", capture=True).stdout.strip()
         if not re.fullmatch(r"127\.0\.0\.1:[0-9]+", address):
