@@ -194,7 +194,8 @@ def main():
         return 0
     except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError):
         print(
-            "Legacy retirement stopped; inspect state before retrying. No secret details."
+            "Legacy retirement stopped; inspect state before retrying. "
+            "No secret details."
         )
         return 1
 

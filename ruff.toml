@@ -1,0 +1,2 @@
+# Apply the CI rule set to scripts checked from the repository root.
+extend = "backend/pyproject.toml"

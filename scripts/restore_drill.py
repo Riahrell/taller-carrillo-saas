@@ -28,7 +28,8 @@ def main():
     )
     if any(targets) and not all(targets):
         parser.error(
-            "Storage config, expected/forbidden bucket and endpoint are required together"
+            "Storage config, expected/forbidden bucket and endpoint "
+            "are required together"
         )
     local = ROOT / ".local"
     local.mkdir(mode=0o700, exist_ok=True)
@@ -200,7 +201,8 @@ def main():
             print(
                 "Full restore drill passed: snapshot/code replay risk "
                 "demonstrated; factor decrypts, quarantine retains MFA and "
-                "inventory/catalog/minimum/reversal and private WebP/thumbnail metadata reconcile."
+                "inventory/catalog/minimum/reversal and private WebP/thumbnail "
+                "metadata reconcile."
             )
         finally:
             try:
