@@ -284,5 +284,5 @@ def test_reversal_evidence_and_original_are_retained(reversing):
             command.downgrade(config, "0041_stock_minimum")
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0046_inventory_withdrawal_grants"
+            == "0047_product_image_variants"
         )

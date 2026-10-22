@@ -204,5 +204,5 @@ def test_configuration_evidence_cannot_be_erased_or_downgraded(minimum_state):
             command.downgrade(config, "0040_product_changes")
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0046_inventory_withdrawal_grants"
+            == "0047_product_image_variants"
         )

@@ -278,3 +278,7 @@ anulaciones o administración. Solo lectura nunca escribe; Mecánico conserva su
 restricciones de órdenes asignadas. Amplía la matriz objetivo anterior únicamente
 para esta capacidad concedida. Revocación, cambio de perfil y desactivación se
 comprueban en servidor. Ver `inventory-withdrawal-permissions-contract.md`.
+
+Miniaturas 3.48: las rutas privadas de miniatura heredan los mismos permisos
+que las de detalle y revalidan después de leer S3. No conceden publicación pública,
+URLs directas o acceso a otra empresa. Cambiar foto sigue reservado al administrador.

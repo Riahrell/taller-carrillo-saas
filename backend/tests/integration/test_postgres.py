@@ -33,7 +33,7 @@ def test_migrations_upgrade_check_downgrade_upgrade(databases) -> None:
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
         assert MigrationContext.configure(connection).get_current_revision() == (
-            "0046_inventory_withdrawal_grants"
+            "0047_product_image_variants"
         )
         command.check(config)
         command.downgrade(config, "base")

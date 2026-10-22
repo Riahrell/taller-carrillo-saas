@@ -16,7 +16,9 @@ from pydantic import BaseModel, ConfigDict, SecretStr, field_validator
 from app.modules.catalog.images import MAX_OUTPUT_BYTES, PreparedProductImage
 
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-_KEY = re.compile(rf"product-images/{_UUID}/{_UUID}/{_UUID}\.png")
+_KEY = re.compile(
+    rf"product-images/{_UUID}/{_UUID}/{_UUID}(?:\.png|\.webp|\.thumb\.webp)"
+)
 
 
 class ImageStorageUnavailable(RuntimeError):
@@ -85,6 +87,7 @@ class StoredProductImage:
     key: str
     size: int
     sha256: str
+    content_type: str = "image/png"
 
 
 def _validated_key(key: str) -> str:
@@ -125,13 +128,14 @@ class PrivateImageStorage:
         digest = hashlib.sha256(payload).hexdigest()
         if (
             not 0 < len(payload) <= MAX_OUTPUT_BYTES
-            or image.content_type != "image/png"
+            or image.content_type not in ("image/png", "image/webp")
             or digest != image.sha256
-            or not payload.startswith(b"\x89PNG\r\n\x1a\n")
+            or not _signature(payload, image.content_type)
         ):
             raise ValueError("Invalid prepared image")
-        key = f"product-images/{tenant_id}/{product_id}/{uuid4()}.png"
-        return StoredProductImage(key, len(payload), digest)
+        extension = "webp" if image.content_type == "image/webp" else "png"
+        key = f"product-images/{tenant_id}/{product_id}/{uuid4()}.{extension}"
+        return StoredProductImage(key, len(payload), digest, image.content_type)
 
     def put(self, reference: StoredProductImage, image: PreparedProductImage) -> None:
         """Persist reservation in DB before calling; timeout may have committed S3."""
@@ -140,10 +144,11 @@ class PrivateImageStorage:
         digest = hashlib.sha256(payload).hexdigest()
         if (
             not 0 < len(payload) == reference.size <= MAX_OUTPUT_BYTES
-            or image.content_type != "image/png"
+            or image.content_type not in ("image/png", "image/webp")
             or digest != reference.sha256
             or digest != image.sha256
-            or not payload.startswith(b"\x89PNG\r\n\x1a\n")
+            or reference.content_type != image.content_type
+            or not _signature(payload, image.content_type)
         ):
             raise ValueError("Invalid prepared image")
         try:
@@ -152,7 +157,7 @@ class PrivateImageStorage:
                 Key=key,
                 Body=payload,
                 ContentLength=len(payload),
-                ContentType="image/png",
+                ContentType=image.content_type,
                 ContentMD5=base64.b64encode(
                     hashlib.md5(payload, usedforsecurity=False).digest()
                 ).decode("ascii"),
@@ -173,6 +178,8 @@ class PrivateImageStorage:
 
     def read(self, reference: StoredProductImage) -> bytes:
         key = _validated_key(reference.key)
+        if reference.content_type not in ("image/png", "image/webp"):
+            raise ValueError("Invalid content type")
         if not 0 < reference.size <= MAX_OUTPUT_BYTES or not re.fullmatch(
             r"[0-9a-f]{64}", reference.sha256
         ):
@@ -183,7 +190,7 @@ class PrivateImageStorage:
             try:
                 if (
                     response.get("ContentLength") != reference.size
-                    or response.get("ContentType") != "image/png"
+                    or response.get("ContentType") != reference.content_type
                 ):
                     raise ImageStorageUnavailable("Imagen almacenada no válida.")
                 payload = body.read(reference.size + 1)
@@ -194,6 +201,7 @@ class PrivateImageStorage:
         if (
             len(payload) != reference.size
             or hashlib.sha256(payload).hexdigest() != reference.sha256
+            or not _signature(payload, reference.content_type)
         ):
             raise ImageStorageUnavailable("Imagen almacenada no válida.")
         return payload
@@ -208,3 +216,14 @@ class PrivateImageStorage:
 
     def close(self) -> None:
         self._client.close()
+
+
+def _signature(payload, content_type):
+    if content_type == "image/png":
+        return payload.startswith(b"\x89PNG\r\n\x1a\n")
+    return (
+        len(payload) >= 30
+        and payload[:4] == b"RIFF"
+        and payload[8:12] == b"WEBP"
+        and int.from_bytes(payload[4:8], "little") + 8 == len(payload)
+    )

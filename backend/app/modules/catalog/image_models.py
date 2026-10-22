@@ -12,6 +12,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -61,12 +62,28 @@ class ProductImage(Base):
         ),
         CheckConstraint(
             "object_key = 'product-images/' || tenant_id::text || '/' || "
-            "product_id::text || '/' || id::text || '.png'",
+            "product_id::text || '/' || id::text || "
+            "CASE WHEN content_type = 'image/png' THEN '.png' ELSE '.webp' END",
             name="key_source",
         ),
         CheckConstraint(
             "previous_image_id IS NULL OR previous_image_id <> id",
             name="previous_distinct",
+        ),
+        CheckConstraint(
+            "content_type IN ('image/png', 'image/webp')", name="content_type"
+        ),
+        CheckConstraint(
+            "(content_type = 'image/png' AND thumbnail_size IS NULL AND"
+            " thumbnail_sha256 IS NULL AND thumbnail_width IS NULL AND "
+            "thumbnail_height IS NULL) OR "
+            "(content_type = 'image/webp' AND thumbnail_size IS NOT "
+            "NULL AND thumbnail_size BETWEEN 30 AND 262144 AND "
+            "thumbnail_sha256 IS NOT NULL AND thumbnail_sha256 ~ "
+            "'^[0-9a-f]{64}$' AND thumbnail_width IS NOT NULL AND "
+            "thumbnail_width BETWEEN 1 AND 300 AND thumbnail_height IS "
+            "NOT NULL AND thumbnail_height BETWEEN 1 AND 300)",
+            name="thumbnail_metadata",
         ),
         Index("ix_product_images_cleanup", "state", "created_at", "id"),
     )
@@ -83,6 +100,13 @@ class ProductImage(Base):
     size: Mapped[int] = mapped_column(Integer)
     width: Mapped[int] = mapped_column(Integer)
     height: Mapped[int] = mapped_column(Integer)
+    content_type: Mapped[str] = mapped_column(
+        String(20), server_default=text("'image/png'")
+    )
+    thumbnail_size: Mapped[int | None] = mapped_column(Integer)
+    thumbnail_sha256: Mapped[str | None] = mapped_column(String(64))
+    thumbnail_width: Mapped[int | None] = mapped_column(Integer)
+    thumbnail_height: Mapped[int | None] = mapped_column(Integer)
     state: Mapped[str] = mapped_column(String(10))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

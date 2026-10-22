@@ -53,9 +53,11 @@ class Storage:
 
     def allocate(self, tenant, product, image):
         return StoredProductImage(
-            f"product-images/{tenant}/{product}/{uuid4()}.png",
+            f"product-images/{tenant}/{product}/{uuid4()}."
+            + ("webp" if image.content_type == "image/webp" else "png"),
             len(image.content),
             image.sha256,
+            image.content_type,
         )
 
     def put(self, ref, image):
@@ -163,7 +165,7 @@ def test_attach_replay_replace_and_cleanup_preserve_current(images_state):
     assert state["service"].cleanup_one(second.id) is False
     assert state["service"].cleanup_one(first.id) is True
     assert state["service"].cleanup_one(first.id) is True
-    assert len(state["storage"].objects) == 1
+    assert len(state["storage"].objects) == 2
     replay = replace(state, key=key)
     assert replay.id == first.id and not replay.is_current
     with Session(state["runtime"]) as session:
@@ -298,7 +300,7 @@ def test_competing_reservations_do_not_silently_overwrite(images_state):
     assert sorted(image.state for image in rows(state)) == ["attached", "garbage"]
     stale = next(image for image in rows(state) if image.state == "garbage")
     state["service"].cleanup_one(stale.id)
-    assert len(state["storage"].objects) == 1
+    assert len(state["storage"].objects) == 2
 
 
 def test_expired_reservation_and_failed_delete_are_recoverable(
@@ -388,7 +390,7 @@ def test_database_rejects_invalid_image_metadata(images_state, changes, expected
     values.update(
         id=identifier,
         operation_key=uuid4(),
-        object_key=f"product-images/{state['tenant']}/{state['product']}/{identifier}.png",
+        object_key=f"product-images/{state['tenant']}/{state['product']}/{identifier}.webp",
     )
     with Session(state["runtime"]) as session, pytest.raises(IntegrityError) as error:
         session.add(ProductImage(**(values | changes)))
@@ -409,7 +411,7 @@ def test_database_rejects_cross_tenant_actor_and_head(images_state):
         id=identifier,
         operation_key=uuid4(),
         actor_membership_id=state["foreign_membership"],
-        object_key=f"product-images/{state['tenant']}/{state['product']}/{identifier}.png",
+        object_key=f"product-images/{state['tenant']}/{state['product']}/{identifier}.webp",
     )
     with Session(state["runtime"]) as session, pytest.raises(IntegrityError):
         session.add(ProductImage(**values))
@@ -452,7 +454,7 @@ def test_cleanup_cannot_compete_with_in_flight_upload(images_state):
     state["storage"].on_put = competing_cleanup
     result = replace(state)
     assert result.is_current
-    assert len(state["storage"].objects) == 1
+    assert len(state["storage"].objects) == 2
 
 
 def test_lost_database_commit_ack_replays_without_second_attachment(images_state):

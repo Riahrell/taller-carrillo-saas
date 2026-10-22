@@ -23,7 +23,10 @@ from app.modules.catalog.image_models import (
     ProductImageEvent,
     ProductImageHead,
 )
-from app.modules.catalog.image_processing import process_product_image
+from app.modules.catalog.image_processing import (
+    process_product_image,
+    process_product_variants,
+)
 from app.modules.catalog.image_storage import ImageStorageConflict, StoredProductImage
 from app.modules.catalog.images import (
     MAX_INPUT_BYTES,
@@ -70,22 +73,29 @@ class ProductImageView(BaseModel):
     created_at: datetime
     is_current: bool
     actor_membership_id: UUID = Field(exclude=True, repr=False)
+    content_type: str = Field(default="image/png", exclude=True)
 
 
 def _reference(image: ProductImage) -> StoredProductImage:
-    return StoredProductImage(image.object_key, image.size, image.sha256)
+    return StoredProductImage(
+        image.object_key, image.size, image.sha256, image.content_type
+    )
 
 
-def _view(image: ProductImage, current: UUID | None, actor: UUID) -> ProductImageView:
+def _view(
+    image: ProductImage, current: UUID | None, actor: UUID, *, thumbnail=False
+) -> ProductImageView:
+    thumbnail = thumbnail and image.content_type == "image/webp"
     return ProductImageView(
         id=image.id,
         product_id=image.product_id,
-        width=image.width,
-        height=image.height,
-        size=image.size,
+        width=image.thumbnail_width if thumbnail else image.width,
+        height=image.thumbnail_height if thumbnail else image.height,
+        size=image.thumbnail_size if thumbnail else image.size,
         created_at=image.created_at,
         is_current=current == image.id,
         actor_membership_id=actor,
+        content_type=image.content_type,
     )
 
 
@@ -197,6 +207,7 @@ class ProductImageAdministrator:
         if not isinstance(content, bytes) or not 0 < len(content) <= MAX_INPUT_BYTES:
             raise InvalidProductImage("Tamaño de archivo no permitido.")
         fingerprint = hashlib.sha256(content).hexdigest()
+        legacy_pending = False
         with self._authorized(token, expected_actor, product_id) as (session, actor):
             existing = session.scalar(
                 select(ProductImage).where(
@@ -205,6 +216,7 @@ class ProductImageAdministrator:
                 )
             )
             if existing:
+                legacy_pending = existing.content_type == "image/png"
                 self._check_replay(existing, product_id, expected_actor, fingerprint)
                 if session.scalar(
                     select(ProductImageEvent.id).where(
@@ -215,7 +227,14 @@ class ProductImageAdministrator:
                     return _view(
                         existing, head.image_id if head else None, expected_actor
                     )
-        prepared = process_product_image(content)
+        prepared = (
+            process_product_image(content)
+            if legacy_pending
+            else process_product_variants(content)
+        )
+        prepared_size = len(prepared.content) + (
+            len(prepared.thumbnail.content) if prepared.thumbnail else 0
+        )
         with self._authorized(token, expected_actor, product_id) as (session, actor):
             image = session.scalar(
                 select(ProductImage).where(
@@ -237,21 +256,29 @@ class ProductImageAdministrator:
                     )
                 )
                 used = session.scalar(
-                    select(func.coalesce(func.sum(ProductImage.size), 0)).where(
+                    select(
+                        func.coalesce(
+                            func.sum(
+                                ProductImage.size
+                                + func.coalesce(ProductImage.thumbnail_size, 0)
+                            ),
+                            0,
+                        )
+                    ).where(
                         ProductImage.tenant_id == actor.tenant_id,
                         ProductImage.state != "deleted",
                     )
                 )
                 if (
                     pending >= MAX_PENDING_PER_PRODUCT
-                    or used + len(prepared.content) > MAX_TENANT_BYTES
+                    or used + prepared_size > MAX_TENANT_BYTES
                 ):
                     raise ProductImagesConflict("Image capacity exhausted")
                 reference = self._storage.allocate(
                     actor.tenant_id, product_id, prepared
                 )
                 image = ProductImage(
-                    id=UUID(reference.key.rsplit("/", 1)[1][:-4]),
+                    id=UUID(reference.key.rsplit("/", 1)[1].split(".")[0]),
                     tenant_id=actor.tenant_id,
                     product_id=product_id,
                     actor_membership_id=expected_actor,
@@ -263,6 +290,11 @@ class ProductImageAdministrator:
                     size=len(prepared.content),
                     width=prepared.width,
                     height=prepared.height,
+                    content_type=prepared.content_type,
+                    thumbnail_size=len(prepared.thumbnail.content),
+                    thumbnail_sha256=prepared.thumbnail.sha256,
+                    thumbnail_width=prepared.thumbnail.width,
+                    thumbnail_height=prepared.thumbnail.height,
                     state="reserved",
                     created_at=_database_now(session),
                 )
@@ -295,11 +327,24 @@ class ProductImageAdministrator:
                 ):
                     raise ProductImageTerminalConflict("Image reservation unavailable")
                 reference = _reference(image)
+                thumbnail_reference = _thumbnail_reference(image)
+            if reference.sha256 != prepared.sha256 or (
+                thumbnail_reference
+                and thumbnail_reference.sha256 != prepared.thumbnail.sha256
+            ):
+                raise ProductImageTerminalConflict(
+                    "Image processing changed; review before replacing"
+                )
             # An ambiguous PUT leaves the durable reference for explicit replay.
             try:
                 self._storage.put(reference, prepared)
             except ImageStorageConflict:
                 self._storage.read(reference)
+            if thumbnail_reference:
+                try:
+                    self._storage.put(thumbnail_reference, prepared.thumbnail)
+                except ImageStorageConflict:
+                    self._storage.read(thumbnail_reference)
             conflict = False
             with self._authorized(token, expected_actor, product_id) as (
                 session,
@@ -342,6 +387,7 @@ class ProductImageAdministrator:
         expected_actor: UUID,
         product_id: UUID,
         operational: bool = False,
+        thumbnail: bool = False,
     ) -> tuple[ProductImageView, bytes] | None:
         if not isinstance(expected_actor, UUID) or not isinstance(product_id, UUID):
             raise AccessDenied("Access denied")
@@ -356,7 +402,9 @@ class ProductImageAdministrator:
                 return None
             image_id = head.image_id
             image = session.get(ProductImage, image_id)
-            reference = _reference(image)
+            reference = (
+                _thumbnail_reference(image) if thumbnail else None
+            ) or _reference(image)
         content = self._storage.read(reference)
         with self._authorized(
             token, expected_actor, product_id, recent=False, operational=operational
@@ -368,7 +416,10 @@ class ProductImageAdministrator:
             if head.image_id != image_id:
                 raise ProductImagesConflict("Product image changed")
             return _view(
-                session.get(ProductImage, image_id), head.image_id, expected_actor
+                session.get(ProductImage, image_id),
+                head.image_id,
+                expected_actor,
+                thumbnail=thumbnail,
             ), content
 
     def cleanup_one(self, image_id: UUID) -> bool:
@@ -397,7 +448,10 @@ class ProductImageAdministrator:
                         return False
                     image.state = "deleting"
                     reference = _reference(image)
+                    thumbnail_reference = _thumbnail_reference(image)
                 self._storage.delete_unreferenced(reference.key)
+                if thumbnail_reference:
+                    self._storage.delete_unreferenced(thumbnail_reference.key)
                 with self._factory.begin() as session:
                     _limit_transaction(session)
                     image = session.get(ProductImage, image_id)
@@ -405,3 +459,14 @@ class ProductImageAdministrator:
                 return True
         except SQLAlchemyError:
             raise ProductImagesUnavailable("Images unavailable") from None
+
+
+def _thumbnail_reference(image):
+    if image.content_type == "image/png":
+        return None
+    return StoredProductImage(
+        image.object_key[:-5] + ".thumb.webp",
+        image.thumbnail_size,
+        image.thumbnail_sha256,
+        "image/webp",
+    )

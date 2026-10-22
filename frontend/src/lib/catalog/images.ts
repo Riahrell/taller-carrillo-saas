@@ -61,6 +61,7 @@ async function transfer<T>(
   signal?: AbortSignal,
   command?: ImageCommand,
   operational = false,
+  thumbnail = false,
 ): Promise<T> {
   if (!validId(actor) || !validId(product)) throw new Error("Invalid context");
   if (
@@ -88,8 +89,8 @@ async function transfer<T>(
     const perform = async () => {
       const response = await fetch(
         operational && !command
-          ? `/api/inventory/availability/products/${product}/image`
-          : `/api/catalog/products/${product}/image`,
+          ? `/api/inventory/availability/products/${product}/image${thumbnail ? "/thumbnail" : ""}`
+          : `/api/catalog/products/${product}/image${thumbnail && !command ? "/thumbnail" : ""}`,
         {
           method: command ? "POST" : "GET",
           credentials: "same-origin",
@@ -97,7 +98,7 @@ async function transfer<T>(
           redirect: "error",
           signal: controller.signal,
           headers: {
-            Accept: command ? "application/json" : "image/png",
+            Accept: command ? "application/json" : "image/webp, image/png",
             "X-Requested-With": "XMLHttpRequest",
             "X-Expected-Membership": actor,
             ...(command
@@ -171,23 +172,36 @@ export const productImages = {
     product: string,
     signal?: AbortSignal,
     operational = false,
+    thumbnail = false,
   ) {
     return transfer(
       actor,
       product,
       async (response) => {
         if (response.status === 204) return null;
+        const media = response.headers.get("Content-Type")?.split(";")[0];
         if (
           response.status !== 200 ||
-          response.headers.get("Content-Type")?.split(";")[0] !== "image/png" ||
+          !["image/png", "image/webp"].includes(media ?? "") ||
           !validId(response.headers.get("X-Image-Id"))
         )
           throw new Error("Invalid image");
         const reader = response.body?.getReader();
         if (!reader) throw new Error("No image stream");
         const declared = response.headers.get("Content-Length");
-        const capacity = declared === null ? OUTPUT : Number(declared);
-        if (!Number.isInteger(capacity) || capacity < 33 || capacity > OUTPUT)
+        const maximum =
+          media === "image/webp"
+            ? thumbnail
+              ? 256 * 1024
+              : 4 * 1024 * 1024
+            : OUTPUT;
+        const minimum = media === "image/webp" ? 30 : 33;
+        const capacity = declared === null ? maximum : Number(declared);
+        if (
+          !Number.isInteger(capacity) ||
+          capacity < minimum ||
+          capacity > maximum
+        )
           throw new Error("Invalid image length");
         const buffer = new Uint8Array(capacity);
         let size = 0;
@@ -204,16 +218,24 @@ export const productImages = {
           await reader.cancel();
           reader.releaseLock();
         }
-        if (size < 33 || (declared !== null && size !== capacity))
+        if (size < minimum || (declared !== null && size !== capacity))
           throw new Error("Invalid image");
         const signature = buffer.subarray(0, 8);
-        if (signature.join() !== "137,80,78,71,13,10,26,10")
+        const webp = media === "image/webp";
+        if (
+          webp
+            ? String.fromCharCode(...buffer.subarray(0, 4)) !== "RIFF" ||
+              String.fromCharCode(...buffer.subarray(8, 12)) !== "WEBP" ||
+              new DataView(buffer.buffer).getUint32(4, true) + 8 !== size
+            : signature.join() !== "137,80,78,71,13,10,26,10"
+        )
           throw new Error("Invalid image signature");
-        return new Blob([buffer.subarray(0, size)], { type: "image/png" });
+        return new Blob([buffer.subarray(0, size)], { type: media! });
       },
       signal,
       undefined,
       operational,
+      thumbnail,
     );
   },
 };

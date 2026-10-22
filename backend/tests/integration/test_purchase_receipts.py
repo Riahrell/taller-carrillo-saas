@@ -437,7 +437,7 @@ def test_downgrade_refuses_to_erase_receipts(receiving):
     with state["owner"].connect() as connection:
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0046_inventory_withdrawal_grants"
+            == "0047_product_image_variants"
         )
     assert snapshot(state)[0] == (1, 2, 2)
 

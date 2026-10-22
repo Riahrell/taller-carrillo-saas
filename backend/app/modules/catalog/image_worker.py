@@ -1,6 +1,7 @@
 """Private executable entry point; resource limits precede decoder imports."""
 
 import resource
+import struct
 import sys
 from pathlib import Path
 
@@ -17,11 +18,31 @@ def main() -> int:
         MAX_INPUT_BYTES,
         InvalidProductImage,
         prepare_product_image,
+        prepare_product_variants,
     )
 
     try:
-        prepared = prepare_product_image(sys.stdin.buffer.read(MAX_INPUT_BYTES + 1))
-        sys.stdout.buffer.write(prepared.content)
+        content = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
+        if sys.argv[1:] == ["--webp"]:
+            prepared = prepare_product_variants(content)
+            thumb = prepared.thumbnail
+            sys.stdout.buffer.write(
+                b"TCWEBP1\n"
+                + struct.pack(
+                    ">6I",
+                    len(prepared.content),
+                    prepared.width,
+                    prepared.height,
+                    len(thumb.content),
+                    thumb.width,
+                    thumb.height,
+                )
+                + prepared.content
+                + thumb.content
+            )
+        else:
+            prepared = prepare_product_image(content)
+            sys.stdout.buffer.write(prepared.content)
         sys.stdout.buffer.flush()
     except InvalidProductImage:
         return 2

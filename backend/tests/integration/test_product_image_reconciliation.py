@@ -31,7 +31,7 @@ def test_reconcile_current_safety_paging_and_late_put_tombstone(images_state):
         next(image for image in rows(state) if image.id == current.id).state
         == "attached"
     )
-    assert len(state["storage"].objects) == 1
+    assert len(state["storage"].objects) == 2
 
 
 def test_restart_replays_failed_cleanup_without_losing_reservation(images_state):

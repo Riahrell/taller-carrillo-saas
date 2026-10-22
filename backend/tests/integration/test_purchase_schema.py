@@ -306,7 +306,7 @@ def test_downgrade_refuses_even_supplier_without_purchase(databases):
         with owner.connect() as connection:
             assert (
                 MigrationContext.configure(connection).get_current_revision()
-                == "0046_inventory_withdrawal_grants"
+                == "0047_product_image_variants"
             )
             assert (
                 connection.scalar(select(Supplier.id).where(Supplier.id == supplier))

@@ -8,7 +8,10 @@ from botocore.stub import ANY, Stubber
 from PIL import Image
 from pydantic import ValidationError
 
-from app.modules.catalog.image_processing import process_product_image
+from app.modules.catalog.image_processing import (
+    process_product_image,
+    process_product_variants,
+)
 from app.modules.catalog.image_storage import (
     ImageStorageConflict,
     ImageStorageSettings,
@@ -33,20 +36,25 @@ def settings(**changes):
     )
 
 
-def prepared():
+def prepared(webp=False):
     with Image.new("RGB", (3, 2), "red") as image, BytesIO() as output:
         image.save(output, "PNG")
-        return process_product_image(output.getvalue())
+        return (process_product_variants if webp else process_product_image)(
+            output.getvalue()
+        )
 
 
-def test_worker_to_private_transport_and_verified_read():
+@pytest.mark.parametrize("kind", ["png", "webp", "thumbnail"])
+def test_worker_to_private_transport_and_verified_read(kind):
     storage = PrivateImageStorage(settings())
     config = storage._client.meta.config
     assert config.s3 == {"addressing_style": "path"}
     assert config.retries["total_max_attempts"] == 1
     assert config.proxies == {}
     assert (config.connect_timeout, config.read_timeout) == (3, 10)
-    image = prepared()
+    image = prepared(kind != "png")
+    if kind == "thumbnail":
+        image = image.thumbnail
     with Stubber(storage._client) as stub:
         stub.add_response(
             "put_object",
@@ -56,7 +64,7 @@ def test_worker_to_private_transport_and_verified_read():
                 "Key": ANY,
                 "Body": image.content,
                 "ContentLength": len(image.content),
-                "ContentType": "image/png",
+                "ContentType": image.content_type,
                 "ContentMD5": ANY,
                 "CacheControl": "private, no-store",
                 "ACL": "private",
@@ -66,12 +74,23 @@ def test_worker_to_private_transport_and_verified_read():
         )
         tenant, product = uuid4(), uuid4()
         reference = storage.allocate(tenant, product, image)
+        if kind == "thumbnail":
+            reference = StoredProductImage(
+                reference.key[:-5] + ".thumb.webp",
+                reference.size,
+                reference.sha256,
+                "image/webp",
+            )
         storage.put(reference, image)
         assert reference.key.startswith(f"product-images/{tenant}/{product}/")
         body = StreamingBody(BytesIO(image.content), len(image.content))
         stub.add_response(
             "get_object",
-            {"Body": body, "ContentLength": reference.size, "ContentType": "image/png"},
+            {
+                "Body": body,
+                "ContentLength": reference.size,
+                "ContentType": image.content_type,
+            },
             {"Bucket": "private-test-images", "Key": reference.key},
         )
         assert storage.read(reference) == image.content

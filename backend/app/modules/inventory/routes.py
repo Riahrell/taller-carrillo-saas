@@ -244,8 +244,17 @@ def available_categories(request: Request, query: Annotated[CatalogPageQuery, Qu
     )
 
 
+@router.get("/availability/products/{product_id}/image/thumbnail")
+def available_thumbnail(product_id: UUID, request: Request):
+    return _available_image(product_id, request, thumbnail=True)
+
+
 @router.get("/availability/products/{product_id}/image")
 def available_image(product_id: UUID, request: Request):
+    return _available_image(product_id, request)
+
+
+def _available_image(product_id: UUID, request: Request, *, thumbnail=False):
     from fastapi.responses import Response
 
     request.app.state.http_security.verify_browser_read(request.headers)
@@ -256,7 +265,11 @@ def available_image(product_id: UUID, request: Request):
     if service is None:
         raise HTTPException(503, "Images unavailable", headers=NO_STORE)
     result = service.read(
-        token, expected_actor=expected, product_id=product_id, operational=True
+        token,
+        expected_actor=expected,
+        product_id=product_id,
+        operational=True,
+        thumbnail=thumbnail,
     )
     headers = NO_STORE | {
         "X-Access-Membership": str(expected),
@@ -267,11 +280,13 @@ def available_image(product_id: UUID, request: Request):
     image, content = result
     return Response(
         content,
-        media_type="image/png",
+        media_type=image.content_type,
         headers=headers
         | {
             "X-Image-Id": str(image.id),
-            "Content-Disposition": 'inline; filename="product.png"',
+            "Content-Disposition": 'inline; filename="product.webp"'
+            if image.content_type == "image/webp"
+            else 'inline; filename="product.png"',
             "Content-Security-Policy": "default-src 'none'; sandbox",
         },
     )

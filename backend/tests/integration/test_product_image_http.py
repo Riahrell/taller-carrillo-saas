@@ -73,10 +73,10 @@ def test_private_roundtrip_replay_headers_and_no_authority_fields(image_web):
     assert upload(client, state, policy, key=key).json() == response.json()
     result = client.get(path(state), headers=read)
     assert result.status_code == 200
-    assert result.content.startswith(b"\x89PNG")
+    assert result.content.startswith(b"RIFF")
     assert result.headers["cache-control"] == "no-store"
     assert result.headers["x-access-membership"] == str(state["membership"])
-    assert result.headers["content-type"] == "image/png"
+    assert result.headers["content-type"] == "image/webp"
     assert result.headers["x-content-type-options"] == "nosniff"
     assert len(rows(state)) == 1
 

@@ -145,3 +145,9 @@ con valoración de servidor e idempotencia, sin costos en el DTO. Solo lectura n
 escribe y Mecánico no recibe operaciones fuera de órdenes asignadas. Entradas,
 ajustes y anulaciones de empleados no se abren en esta entrega. Sigue el cierre
 operativo y de aceptación manual para VPS.
+
+Entrega 3.48 optimiza fotos nuevas/reemplazadas a WebP con miniatura privada de
+300 px para listas; detalle hasta 1600 px y compatibilidad PNG anterior. La
+publicación de ambas variantes y su limpieza mantienen reserva/evidencia y
+reintentos. El catálogo conserva páginas de 25 productos, máximo API 100 por
+solicitud. Sin conversión masiva, CDN pública o ampliación de permisos.

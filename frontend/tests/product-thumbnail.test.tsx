@@ -38,6 +38,8 @@ it("muestra la imagen privada del producto en catálogo y libera el blob al sali
     actor,
     target,
     expect.any(AbortSignal),
+    false,
+    true,
   );
   view.unmount();
   expect(revoke).toHaveBeenCalledWith("blob:private-product");

@@ -1,3 +1,8 @@
+> Actualización 3.48: para fotos nuevas/reemplazadas y lectura de miniaturas,
+> rige [el contrato de variantes](product-image-variants-contract.md). Los apartados
+> PNG previos describen el formato histórico, que sigue siendo legible. Se mantienen
+> la autorización, reservas, evidencia y reconciliación, ampliadas a los dos objetos.
+
 # Imágenes de producto — integración prevista
 
 Requisito explícito del propietario: los productos deben admitir imagen y los

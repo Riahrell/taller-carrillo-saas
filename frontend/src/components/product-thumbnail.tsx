@@ -51,9 +51,13 @@ export default function ProductThumbnail({
       running = true;
       setPhoto({ scope, state: "loading", url: null });
       try {
-        const blob = availability
-          ? await productImages.read(actor, productId, abort.signal, true)
-          : await productImages.read(actor, productId, abort.signal);
+        const blob = await productImages.read(
+          actor,
+          productId,
+          abort.signal,
+          availability,
+          true,
+        );
         if (abort.signal.aborted) return;
         const next = blob ? URL.createObjectURL(blob) : null;
         const previous = objectUrl;

@@ -73,12 +73,21 @@ async def replace_image(product_id: UUID, request: Request) -> JSONResponse:
         _UPLOAD_SLOTS.release()
 
 
+@router.get("/{product_id}/image/thumbnail")
+def read_thumbnail(product_id: UUID, request: Request) -> Response:
+    return _read_image(product_id, request, thumbnail=True)
+
+
 @router.get("/{product_id}/image")
 def read_image(product_id: UUID, request: Request) -> Response:
+    return _read_image(product_id, request)
+
+
+def _read_image(product_id: UUID, request: Request, *, thumbnail=False) -> Response:
     request.app.state.http_security.verify_browser_read(request.headers)
     token, expected = _token(request), _expected_write(request)
     result = _service(request).read(
-        token, expected_actor=expected, product_id=product_id
+        token, expected_actor=expected, product_id=product_id, thumbnail=thumbnail
     )
     headers = NO_STORE | {
         "X-Access-Membership": str(expected),
@@ -89,11 +98,13 @@ def read_image(product_id: UUID, request: Request) -> Response:
     image, content = result
     return Response(
         content,
-        media_type="image/png",
+        media_type=image.content_type,
         headers=headers
         | {
             "X-Image-Id": str(image.id),
-            "Content-Disposition": 'inline; filename="product.png"',
+            "Content-Disposition": 'inline; filename="product.webp"'
+            if image.content_type == "image/webp"
+            else 'inline; filename="product.png"',
             "Content-Security-Policy": "default-src 'none'; sandbox",
         },
     )

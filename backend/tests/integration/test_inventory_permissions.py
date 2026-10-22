@@ -265,7 +265,10 @@ def test_permission_evidence_is_append_only(readers):
             connection.execute(text(sql))
 
 
-def test_operational_image_read_checks_grant_again_after_storage(reader_images):
+@pytest.mark.parametrize("thumbnail", [False, True])
+def test_operational_image_read_checks_grant_again_after_storage(
+    reader_images, thumbnail
+):
     state = reader_images
     replace(state)
     change(state, True)
@@ -274,6 +277,7 @@ def test_operational_image_read_checks_grant_again_after_storage(reader_images):
         expected_actor=state["reader"],
         product_id=state["product"],
         operational=True,
+        thumbnail=thumbnail,
     )[1]
     with pytest.raises(AccessDenied):
         state["service"].read(
@@ -288,6 +292,7 @@ def test_operational_image_read_checks_grant_again_after_storage(reader_images):
             expected_actor=state["reader"],
             product_id=state["product"],
             operational=True,
+            thumbnail=thumbnail,
         )
 
 
@@ -397,7 +402,7 @@ def test_http_permission_projection_and_photo_revocation(permission_web):
         replace(state)
         image_path = f"/inventory/availability/products/{state['product']}/image"
         image = employee.get(image_path, headers=employee_read)
-        assert image.status_code == 200 and image.content.startswith(b"\x89PNG")
+        assert image.status_code == 200 and image.content.startswith(b"RIFF")
         assert image.headers["X-Access-Membership"] == str(state["reader"])
         assert (
             employee.get(
@@ -481,7 +486,7 @@ def test_schema_downgrade_refuses_permission_evidence(readers):
             command.downgrade(config, "0044_employee_registration")
         assert (
             MigrationContext.configure(connection).get_current_revision()
-            == "0046_inventory_withdrawal_grants"
+            == "0047_product_image_variants"
         )
 
 
