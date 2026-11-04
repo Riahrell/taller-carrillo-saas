@@ -1,5 +1,11 @@
 # Operación de identidad y puerta de producción
 
+> Este documento conserva el detalle técnico y la evidencia de incorporación de
+> identidad de una fase anterior. Para el estado de despliegue y el mantenimiento
+> actual, consulta [Estado y versiones](project-status.md) y
+> [Operación de producción](production-operations.md). Los pendientes históricos
+> que siguen no describen por sí solos la instalación actual.
+
 Implementación y validación conjunta en progreso. Resend está configurado mediante
 archivos privados externos; el usuario confirmó recepción de los dos mensajes de
 transporte autorizados. No contenían enlaces operativos. SSH `contabo` comprobado
